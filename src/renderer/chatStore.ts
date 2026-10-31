@@ -8,7 +8,6 @@ import { useDesk } from './store'
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
 export interface ChatEntry {
-  live?: boolean
   activity?: ChatActivity
   /** 本地接收顺序，用于保留加载快照期间到达的正文。 */
   messageVersions?: Record<string, number>
@@ -160,7 +159,6 @@ export const useChat = create<ChatStore>((set, get) => {
         set({ chats: { ...get().chats, [sessionId]: { ...blank(''), loaded: true } } })
       }
       switch (event.kind) {
-        case 'connection': patch(sessionId, () => ({ live: event.live })); break
         case 'activity':
           patch(sessionId, (c) => (c.activity?.revision ?? 0) <= event.activity.revision ? { activity: event.activity } : {})
           break
@@ -184,7 +182,7 @@ export const useChat = create<ChatStore>((set, get) => {
           patch(sessionId, () => ({ state: event.state }))
           break
         case 'approval':
-          patch(sessionId, (c) => ({ approvals: [...c.approvals.filter(a => a.requestId !== event.request.requestId), event.request] }))
+          patch(sessionId, (c) => ({ approvals: [...c.approvals, event.request] }))
           break
         case 'approvalDone':
           patch(sessionId, (c) => ({ approvals: c.approvals.filter((a) => a.requestId !== event.requestId) }))

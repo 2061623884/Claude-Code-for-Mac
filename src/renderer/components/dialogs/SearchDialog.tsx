@@ -1,5 +1,3 @@
-import { useOrganization } from '../../organizationStore'
-import { sectionFor } from '@shared/sessionOrganization'
 import { useModalLayer } from '../../modalStore'
 import { useEffect, useRef, useState } from 'react'
 import { Archive, MessageSquare, Search } from 'lucide-react'
@@ -16,11 +14,10 @@ export function SearchDialog() {
   const [active, setActive] = useState(0)
   const list = useRef<HTMLDivElement>(null)
 
-  const org = useOrganization(s => s.value)
   const q = query.trim().toLowerCase()
   const results = projects
     .flatMap((p) => (sessions[p.id] ?? []).map((s) => ({ session: s, project: p })))
-    .filter(({ session, project }) => !q || session.title.toLowerCase().includes(q) || project.name.toLowerCase().includes(q) || sectionFor(org, session.id)?.title.toLowerCase().includes(q))
+    .filter(({ session, project }) => !q || session.title.toLowerCase().includes(q) || project.name.toLowerCase().includes(q))
     .sort((a, b) => b.session.lastModified - a.session.lastModified)
     .slice(0, LIMIT)
   const current = Math.min(active, Math.max(results.length - 1, 0))

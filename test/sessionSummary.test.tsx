@@ -19,8 +19,7 @@ beforeEach(() => {
   useChat.setState({ chats: { first: { ...base, summary }, second: { ...base, summary: emptySessionSummary() } } })
   useSummaryUi.setState({ opened: {}, expanded: {} })
   useLayout.setState({ pages: [{ id: 'page:home', kind: 'start' }], openFiles: [], rightTab: 'page:home', rightOpen: false })
-  window.desk = {
-    artifacts: { list: async () => ({ revision: 0, items: [] }), collect: async () => {}, onChanged: () => () => {} }, workspace: { closePage: vi.fn().mockResolvedValue(undefined) } } as unknown as Window['desk']
+  window.desk = { workspace: { closePage: vi.fn().mockResolvedValue(undefined) } } as unknown as Window['desk']
 })
 afterEach(cleanup)
 it('starts collapsed, previews three items on demand and has one global view-all button', () => {

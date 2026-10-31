@@ -1,6 +1,3 @@
-import { isAbsolute } from 'node:path'
-import { open as openFile } from 'node:fs/promises'
-import type { TaskOutput } from '../../shared/taskOutput'
 import { randomUUID } from 'node:crypto'
 import type { CommandInfo } from '../../shared/types'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, McpStatus, SessionOptions } from '../../shared/chat'
@@ -24,7 +21,6 @@ export class SessionManager {
   private live = new Map<string, LiveSession>()
   private commandConfigurations = new WeakMap<LiveSession, string>()
   private transcripts = new Map<string, Transcript>()
-  private infoRequests = new Map<string, Promise<unknown>>()
   private transcriptLoads = new Map<string, Promise<Transcript>>()
   /** 最近一次和会话文件同步时，文件里的消息条数；用来发现别处（终端、VS Code）续写了这个会话 */
   private seen = new Map<string, number>()
@@ -32,13 +28,6 @@ export class SessionManager {
 
   constructor(private emit: Emit, private activityStore?: ActivityRepository, private commandObserver?: CommandObserver) {}
 
-  cachedSnapshot(sessionId: string): { cwd: string; summary: NonNullable<ChatSnapshot['summary']>; messages: ChatSnapshot['messages'] } | undefined {
-    const transcript = this.transcripts.get(sessionId)
-    if (!transcript) return
-    const summary = transcript.activity.snapshot()
-    const cwd = this.live.get(sessionId)?.cwd ?? summary.sections.projects.find(p => p.path)?.path
-    if (cwd) return { cwd, summary, messages: transcript.messages }
-  }
   commandsFor(cwd: string, configuration?: string): Promise<CommandInfo[]> | undefined {
     const session = [...this.live.values()].find((candidate) => candidate.cwd === cwd && (configuration === undefined || this.commandConfigurations.get(candidate) === configuration))
     return session?.commands()
@@ -48,7 +37,6 @@ export class SessionManager {
     const transcript = await this.transcript(sessionId, projectPath)
     const session = this.live.get(sessionId)
     return {
-      runtime: session?.runtimeInfo,
       activity: session?.activity.snapshot(),
       summary: transcript.activity.snapshot(),
       messages: structuredClone(transcript.messages),
@@ -111,52 +99,12 @@ export class SessionManager {
   }
 
   /** /mcp：会话在运行就问它，否则临时起一个进程读取（不发消息） */
-  private coalesce<T>(key: string, read: () => Promise<T>): Promise<T> {
-    const pending = this.infoRequests.get(key)
-    if (pending) return pending as Promise<T>
-    const request = read().finally(() => { if (this.infoRequests.get(key) === request) this.infoRequests.delete(key) })
-    this.infoRequests.set(key, request); return request
-  }
   async mcp(sessionId: string | null, projectPath: string): Promise<McpStatus[]> {
-    return this.coalesce(`mcp:${sessionId}:${projectPath}`, async () => {
-      const live = sessionId ? this.live.get(sessionId) : undefined
-      const list = live ? await live.mcpStatus() : await withIdleQuery({ cwd: projectPath }, (q) => q.mcpServerStatus())
-      return list.map((s) => ({ name: s.name, status: s.status, error: s.error, scope: s.scope, tools: s.tools?.length ?? 0 }))
-    })
+    const live = sessionId ? this.live.get(sessionId) : undefined
+    const list = live ? await live.mcpStatus() : await withIdleQuery({ cwd: projectPath }, (q) => q.mcpServerStatus())
+    return list.map((s) => ({ name: s.name, status: s.status, error: s.error, scope: s.scope, tools: s.tools?.length ?? 0 }))
   }
 
-  async stopTask(sessionId: string, recordId: string, runId?: string): Promise<void> {
-    const live = this.live.get(sessionId)
-    if (!live) throw new Error('历史任务不能停止')
-    await live.stopTask(recordId, runId)
-  }
-  async taskOutput(sessionId: string, projectPath: string, recordId: string, offset = 0): Promise<TaskOutput> {
-    const transcript = await this.transcript(sessionId, projectPath)
-    const item = transcript.activity.taskRecord(recordId)
-    if (!item?.execution) throw new Error('没有可靠的任务输出关联')
-    const ref = item.execution
-    if (ref.agentId) {
-      const sdk = await loadSdk()
-      const raw = await sdk.getSubagentMessages(sessionId, ref.agentId, { dir: projectPath, offset, limit: 100 }).catch(() => [])
-      if (raw.length) {
-        const output = new Transcript(projectPath)
-        for (const message of raw) output.apply(message)
-        output.finish()
-        return { messages: output.messages, truncated: raw.length === 100, nextOffset: raw.length === 100 ? offset + raw.length : undefined }
-      }
-    }
-    const childMessages = transcript.messages.filter(m => ref.toolUseId && m.parentToolUseId === ref.toolUseId)
-    if (childMessages.length) return { messages: structuredClone(childMessages.slice(offset, offset + 100)), truncated: childMessages.length > offset + 100, nextOffset: childMessages.length > offset + 100 ? offset + 100 : undefined }
-    if (ref.outputFile && isAbsolute(ref.outputFile)) {
-      // 路径只能来自该会话的 SDK 记录，不接受渲染层传入路径。
-      const file = await openFile(ref.outputFile, 'r').catch(() => null)
-      if (file) try {
-        const stat = await file.stat()
-        if (stat.isFile()) { const size = Math.min(stat.size, 256 * 1024), buffer = Buffer.alloc(size); await file.read(buffer, 0, size, Math.max(0, stat.size - size)); return { messages: [], text: buffer.toString('utf8'), truncated: stat.size > size } }
-      } finally { await file.close() }
-    }
-    return { messages: [], truncated: false, unavailable: '没有保存可读取的完整输出；现有任务摘要仍保留。' }
-  }
   interrupt(sessionId: string): Promise<void> | undefined {
     return this.live.get(sessionId)?.interrupt()
   }
@@ -189,7 +137,7 @@ export class SessionManager {
   async context(sessionId: string, projectPath: string, model: string | null): Promise<ContextUsage | null> {
     const live = this.live.get(sessionId)
     // 新会话还没写出会话文件时读不到，返回 null 即可
-    return this.coalesce(`context:${sessionId}:${projectPath}:${model}`, () => (live ? live.contextUsage() : peekContext(sessionId, projectPath, model)).catch(() => null))
+    return (live ? live.contextUsage() : peekContext(sessionId, projectPath, model)).catch(() => null)
   }
 
   reload(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
@@ -265,14 +213,14 @@ export class SessionManager {
   /** 同时运行的进程太多时，关掉最久没用的空闲会话 */
   private evictIfFull(): void {
     if (this.live.size < MAX_LIVE) return
-    const idle = [...this.live].filter(([, s]) => s.state === 'idle' && !s.hasBackgroundWork).sort((a, b) => a[1].lastActive - b[1].lastActive)
+    const idle = [...this.live].filter(([, s]) => s.state === 'idle').sort((a, b) => a[1].lastActive - b[1].lastActive)
     const victim = idle[0]
     if (victim) this.closeSession(victim[0])
   }
 
   private closeIdle(): void {
     const now = Date.now()
-    for (const [id, s] of this.live) if (s.state === 'idle' && !s.hasBackgroundWork && now - s.lastActive > IDLE_MS) this.closeSession(id)
+    for (const [id, s] of this.live) if (s.state === 'idle' && now - s.lastActive > IDLE_MS) this.closeSession(id)
   }
 
   private closeSession(id: string): void {

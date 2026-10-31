@@ -2,12 +2,10 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { emptyOrganization, type SessionOrganization } from '../shared/sessionOrganization'
 import type { Project, Settings } from '../shared/types'
 
 interface StoreData {
   version: 1
-  organization: SessionOrganization
   projects: Project[]
   archived: Record<string, true>
   settings: Settings
@@ -16,7 +14,6 @@ interface StoreData {
 
 const DEFAULTS: StoreData = {
   version: 1,
-  organization: emptyOrganization(),
   projects: [],
   archived: {},
   settings: { theme: 'system', defaultModel: 'opus', defaultPermissionMode: 'default', defaultEffort: 'medium', claudePath: null, allowBypass: false },
@@ -36,7 +33,7 @@ export function read(): StoreData {
     // 早期版本用 null 表示"默认"，现在统一换成明确的模型和思考程度
     settings.defaultModel ??= DEFAULTS.settings.defaultModel
     settings.defaultEffort ??= DEFAULTS.settings.defaultEffort
-    data = { ...DEFAULTS, ...loaded, settings, organization: loaded.organization ?? emptyOrganization() }
+    data = { ...DEFAULTS, ...loaded, settings }
   }
   return data
 }

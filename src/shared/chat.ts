@@ -77,14 +77,13 @@ export type Decision =
   | { type: 'planRevise'; feedback: string }
 
 export type ChatEvent =
-  | { kind: 'connection'; live: boolean }
   | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
   | { kind: 'upsert'; messages: UiMessage[] }
   | { kind: 'state'; state: ChatState }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'approvalDone'; requestId: string }
-  | { kind: 'result'; eventId?: string; completed?: boolean; durationMs: number; error: string | null }
+  | { kind: 'result'; durationMs: number; error: string | null }
   | { kind: 'notice'; text: string }
 
 /** 当前上下文窗口的占用情况 */
@@ -97,7 +96,6 @@ export interface ContextUsage {
 }
 
 export interface ChatSnapshot {
-  runtime?: { cwd: string; model: string | null; permissionMode: string | null }
   activity?: ChatActivity
   summary?: SessionSummaryData
   messages: UiMessage[]

@@ -1,6 +1,3 @@
-import type { ArtifactSnapshot } from './artifacts'
-import type { TaskOutput } from './taskOutput'
-import type { OrganizationAction, SessionOrganization } from './sessionOrganization'
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, McpStatus, SessionOptions } from './chat'
@@ -112,24 +109,6 @@ export interface AppState {
 }
 
 export interface DeskApi {
-  artifacts: {
-    list(): Promise<ArtifactSnapshot>
-    collect(sessionId: string, projectPath: string): Promise<void>
-    pick(sessionId: string, projectPath: string): Promise<void>
-    remove(id: string): Promise<void>
-    relocate(id: string): Promise<void>
-    export(id: string): Promise<void>
-    onChanged(listener: () => void): () => void
-  }
-  tasks: {
-    output(sessionId: string, projectPath: string, recordId: string, offset?: number): Promise<TaskOutput>
-    stop(sessionId: string, recordId: string, runId?: string): Promise<void>
-  }
-  organization: {
-    get(): Promise<SessionOrganization>
-    change(action: OrganizationAction): Promise<SessionOrganization>
-    onChanged(listener: (value: SessionOrganization) => void): () => void
-  }
   workspace: {
     /** 明确关闭页面时销毁资源；组件卸载不等于关闭页面。 */
     closePage(id: string): Promise<void>

@@ -1,4 +1,3 @@
-import { McpStatusList } from './McpStatusList'
 // 输入框上方的命令浮层：/usage、/context、/model、/effort、/config、/mcp 由应用直接处理，不发任何消息；
 // 交给 Claude Code 执行的本地命令（/output-style…）的输出也显示在这里。Esc、× 或点外面关闭。
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -399,6 +398,13 @@ function FreeValue({ onSubmit }: { onSubmit(value: string): void }) {
   )
 }
 
+const MCP_STATUS: Record<McpStatus['status'], { label: string; color: string }> = {
+  connected: { label: '已连接', color: '#788c5d' },
+  pending: { label: '连接中', color: '#a3a093' },
+  'needs-auth': { label: '需要授权', color: '#c6a27a' },
+  failed: { label: '连接失败', color: 'var(--danger)' },
+  disabled: { label: '已停用', color: '#a3a093' }
+}
 
 function McpBody({ ctx }: { ctx: PanelContext }) {
   const home = useDesk((s) => s.home)
@@ -408,7 +414,27 @@ function McpBody({ ctx }: { ctx: PanelContext }) {
   if (list.length === 0) return <Note>没有配置 MCP 服务器。</Note>
   return (
     <>
-      <McpStatusList list={list} />
+      <div className="-mx-1.5 space-y-0.5">
+        {list.map((s, i) => {
+          const st = MCP_STATUS[s.status]
+          return (
+            <div key={s.name} className="animate-fade-up flex items-start gap-2.5 rounded-lg px-1.5 py-1.5" style={{ animationDelay: `${i * 30}ms` }}>
+              <span className="mt-[7px] size-2 shrink-0 rounded-full" style={{ background: st.color }} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate font-medium">{s.name}</span>
+                  <span className="shrink-0 text-[12px] text-fg3">
+                    {st.label}
+                    {s.status === 'connected' && ` · ${s.tools} 个工具`}
+                    {s.scope && ` · ${s.scope}`}
+                  </span>
+                </div>
+                {s.error && <div className="mt-0.5 text-[12px] text-danger select-text">{s.error}</div>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
       <button type="button" onClick={reload} className="mt-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-fg3 hover:bg-hover hover:text-fg2">
         <RefreshCw size={12} />
         刷新

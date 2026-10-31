@@ -11,7 +11,6 @@ import { TurnActivity } from './TurnActivity'
 import { PushQueue } from './PushQueue'
 
 interface Pending {
-  disposers: Set<() => void>
   request: ApprovalRequest
   suggestions?: PermissionUpdate[]
   resolve(result: PermissionResult): void
@@ -49,15 +48,11 @@ export class LiveSession {
   state: ChatState = 'idle'
   lastActive = Date.now()
   private pending = new Map<string, Pending>()
-  private permissions = new Map<string, { signature: string; promise: Promise<PermissionResult> }>()
   private input = new PushQueue<SDKUserMessage>()
   private abort = new AbortController()
   private q: Query | null = null
   private closed = false
   private commandsChanged = false
-  private runtimeModel: string | null = null
-  private runtimePermission: string | null = null
-  private runtimeCwd: string | null = null
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private onStarted!: (q: Query) => void
   private onStartFailed!: (err: unknown) => void
@@ -67,19 +62,9 @@ export class LiveSession {
   })
 
   constructor(private init: LiveSessionInit) {
-    init.transcript.activity.beginProcess()
     this.started.catch(() => {}) // 启动失败由 start() 提示，这里只防止未处理的 rejection
   }
 
-  get hasBackgroundWork(): boolean { return this.init.transcript.activity.hasLiveTasks || this.pending.size > 0 }
-  async stopTask(id: string, runId?: string): Promise<void> {
-    const item = this.init.transcript.activity.taskRecord(id)
-    if (this.closed || !item || !this.init.transcript.activity.canStop(item) || item.execution?.runId !== runId || !item.execution?.taskId) throw new Error('该任务已结束或无法准确定位，不能停止')
-    const q = await this.query()
-    // query() 等待期间可能已经收到完成事件。
-    if (!this.init.transcript.activity.canStop(item)) throw new Error('任务已结束')
-    await q.stopTask(item.execution.taskId)
-  }
   get approvals(): ApprovalRequest[] {
     return [...this.pending.values()].map((p) => p.request)
   }
@@ -127,7 +112,6 @@ export class LiveSession {
     }
   }
 
-  get runtimeInfo() { return { cwd: this.runtimeCwd ?? this.init.cwd, model: this.runtimeModel, permissionMode: this.runtimePermission } }
   get cwd(): string { return this.init.cwd }
 
   async commands(): Promise<CommandInfo[]> { return (await this.query()).supportedCommands() }
@@ -165,12 +149,10 @@ export class LiveSession {
 
   async setMode(mode: SessionOptions['mode']): Promise<void> {
     await (await this.query()).setPermissionMode(mode)
-    this.runtimePermission = mode
   }
 
   async setModel(model: string | null): Promise<void> {
     await (await this.query()).setModel(model ?? undefined)
-    this.runtimeModel = model
   }
 
   async setEffort(effort: SessionOptions['effort']): Promise<void> {
@@ -185,7 +167,6 @@ export class LiveSession {
     const p = this.pending.get(requestId)
     if (!p) return
     this.pending.delete(requestId)
-    p.disposers.forEach(dispose => dispose())
     this.init.emit({ kind: 'approvalDone', requestId })
     p.resolve(toPermissionResult(decision, p.request.input, p.suggestions))
     if (decision.type === 'planApprove') void this.setMode(decision.mode)
@@ -195,15 +176,12 @@ export class LiveSession {
   close(): void {
     if (this.closed) return
     this.closed = true
-    this.init.emit({ kind: 'connection', live: false })
     this.onStartFailed(new Error('会话已关闭'))
     for (const [requestId, pending] of this.pending) {
-      pending.disposers.forEach(dispose => dispose())
       this.init.emit({ kind: 'approvalDone', requestId })
       pending.resolve({ behavior: 'deny', message: '会话已结束' })
     }
     this.pending.clear()
-    this.permissions.clear()
     this.input.end()
     this.activity.finish()
     this.init.transcript.activity.markInactive()
@@ -237,7 +215,6 @@ export class LiveSession {
 
   private observeDirectory: HookCallback = async (input) => {
     if (this.closed) return {}
-    if (input.hook_event_name === 'CwdChanged' && !input.agent_id) this.runtimeCwd = input.new_cwd
     if (input.hook_event_name === 'CwdChanged') this.init.transcript.activity.observeDirectory(input.new_cwd, !input.agent_id, input.agent_id ? '子 Agent 工作目录' : '会话工作目录')
     else if (input.hook_event_name === 'DirectoryAdded') this.init.transcript.activity.observeDirectory(input.directory)
     else return {}
@@ -245,53 +222,30 @@ export class LiveSession {
     return {}
   }
 
-  private watchPermissionCancellation(requestId: string, signal: AbortSignal): void {
-    const entry = this.pending.get(requestId)
-    if (!entry) return
-    const cancel = (): void => {
-      if (this.pending.get(requestId) !== entry) return
-      this.pending.delete(requestId)
-      entry.disposers.forEach(dispose => dispose())
-      this.init.emit({ kind: 'approvalDone', requestId })
-      entry.resolve({ behavior: 'deny', message: '已取消' })
-      if (!this.closed && this.pending.size === 0 && this.state === 'awaiting') this.setState('running')
-    }
-    if (signal.aborted) { cancel(); return }
-    signal.addEventListener('abort', cancel, { once: true })
-    entry.disposers.add(() => signal.removeEventListener('abort', cancel))
-  }
-
-  private canUseTool: CanUseTool = (toolName, input, options) => {
-    const requestId = options.requestId ?? options.toolUseID
-    const signature = JSON.stringify([toolName, input])
-    const previous = this.permissions.get(requestId)
-    if (previous) {
-      if (previous.signature !== signature) return Promise.resolve({ behavior: 'deny', message: '权限请求标识冲突，请重试。' })
-      this.watchPermissionCancellation(requestId, options.signal)
-      return previous.promise
-    }
-    const promise = new Promise<PermissionResult>(resolve => {
-      if (this.closed || options.signal.aborted) { resolve({ behavior: 'deny', message: '会话已结束' }); return }
+  private canUseTool: CanUseTool = (toolName, input, options) =>
+    new Promise((resolve) => {
+      if (this.closed || options.signal.aborted) {
+        resolve({ behavior: 'deny', message: '会话已结束' })
+        return
+      }
+      const requestId = options.requestId ?? options.toolUseID
       const request: ApprovalRequest = {
-        requestId, toolName, input,
+        requestId,
+        toolName,
+        input,
         canAlwaysAllow: !options.suppressAlwaysAllowRule && (options.suggestions?.length ?? 0) > 0,
         reason: options.decisionReason
       }
-      this.pending.set(requestId, { request, suggestions: options.suggestions, resolve, disposers: new Set() })
-      this.watchPermissionCancellation(requestId, options.signal)
+      this.pending.set(requestId, { request, suggestions: options.suggestions, resolve })
       this.flush()
       this.init.emit({ kind: 'approval', request })
       this.setState('awaiting')
+      options.signal.addEventListener('abort', () => {
+        if (!this.pending.delete(requestId)) return
+        this.init.emit({ kind: 'approvalDone', requestId })
+        resolve({ behavior: 'deny', message: '已取消' })
+      })
     })
-    this.permissions.set(requestId, { signature, promise })
-    void promise.finally(() => {
-      for (const id of this.permissions.keys()) {
-        if (this.permissions.size <= 128) break
-        if (!this.pending.has(id)) this.permissions.delete(id)
-      }
-    }).catch(() => {})
-    return promise
-  }
 
   private async pump(q: Query): Promise<void> {
     debug('pump start', this.init.sessionId)
@@ -316,9 +270,6 @@ export class LiveSession {
 
   private handle(m: SDKMessage): void {
     this.lastActive = Date.now()
-    if (m.type === 'system' && m.subtype === 'init') { this.runtimeCwd = m.cwd; this.runtimeModel = m.model; this.runtimePermission = m.permissionMode; this.init.emit({ kind: 'connection', live: true }) }
-    if (m.type === 'system' && m.subtype === 'status' && m.permissionMode) this.runtimePermission = m.permissionMode
-    if (m.type === 'assistant' && m.message.model) this.runtimeModel = m.message.model
     if (m.type === 'system' && m.subtype === 'commands_changed') { this.commandsChanged = true; this.publishCommands(m.commands) }
     this.activity.apply(m)
     this.init.transcript.apply(m)
@@ -333,7 +284,7 @@ export class LiveSession {
           : m.subtype === 'error_during_execution'
             ? null // 用户中断
             : `运行结束：${m.subtype}`
-      this.init.emit({ kind: 'result', eventId: m.uuid, completed: m.subtype === 'success' && !m.is_error, durationMs: m.duration_ms, error })
+      this.init.emit({ kind: 'result', durationMs: m.duration_ms, error })
       this.setState(this.pending.size > 0 ? 'awaiting' : 'idle')
     }
   }
