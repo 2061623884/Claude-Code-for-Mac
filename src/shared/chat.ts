@@ -30,6 +30,11 @@ export interface UiMessage {
   id: string
   /** notice：系统提示（如「已中断」），以灰色小字显示 */
   role: 'user' | 'assistant' | 'notice'
+  /** 内容来源与界面角色分开；unknown 保留原文，不冒充已确认的真人输入。 */
+  source?: 'human' | 'unknown' | 'internal' | 'external'
+  originKind?: string
+  /** 明确的界面分组边界。旧快照缺少此字段时才回退到 role。 */
+  startsTurn?: boolean
   blocks: UiBlock[]
   /** 子代理内部的消息，挂在对应工具调用下 */
   parentToolUseId: string | null
@@ -47,6 +52,8 @@ export interface UiMessage {
 export interface ChatActivity {
   revision: number
   phase: 'idle' | 'working' | 'thinking' | 'responding' | 'tool' | 'stopping'
+  messageId?: string
+  blockIndex?: number
   toolName?: string
   toolId?: string
 }
@@ -58,6 +65,18 @@ export interface SessionOptions {
   mode: PermissionMode
   effort: EffortLevel | null
 }
+
+export interface QueuedMessage {
+  editing?: boolean
+  attachments?: string[]
+  id: string
+  text: string
+  options: SessionOptions
+  status: 'queued' | 'submitting' | 'submitted' | 'received' | 'unknown' | 'failed'
+  error?: string
+}
+export interface SessionQueue { items: QueuedMessage[]; paused: boolean }
+export type QueueAction = { type: 'move'; id: string; targetId: string; position: 'before' | 'after' } | { type: 'edit'; id: string; text: string; attachments?: string[] } | { type: 'insert' | 'delete' | 'forget' | 'beginEdit' | 'cancelEdit'; id: string } | { type: 'pause' | 'resume' | 'clear' }
 
 export interface ApprovalRequest {
   requestId: string
@@ -77,25 +96,35 @@ export type Decision =
   | { type: 'planRevise'; feedback: string }
 
 export type ChatEvent =
+  | { kind: 'options'; options: SessionOptions }
+  | { kind: 'queue'; queue: SessionQueue }
   | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
   | { kind: 'upsert'; messages: UiMessage[] }
   | { kind: 'state'; state: ChatState }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'approvalDone'; requestId: string }
-  | { kind: 'result'; resultId?: string; durationMs: number; error: string | null }
+  | { kind: 'result'; resultId?: string; durationMs: number; error: string | null; diagnostic?: { subtype: string; errors: string[]; terminalReason?: string; userMessageIds: string[]; userStopped: boolean } }
   | { kind: 'notice'; text: string }
 
 /** 当前上下文窗口的占用情况 */
 export interface ContextUsage {
   used: number
+  /** SDK 的有效统计窗口，可能小于模型硬上限。 */
   max: number
   percent: number
+  autoCompactEnabled?: boolean
+  autoCompactThreshold?: number
+  free?: number
+  buffer?: number
   /** 按类别拆分（系统提示词、工具、对话消息……），只含占用窗口的部分 */
   parts: { name: string; tokens: number }[]
 }
 
 export interface ChatSnapshot {
+  optionsSaved?: boolean
+  options?: SessionOptions
+  queue?: SessionQueue
   activity?: ChatActivity
   summary?: SessionSummaryData
   messages: UiMessage[]

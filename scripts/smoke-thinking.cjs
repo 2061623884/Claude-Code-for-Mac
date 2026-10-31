@@ -18,14 +18,16 @@ const event = (event, parent = null) => ({ type: 'stream_event', event, parent_t
 const begin = (id, parent = null) => event({ type: 'message_start', message: { id } }, parent)
 const block = (index, type, parent = null) => event({ type: 'content_block_start', index, content_block: { type, thinking: '', text: '' } }, parent)
 const delta = (text, index = 0, parent = null) => event({ type: 'content_block_delta', index, delta: { type: 'thinking_delta', thinking: text } }, parent)
-const apply = (message) => { transcript.apply(message); activity.apply(message) }
+const apply = (message) => { transcript.apply(message); activity.apply(message); activity.locate(transcript.messages, message) }
 apply(begin('main')); apply(block(0, 'thinking')); apply(delta(Array.from({ length: 12 }, (_, i) => `检查步骤 ${i + 1}：核对文件与现有实现。`).join('\n')))
 let state = 'running', answerSideQuestion
+let queue = { paused: false, items: ['补充检查图片中的标题', '最后整理检查清单'].map((text,i)=>({id:'q'+i,text,status:'queued',options:{model:'Sonnet 5.5',effort:'low',mode:'default'}})) }
 const originalHandle = ipcMain.handle.bind(ipcMain)
 ipcMain.handle = (name, handler) => {
   const stubs = {
     'sessions:list': () => ['a', 'b'].map(id => ({ id, title: `动效测试 ${id}`, cwd: project, lastModified: 0, archived: false })),
-    'chat:open': (_event, id) => ({ messages: id === 'a' ? structuredClone(transcript.messages) : [], activity: id === 'a' ? activity.snapshot() : undefined, state: id === 'a' ? state : 'idle', approvals: [], live: true }),
+    'chat:open': (_event, id) => ({ messages: id === 'a' ? structuredClone(transcript.messages) : [], activity: id === 'a' ? activity.snapshot() : undefined, state: id === 'a' ? state : 'idle', approvals: [], live: true, ...(id==='a'?{queue:structuredClone(queue),options:{model:'sonnet',effort:'low',mode:'default'},optionsSaved:true}:{}) }),
+    'chat:queue': (event,id,cwd,action) => { const item=queue.items.find(i=>i.id===action.id);if(action.type==='beginEdit'&&item)item.editing=true;if(action.type==='cancelEdit'&&item)delete item.editing;if(action.type==='edit'&&item){item.text=action.text;delete item.editing;}if(action.type==='insert'&&item)item.status='submitted';if(action.type==='move'&&item){queue.items=queue.items.filter(i=>i.id!==item.id);const index=queue.items.findIndex(i=>i.id===action.targetId)+(action.position==='after'?1:0);queue.items.splice(index,0,item);}if(action.type==='delete')queue.items=queue.items.filter(i=>i.id!==action.id);event.sender.send('chat:event',id,{kind:'queue',queue:structuredClone(queue)}) },
     'chat:context': () => null, 'chat:checkExternal': () => false,
     'chat:btw': () => new Promise(resolve => { answerSideQuestion = resolve }),
     'meta:get': () => ({ models: [], subscriptionType: null, claudeVersion: 'fixture' }),
@@ -40,7 +42,7 @@ app.on('browser-window-created', (_event, win) => {
   win.webContents.once('did-finish-load', async () => {
     const js = code => win.webContents.executeJavaScript(code, true)
     const wait = async condition => { for (let i=0;i<100;i++) { if (await js(condition)) return; await new Promise(r=>setTimeout(r,70)) } throw new Error('Condition failed: '+condition) }
-    const click = label => js(`(() => {const element=[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')===${JSON.stringify(label)}&&e.offsetParent);if(!element)throw new Error('Missing button: '+${JSON.stringify(label)});element.click()})()`)
+    const click = label => js(`(() => {const element=[...document.querySelectorAll('button')].find(e=>(e.getAttribute('aria-label')===${JSON.stringify(label)}||e.innerText===${JSON.stringify(label)})&&e.offsetParent);if(!element)throw new Error('Missing button: '+${JSON.stringify(label)});element.click()})()`)
     const card = text => js(`([...document.querySelectorAll('button')].find(e=>e.offsetParent&&e.innerText.includes(${JSON.stringify(text)}))).click()`)
     const open = async id => { await js(`([...document.querySelectorAll('[role="button"]')].find(e=>e.innerText.includes('动效测试 ${id}'))).click()`); await wait(`document.querySelector('main')?.innerText.includes('动效测试 ${id}')`) }
     const shot = async name => writeFileSync(join(output,name+'.png'),(await win.capturePage()).toPNG())
@@ -98,16 +100,55 @@ app.on('browser-window-created', (_event, win) => {
       if(await js(`document.querySelector('[aria-label="思考摘要内容"]').scrollTop`)>1)throw new Error('Streaming stole the reader scroll position')
       await click('收起思考摘要')
       send({type:'assistant',uuid:'tool-final',message:{id:'tool-message',content:[{type:'tool_use',id:'read',name:'Read',input:{file_path:join(project,'README.md')}}]}})
-      await wait(`document.querySelector('[data-thinking-summary] [role="status"]')?.innerText.includes('正在读取文件')`)
-      setState('awaiting');await wait(`document.querySelector('[data-thinking-summary] [role="status"]')?.innerText.includes('等待你确认')`)
+      await wait(`document.querySelector('main [role="status"]')?.getAttribute('aria-label')?.includes('正在读取文件')`)
+      setState('awaiting');await wait(`document.querySelector('main [role="status"]')?.getAttribute('aria-label')?.includes('等待你确认')`)
       if(await js(`!!document.querySelector('[data-thinking-summary] animate')`))throw new Error('Approval wait is animating')
       setState('running');send({type:'user',message:{content:[{type:'tool_result',tool_use_id:'read',content:'ok'}]}})
       send(event({type:'content_block_start',index:1,content_block:{type:'text',text:''}}));send(event({type:'content_block_delta',index:1,delta:{type:'text_delta',text:'检查完成。'}}))
-      await wait(`document.querySelector('[data-thinking-summary] [role="status"]')?.innerText.includes('正在生成回复')`)
+      await wait(`document.querySelector('main [role="status"]')?.getAttribute('aria-label')?.includes('正在生成回复')`)
       await checkSummaryOrder()
+      const followsText = await js(`(()=>{const p=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');const s=document.querySelector('main [role="status"]');return Boolean(p&&s&&(p.compareDocumentPosition(s)&Node.DOCUMENT_POSITION_FOLLOWING)&&document.querySelectorAll('main [role="status"]').length===1)})()`)
+      if(!followsText)throw new Error('Active indicator must follow the updated text block exactly once')
+      if(await js(`document.querySelector('main [role="status"]').textContent!==''`))throw new Error('Main activity indicator should not show status text')
+      if(!await js(`(()=>{const p=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');return document.querySelector('main [role="status"]').getBoundingClientRect().left<p.getBoundingClientRect().left})()`))throw new Error('Main activity indicator should sit slightly outside the text edge')
+      await shot('activity-follows-latest-text')
+      await shot('message-queue-controls')
+      await js(`(()=>{const source=document.querySelector('[data-queue-id="q1"] [aria-label="拖动调整顺序"]');const target=document.querySelector('[data-queue-id="q0"]');const transfer=new DataTransfer();source.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:transfer}));const args={bubbles:true,cancelable:true,dataTransfer:transfer,clientY:target.getBoundingClientRect().top+1};target.dispatchEvent(new DragEvent('dragover',args));target.dispatchEvent(new DragEvent('drop',args));source.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:transfer}));})()`)
+      await wait(`document.querySelector('[data-queue-id]')?.dataset.queueId==='q1'`)
+      await new Promise(r=>setTimeout(r,120));await shot('queue-drag-reordered')
+      await wait(`!document.querySelector('[data-queue-id="q1"] [aria-label="拖动调整顺序"]').disabled`)
+      await js(`document.querySelector('[data-queue-id="q1"] [aria-label="拖动调整顺序"]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}))`)
+      await wait(`document.querySelector('[data-queue-id]')?.dataset.queueId==='q0'`)
+
+      const writeComposer = async text => {
+        win.focus()
+        await js(`(()=>{const e=document.querySelector('[contenteditable="true"]');e.focus();document.execCommand('selectAll');})()`)
+        await new Promise(r=>setTimeout(r,60))
+        if(text)await js(`document.execCommand('insertText',false,${JSON.stringify(text)})`)
+        else {win.webContents.sendInputEvent({type:'keyDown',keyCode:'Backspace'});win.webContents.sendInputEvent({type:'keyUp',keyCode:'Backspace'})}
+        await wait(`document.querySelector('[contenteditable="true"]').innerText.trim()===${JSON.stringify(text)}`)
+      }
+      await writeComposer('保留我的未发送草稿')
+      await click('编辑');await wait(`document.querySelector('[contenteditable="true"]').innerText.includes('补充检查图片中的标题')`)
+      if(await js(`!!document.querySelector('[aria-label="消息队列"] textarea')`))throw new Error('Queue must not contain an inline editor')
+      await click('取消编辑');await wait(`document.querySelector('[contenteditable="true"]').innerText.includes('保留我的未发送草稿')`)
+      await click('编辑');await wait(`!!document.querySelector('[aria-label="保存到队列"]')`)
+      await writeComposer('修改后的待发任务')
+      await shot('queue-edit-in-composer')
+      await open('b');await open('a')
+      await wait(`document.querySelector('[contenteditable="true"]').innerText.includes('修改后的待发任务')`)
+      await click('保存到队列');await wait(`document.querySelector('[aria-label="消息队列"]').innerText.includes('修改后的待发任务')`)
+      await wait(`document.querySelector('[contenteditable="true"]').innerText.includes('保留我的未发送草稿')`)
+      await writeComposer('')
+      await click('立即插入');await wait(`document.querySelector('[aria-label="消息队列"]').innerText.includes('已提交，等待接收')`)
+      await click('删除');await wait(`!document.querySelector('[aria-label="消息队列"]').innerText.includes('最后整理检查清单')`)
+      await js(`document.querySelector('[contenteditable="true"]').focus()`)
+      win.webContents.sendInputEvent({type:'keyDown',keyCode:'Up'});win.webContents.sendInputEvent({type:'keyUp',keyCode:'Up'})
+      await wait(`document.querySelector('[contenteditable="true"]').innerText.includes('检查当前项目，并说明检查进展')`)
+
       await open('b');if(await js(`!!document.querySelector('[data-thinking-summary]')`))throw new Error('Summary leaked across sessions')
       await open('a');await wait(`!!document.querySelector('[data-thinking-summary]')`)
-      activity.stop();flush();await wait(`document.body.innerText.includes('正在停止')`)
+      activity.stop();flush();await wait(`document.querySelector('main [role="status"]')?.getAttribute('aria-label')?.includes('正在停止')`)
       if(await js(`!!document.querySelector('[data-thinking-summary] animate')`))throw new Error('Stopping is animating')
       activity.finish();flush();setState('idle')
       await wait(`!document.querySelector('[aria-label="思考摘要内容"]')`)
@@ -126,7 +167,7 @@ app.on('browser-window-created', (_event, win) => {
       await js(`([...document.querySelectorAll('aside [role="tab"]')].find(e=>e.innerText.includes('侧边聊天'))).click()`)
       await wait(`document.querySelector('aside[aria-label="工作区侧栏"]')?.innerText.includes('侧边回答完成')`)
       if(await js(`!!document.querySelector('aside [role="status"]')`))throw new Error('Completed side chat still loading')
-      console.log('PASS: flat Spark morph/light/dark/reduced/hidden; streamed summary preview/scroll/isolation; tool/approval/stop/completion; side chat animation')
+      console.log('PASS: flat Spark morph/light/dark/reduced/hidden; streamed summary preview/scroll/isolation; tool/approval/stop/completion; active block anchor; queue drag reorder/keyboard reorder/composer edit/cancel/draft restore/session switch/insert/delete; Up recall; side chat animation')
       clearTimeout(timeout);app.quit()
     } catch(error){console.error(error);await shot('thinking-failure');clearTimeout(timeout);app.exit(1)}
   })

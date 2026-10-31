@@ -62,6 +62,7 @@ const api: DeskApi = {
     open: call('chat:open'),
     start: call('chat:start'),
     send: call('chat:send'),
+    queue: call('chat:queue'),
     fork: call('chat:fork'),
     interrupt: call('chat:interrupt'),
     setMode: call('chat:setMode'),

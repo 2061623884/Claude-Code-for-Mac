@@ -1,5 +1,7 @@
 // 一个常驻的 claude 进程，对应一个打开着的会话（流式输入模式，可随时追加消息、中断、切换模式）。
 import type { CanUseTool, HookCallback, McpServerStatus, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { randomUUID } from 'node:crypto'
+import type { HumanSubmission } from '../humanSubmissionRepository'
 import type { CommandInfo } from '../../shared/types'
 import type { ApprovalRequest, BtwTurn, ChatEvent, ChatState, ContextUsage, Decision, SessionOptions } from '../../shared/chat'
 import { toPermissionResult } from '../approval'
@@ -36,6 +38,8 @@ interface LiveSessionInit {
   emit(event: ChatEvent): void
   onClosed(session: LiveSession): void
   onCommands?(commands: CommandInfo[]): void
+  onSubmit?(submission: HumanSubmission): void
+  onConsumed?(ids: string[]): void
 }
 
 const FLUSH_MS = 50
@@ -53,6 +57,9 @@ export class LiveSession {
   private q: Query | null = null
   private closed = false
   private commandsChanged = false
+  private outstandingInputs = new Set<string>()
+  private turnInputIds = new Set<string>()
+  private stopTargets: Set<string> | undefined
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private onStarted!: (q: Query) => void
   private onStartFailed!: (err: unknown) => void
@@ -127,21 +134,27 @@ export class LiveSession {
     return r?.refusalFallback?.content ?? r?.response ?? null
   }
 
-  send(text: string): void {
+  send(text: string, uuid: string = randomUUID()): void {
     if (this.closed) throw new Error('会话已结束，请重试')
     this.lastActive = Date.now()
+    const submission = { uuid, text, time: Date.now() }
+    this.init.onSubmit?.(submission)
     if (this.state !== 'running' && this.state !== 'awaiting') this.activity.start()
-    this.init.transcript.addUser(text)
+    this.init.transcript.addUser(text, submission.uuid, submission.time)
+    this.outstandingInputs.add(submission.uuid)
     this.flush()
-    this.input.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null })
+    this.input.push({ type: 'user', uuid: submission.uuid as SDKUserMessage['uuid'], message: { role: 'user', content: text }, parent_tool_use_id: null, origin: { kind: 'human' } })
     this.setState('running')
   }
 
   async interrupt(): Promise<void> {
+    const targets = new Set(this.outstandingInputs)
+    this.stopTargets = targets
     this.activity.stop()
     this.flush()
     try { await (await this.query()).interrupt() }
     catch (error) {
+      if (this.stopTargets === targets) this.stopTargets = undefined
       if (!this.closed && this.state === 'running') { this.activity.resume(); this.flush() }
       throw error
     }
@@ -273,20 +286,30 @@ export class LiveSession {
     this.lastActive = Date.now()
     if (m.type === 'system' && m.subtype === 'commands_changed') { this.commandsChanged = true; this.publishCommands(m.commands) }
     this.activity.apply(m)
-    this.init.transcript.apply(m)
+    this.init.transcript.apply(m, 'live')
+    this.activity.locate(this.init.transcript.messages, m)
+    if (m.type === 'assistant' && !m.parent_tool_use_id) {
+      const ids = [...(m.user_message_uuids ?? []), ...(m.user_message_uuid ? [m.user_message_uuid] : [])]
+      for (const id of ids) this.turnInputIds.add(id)
+      if (ids.length) this.init.onConsumed?.(ids)
+    }
     this.scheduleFlush()
     if (m.type === 'result') {
       this.flush()
-      const error =
-        m.subtype === 'success'
-          ? m.is_error
-            ? m.result
-            : null
-          : m.subtype === 'error_during_execution'
-            ? null // 用户中断
-            : `运行结束：${m.subtype}`
-      this.init.emit({ kind: 'result', resultId: m.uuid, durationMs: m.duration_ms, error })
-      this.setState(this.pending.size > 0 ? 'awaiting' : 'idle')
+      const ids = [...new Set([...this.turnInputIds, ...(m.user_message_uuids ?? []), ...(m.user_message_uuid ? [m.user_message_uuid] : [])])]
+      this.turnInputIds.clear()
+      const userStopped = (m.terminal_reason === 'aborted_streaming' || m.terminal_reason === 'aborted_tools') && ids.some(id => this.stopTargets?.has(id))
+      const errors = m.subtype === 'success' ? (m.is_error && m.result ? [m.result] : []) : (m.errors ?? [])
+      const failed = m.subtype !== 'success' || m.is_error
+      const error = failed
+        ? [userStopped ? '已按用户请求停止' : `运行结束：${m.subtype}`, ...errors, ...(m.terminal_reason ? [`结束原因：${m.terminal_reason}`] : [])].join('\n')
+        : null
+      this.stopTargets = undefined
+      for (const id of ids) this.outstandingInputs.delete(id)
+      if (m.queued_turn_count === 0) this.outstandingInputs.clear()
+      this.init.emit({ kind: 'result', resultId: m.uuid, durationMs: m.duration_ms, error, diagnostic: { subtype: m.subtype, errors, terminalReason: m.terminal_reason, userMessageIds: ids, userStopped } })
+      if ((m.queued_turn_count ?? 0) > 0) { this.activity.start(); this.setState('running') }
+      else this.setState(this.pending.size > 0 ? 'awaiting' : 'idle')
     }
   }
 

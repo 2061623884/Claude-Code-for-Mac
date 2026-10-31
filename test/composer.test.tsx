@@ -191,3 +191,13 @@ it('submits a directly typed command when the ready catalogue has no matching su
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', code: 'Enter' })
   await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: '/project-command' })))
 })
+
+it('does not clear the restored normal draft after saving a queue edit', async () => {
+  const submit = vi.fn().mockResolvedValue(undefined), change = vi.fn()
+  render(<Composer value="相同文字的普通草稿" onChange={change} attachments={[]} onAttachmentsChange={() => {}} onSubmit={submit} canSubmit header={<span>队列编辑提示</span>} clearOnSubmit={false} submitLabel="保存到队列" submitHint="保存到队列" chips={null} />)
+  expect(screen.getAllByText('队列编辑提示')).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: '保存到队列' }))
+  await waitFor(() => expect(submit).toHaveBeenCalledOnce())
+  await act(async () => { await Promise.resolve() })
+  expect(change).not.toHaveBeenCalled()
+})

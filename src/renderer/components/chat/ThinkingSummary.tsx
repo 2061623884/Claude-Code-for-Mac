@@ -21,7 +21,7 @@ export function activityLabel(state: ChatState, activity?: ChatActivity): string
 }
 
 /** 每轮仅一处摘要。折叠预览跟随最新三行，展开后由用户控制滚动。 */
-export function ThinkingSummary({ messages, state = 'idle', activity }: { messages: UiMessage[]; state?: ChatState; activity?: ChatActivity }) {
+export function ThinkingSummary({ messages, state = 'idle', activity, showActivity = true }: { messages: UiMessage[]; state?: ChatState; activity?: ChatActivity; showActivity?: boolean }) {
   const text = thinkingText(messages)
   const [expanded, setExpanded] = useState(false)
   const body = useRef<HTMLDivElement>(null)
@@ -34,7 +34,7 @@ export function ThinkingSummary({ messages, state = 'idle', activity }: { messag
   }, [text, expanded, visible])
   if (!busy && !text) return null
   return <section aria-label="思考摘要" className="my-3 text-fg2" data-thinking-summary>
-    {busy && <ActivityIndicator label={activityLabel(state, activity)} active={state === 'running' && activity?.phase !== 'stopping'} />}
+    {busy && showActivity && <ActivityIndicator label={activityLabel(state, activity)} active={state === 'running' && activity?.phase !== 'stopping'} />}
     {text && <>
       <button type="button" aria-label={expanded ? '收起思考摘要' : '展开思考摘要'} aria-expanded={expanded} aria-controls={id} onClick={() => { setExpanded(!expanded); follow.current = true }} className={`flex items-center gap-1.5 py-1 text-[12.5px] text-fg2 hover:text-fg ${busy ? 'ml-7' : ''}`}>
         {!busy && <ActivitySpark active={false} />}

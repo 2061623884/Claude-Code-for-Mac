@@ -1,6 +1,6 @@
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
-import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, McpStatus, SessionOptions } from './chat'
+import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, QueueAction, McpStatus, SessionOptions } from './chat'
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions'
 export type Theme = 'system' | 'light' | 'dark'
@@ -188,9 +188,10 @@ export interface DeskApi {
   chat: {
     open(sessionId: string, projectPath: string): Promise<ChatSnapshot>
     start(projectPath: string, text: string, options: SessionOptions): Promise<string>
-    send(sessionId: string, projectPath: string, text: string, options: SessionOptions): Promise<void>
+    send(sessionId: string, projectPath: string, text: string, options: SessionOptions, attachments?: string[]): Promise<void>
     /** 编辑历史消息：从源会话 at（主链条目 uuid）之后分叉出新会话并发出 text，返回新会话 id */
     fork(projectPath: string, sourceId: string, at: string, text: string, options: SessionOptions): Promise<string>
+    queue(sessionId: string, projectPath: string, action: QueueAction): Promise<void>
     interrupt(sessionId: string): Promise<void>
     setMode(sessionId: string, mode: PermissionMode): Promise<void>
     setModel(sessionId: string, model: string | null): Promise<void>

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { emptySessionSummary, type SessionSummaryData } from '@shared/sessionSummary'
-import type { ApprovalRequest, ChatActivity, ChatEvent, ChatState, Decision, SessionOptions, UiMessage } from '@shared/chat'
+import type { ApprovalRequest, ChatActivity, ChatEvent, ChatState, Decision, QueueAction, SessionQueue, SessionOptions, UiMessage } from '@shared/chat'
 import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
 import { useSessionMarks } from './sessionMarks'
@@ -12,6 +12,8 @@ import { useShallow } from 'zustand/react/shallow'
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
 export interface ChatEntry {
+  optionsSaved?: boolean
+  queue?: SessionQueue
   activity?: ChatActivity
   /** 本地接收顺序，用于保留加载快照期间到达的正文。 */
   messageVersions?: Record<string, number>
@@ -24,6 +26,7 @@ export interface ChatEntry {
   options: SessionOptions
   /** 最近一次出错的说明（如未登录、额度用尽） */
   error: string | null
+  lastResult?: Extract<ChatEvent, { kind: 'result' }>
 }
 
 interface ChatStore {
@@ -31,7 +34,8 @@ interface ChatStore {
   load(sessionId: string, projectId: string): Promise<void>
   reload(sessionId: string): Promise<void>
   start(text: string, title?: string): Promise<void>
-  send(sessionId: string, text: string): Promise<void>
+  send(sessionId: string, text: string, attachments?: string[]): Promise<void>
+  queueAction(sessionId: string, action: QueueAction): Promise<void>
   /** 编辑历史上的一条用户消息：从它之前分叉出新会话并发出新内容，原会话不变 */
   edit(sessionId: string, messageId: string, text: string): Promise<void>
   interrupt(sessionId: string): Promise<void>
@@ -139,7 +143,12 @@ export const useChat = create<ChatStore>((set, get) => {
       useDesk.getState().setView({ kind: 'session', sessionId: id, projectId: c.projectId })
     },
 
-    async send(sessionId, text) {
+    async queueAction(sessionId, action) {
+      const c = get().chats[sessionId]
+      if (c) await desk().chat.queue(sessionId, projectPath(c.projectId), action)
+    },
+
+    async send(sessionId, text, attachments) {
       await optionChanges.get(sessionId)
       const c = get().chats[sessionId]
       if (!c) return
@@ -151,7 +160,7 @@ export const useChat = create<ChatStore>((set, get) => {
         await get().setOptions(sessionId, { effort: value as EffortLevel | null }); return
       }
       patch(sessionId, () => ({ error: null }))
-      await desk().chat.send(sessionId, projectPath(c.projectId), text, c.options)
+      await desk().chat.send(sessionId, projectPath(c.projectId), text, c.options, ...(attachments ? [attachments] : []))
     },
 
     async interrupt(sessionId) {
@@ -201,6 +210,8 @@ export const useChat = create<ChatStore>((set, get) => {
         set({ chats: { ...get().chats, [sessionId]: blank('') } })
       }
       switch (event.kind) {
+        case 'options': patch(sessionId, () => ({ options: event.options, optionsSaved: true })); break
+        case 'queue': patch(sessionId, () => ({ queue: event.queue })); break
         case 'activity':
           patch(sessionId, (c) => (c.activity?.revision ?? 0) <= event.activity.revision ? { activity: event.activity } : {})
           break
@@ -237,7 +248,7 @@ export const useChat = create<ChatStore>((set, get) => {
             completed.add(completionKey)
             useSessionMarks.getState().complete(sessionId)
           }
-          patch(sessionId, () => ({ error: event.error }))
+          patch(sessionId, () => ({ error: event.error, lastResult: event }))
           const projectId = get().chats[sessionId]?.projectId
           if (projectId) void useDesk.getState().refreshSessions(projectId)
           break
@@ -256,5 +267,5 @@ onProjectRemoved((projectId) => useChat.setState((state) => ({
 })))
 
 export function useChatActions() {
-  return useChat(useShallow(({ load, reload, send, edit, interrupt, setOptions, respond }) => ({ load, reload, send, edit, interrupt, setOptions, respond })))
+  return useChat(useShallow(({ load, reload, send, edit, interrupt, setOptions, respond, queueAction }) => ({ load, reload, send, edit, interrupt, setOptions, respond, queueAction })))
 }

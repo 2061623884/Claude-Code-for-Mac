@@ -1,13 +1,14 @@
 // 把 SDK 消息（实时流或历史记录）整理成界面用的 UiMessage 列表。纯逻辑，不依赖 Electron。
 import { randomUUID } from 'node:crypto'
 import { SessionActivity, type ActivityState } from './sessionActivity'
+import { sdkMessageSource, sdkOriginKind } from './sdkMessageSource'
+import type { HumanSubmission } from './humanSubmissionRepository'
 import type { TokenUsage, UiBlock, UiMessage } from '../shared/chat'
 
 type ToolBlock = Extract<UiBlock, { kind: 'tool' }>
 type Json = Record<string, unknown>
 
 const MAX_RESULT = 20_000
-const HIDDEN_USER_TEXT = /^<(command-|local-command-)/
 /** 历史记录里的斜杠命令：<command-name>/model</command-name> … <command-args>sonnet</command-args> */
 const COMMAND_NAME = /<command-name>\/?([^<]*)<\/command-name>/
 const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
@@ -17,12 +18,6 @@ const COMMAND_OUTPUT = /^<local-command-(stdout|stderr)>([\s\S]*?)<\/local-comma
 const TYPED_COMMAND = /^\/(\S+)\s*([\s\S]*)$/
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;]*m/g
-const INTERRUPTED = /^\[Request interrupted by user/
-
-function cleanUserText(text: string): string {
-  return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
-}
-
 function resultText(content: unknown): string {
   const text =
     typeof content === 'string'
@@ -55,7 +50,13 @@ function toBlock(raw: Json): UiBlock | null {
 
 export class Transcript {
   readonly activity: SessionActivity
-  constructor(cwd?: string, savedActivity?: ActivityState) { this.activity = new SessionActivity(cwd, savedActivity) }
+  constructor(cwd?: string, savedActivity?: ActivityState, submissions: HumanSubmission[] = []) {
+    this.activity = new SessionActivity(cwd, savedActivity)
+    this.submissions = new Map(submissions.map(s => [s.uuid, s]))
+  }
+  private submissions: Map<string, HumanSubmission>
+  private seenUserEvents = new Set<string>()
+  private seenChainEntries = new Set<string>()
   readonly messages: UiMessage[] = []
   private byId = new Map<string, UiMessage>()
   private streams = new Map<string | null, UiMessage>()
@@ -73,16 +74,23 @@ export class Transcript {
     return list
   }
 
-  addUser(text: string): void {
+  addUser(text: string, uuid: string = randomUUID(), time = Date.now()): string {
+    this.submissions.set(uuid, { uuid, text, time })
     this.activity.reference(text)
-    this.time = Date.now()
-    this.addTyped(text)
+    this.time = time
+    this.addTyped(text, uuid)
+    return uuid
   }
 
-  /** 用户输入的一条消息；斜杠命令先记下来，等它的输出 */
-  private addTyped(text: string): void {
+  /** 只复制分叉点之前实际出现的本应用提交，不把后面的输入带到新会话。 */
+  humanSubmissions(): HumanSubmission[] {
+    return [...this.submissions.values()].filter(s => this.byId.has(s.uuid))
+  }
+
+  private addTyped(text: string, uuid: string): void {
+    if (this.byId.has(uuid)) return
     this.flushCommand()
-    this.addUserMessage(text)
+    this.addUserMessage(text, uuid)
     const cmd = TYPED_COMMAND.exec(text.trim())
     this.pendingCommand = cmd ? { name: cmd[1], args: cmd[2].trim() } : null
   }
@@ -92,7 +100,7 @@ export class Transcript {
     this.flushCommand()
   }
 
-  apply(raw: unknown): void {
+  apply(raw: unknown, mode: 'live' | 'history' = 'history'): void {
     this.activity.apply(raw)
     const m = raw as Json
     const parent = (m.parent_tool_use_id as string | null) ?? null
@@ -100,14 +108,20 @@ export class Transcript {
     this.time = typeof m.timestamp === 'string' ? Date.parse(m.timestamp) || Date.now() : Date.now()
     if (m.type === 'stream_event') this.applyStream(m.event as Json, parent)
     else if (m.type === 'assistant') this.applyAssistant(m.message as Json, parent, m.uuid)
-    else if (m.type === 'user') this.applyUser(m.message as Json, parent)
+    else if (m.type === 'user') this.applyUser(m, parent, mode)
     // 主链上的条目（助手消息、用户消息、工具结果）：编辑之后的用户消息时从这里分叉
-    if ((m.type === 'assistant' || m.type === 'user') && !parent && typeof m.uuid === 'string') this.lastUuid = m.uuid
+    if ((m.type === 'assistant' || m.type === 'user') && !parent && typeof m.uuid === 'string' && !this.seenChainEntries.has(m.uuid)) {
+      this.lastUuid = m.uuid
+      this.seenChainEntries.add(m.uuid)
+    }
   }
 
   /** 用户消息：记下分叉点（它前面最后一个主链条目） */
-  private addUserMessage(text: string): void {
-    const msg = this.ensure(randomUUID(), 'user', null)
+  private addUserMessage(text: string, uuid: string): void {
+    const msg = this.ensure(uuid, 'user', null)
+    msg.uuid = uuid
+    msg.source = 'human'
+    msg.startsTurn = true
     msg.blocks.push({ kind: 'text', text })
     msg.forkFrom = this.lastUuid
   }
@@ -234,38 +248,51 @@ export class Transcript {
     if (finalKey) this.finalPositions.set(finalKey, nextPositions)
   }
 
-  private applyUser(message: Json, parent: string | null): void {
-    const content = message.content
-    if (typeof content === 'string') return this.addUserText(content, parent)
-    if (!Array.isArray(content)) return
+  private applyUser(raw: Json, parent: string | null, mode: 'live' | 'history'): void {
+    const content = (raw.message as Json)?.content
     const texts: string[] = []
-    for (const c of content as Json[]) {
-      if (c.type === 'tool_result') {
-        const tool = this.tools.get(JSON.stringify([parent, String(c.tool_use_id)]))
-        if (!tool) continue
-        tool.result = { text: resultText(c.content), isError: c.is_error === true }
-        for (const msg of this.messages) if (msg.blocks.includes(tool)) this.changed.add(msg)
-      } else if (c.type === 'text') texts.push(String(c.text))
+    if (typeof content === 'string') texts.push(content)
+    else if (Array.isArray(content)) {
+      // 工具结果独立处理，不因来源判断或消息去重而丢掉结果。
+      for (const c of content as Json[]) {
+        if (c.type === 'tool_result') {
+          const tool = this.tools.get(JSON.stringify([parent, String(c.tool_use_id)]))
+          if (!tool) continue
+          tool.result = { text: resultText(c.content), isError: c.is_error === true }
+          for (const msg of this.messages) if (msg.blocks.includes(tool)) this.changed.add(msg)
+        } else if (c.type === 'text' && typeof c.text === 'string') texts.push(c.text)
+      }
     }
-    if (texts.length) this.addUserText(texts.join('\n'), parent)
-  }
-
-  private addUserText(raw: string, parent: string | null): void {
-    const text = cleanUserText(raw)
-    if (!text || parent) return
-    const output = COMMAND_OUTPUT.exec(text)
-    if (output) return this.addCommand(output[2])
-    const command = COMMAND_NAME.exec(text)
-    if (command) {
-      const args = COMMAND_ARGS.exec(text)?.[1].trim() ?? ''
-      return this.addTyped(`/${command[1]}${args ? ` ${args}` : ''}`)
-    }
-    if (HIDDEN_USER_TEXT.test(text)) return
-    this.flushCommand()
-    if (INTERRUPTED.test(text)) {
-      this.ensure(randomUUID(), 'notice', null).blocks.push({ kind: 'text', text: '已中断' })
+    if (parent) return
+    const uuid = typeof raw.uuid === 'string' ? raw.uuid : randomUUID()
+    const submitted = this.submissions.get(uuid)
+    if (this.seenUserEvents.has(uuid)) return
+    this.seenUserEvents.add(uuid)
+    // 本地提交原文优先于回声正文，包括 CLI 添加的包装标签。
+    const source = submitted ? 'human' : sdkMessageSource(raw)
+    const text = submitted?.text ?? texts.join('\n')
+    if (!text) return
+    if (source === 'human') {
+      if (submitted) this.time = submitted.time
+      this.addTyped(text, uuid)
       return
     }
-    this.addUserMessage(text)
+    // 只有已确认的内部消息才解释内部文本格式。未知来源始终原样保留。
+    if (source === 'internal') {
+      const output = COMMAND_OUTPUT.exec(text.trim())
+      if (output) { this.addCommand(output[2]); return }
+      const command = COMMAND_NAME.exec(text)
+      if (command) {
+        this.flushCommand()
+        this.pendingCommand = { name: command[1], args: COMMAND_ARGS.exec(text)?.[1].trim() ?? '' }
+      }
+    }
+    const msg = this.ensure(uuid, 'notice', null)
+    msg.uuid = uuid
+    msg.source = source
+    msg.originKind = sdkOriginKind(raw)
+    // 未知旧历史保留推定分组；实时未知事件不凭空开启真人轮次。
+    msg.startsTurn = source === 'unknown' && mode === 'history'
+    msg.blocks = [{ kind: 'text', text }]
   }
 }

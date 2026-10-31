@@ -44,12 +44,14 @@ describe('Transcript', () => {
     expect(withTool.blocks.map((b) => b.kind)).toEqual(['thinking', 'tool'])
   })
 
-  it('历史记录里的用户消息：显示文本，去掉系统提示', () => {
+  it('未知历史保留原文并标注未确认；确认的内部说明不分轮', () => {
     const t = new Transcript()
-    t.apply({ type: 'user', message: { role: 'user', content: '你好<system-reminder>内部提示</system-reminder>' }, parent_tool_use_id: null })
-    t.apply({ type: 'user', message: { role: 'user', content: '<local-command-caveat>说明</local-command-caveat>' }, parent_tool_use_id: null })
-    expect(t.messages).toHaveLength(1)
-    expect(t.messages[0]).toMatchObject({ role: 'user', blocks: [{ kind: 'text', text: '你好' }] })
+    const text = '你好<system-reminder>内部提示</system-reminder>'
+    t.apply({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null })
+    t.apply({ type: 'user', is_meta: true, message: { role: 'user', content: '<local-command-caveat>说明</local-command-caveat>' }, parent_tool_use_id: null })
+    expect(t.messages).toHaveLength(2)
+    expect(t.messages[0]).toMatchObject({ role: 'notice', source: 'unknown', startsTurn: true, blocks: [{ kind: 'text', text }] })
+    expect(t.messages[1]).toMatchObject({ role: 'notice', source: 'internal', startsTurn: false })
   })
 
   it('addUser 立即显示用户刚发出的消息', () => {
@@ -61,7 +63,7 @@ describe('Transcript', () => {
   })
 
   describe('本地斜杠命令', () => {
-    const user = (content: string) => ({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null })
+    const user = (content: string) => ({ type: 'user', is_meta: true, message: { role: 'user', content }, parent_tool_use_id: null })
     const synthetic = (text: string) => ({
       type: 'assistant',
       message: { id: 'syn', model: '<synthetic>', role: 'assistant', content: [{ type: 'text', text }] },
@@ -74,7 +76,7 @@ describe('Transcript', () => {
       const t = new Transcript()
       t.addUser('/model sonnet')
       t.apply(synthetic('Set model to `sonnet`'))
-      expect(t.messages[0]).toMatchObject({ role: 'user', blocks: [{ kind: 'text', text: '/model sonnet' }] })
+      expect(t.messages[0]).toMatchObject({ role: 'user', source: 'human', startsTurn: true, blocks: [{ kind: 'text', text: '/model sonnet' }] })
       expect(commands(t)).toEqual([{ kind: 'command', name: 'model', args: 'sonnet', output: 'Set model to `sonnet`' }])
     })
 
@@ -87,12 +89,12 @@ describe('Transcript', () => {
       expect(t.messages.at(-1)?.blocks).toEqual([{ kind: 'text', text: 'API Error' }])
     })
 
-    it('历史：命令显示成用户气泡，输出变成命令卡片', () => {
+    it('历史：确认的内部命令保留记录，输出变成命令卡片', () => {
       const t = new Transcript()
       t.apply(user('<command-name>/model</command-name>\n  <command-message>model</command-message>\n  <command-args>sonnet</command-args>'))
       t.apply(user('<local-command-stdout>Set model to \u001b[1msonnet\u001b[22m</local-command-stdout>'))
       t.finish()
-      expect(t.messages[0]).toMatchObject({ role: 'user', blocks: [{ kind: 'text', text: '/model sonnet' }] })
+      expect(t.messages[0]).toMatchObject({ role: 'notice', source: 'internal', startsTurn: false })
       expect(commands(t)).toEqual([{ kind: 'command', name: 'model', args: 'sonnet', output: 'Set model to sonnet' }])
     })
 
@@ -102,7 +104,7 @@ describe('Transcript', () => {
       t.apply(user('下一条消息'))
       t.apply(user('<command-name>/context</command-name>'))
       t.finish()
-      expect(t.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'user', 'assistant'])
+      expect(t.messages.filter(m => m.source === 'internal')).toHaveLength(3)
       expect(commands(t).map((c) => [c.name, c.output])).toEqual([
         ['config', null],
         ['context', null]
@@ -121,13 +123,13 @@ describe('Transcript', () => {
   it('记录消息时间和会话链位置：编辑用户消息时从它前面最后一个链条目分叉', () => {
     const t = new Transcript()
     const ts = '2026-10-31T03:56:00.000Z'
-    t.apply({ type: 'user', uuid: 'u1', timestamp: ts, message: { role: 'user', content: '第一句' }, parent_tool_use_id: null })
+    t.apply({ type: 'user', origin: { kind: 'human' }, uuid: 'u1', timestamp: ts, message: { role: 'user', content: '第一句' }, parent_tool_use_id: null })
     t.apply({ type: 'assistant', uuid: 'a1', timestamp: ts, message: { id: 'm1', role: 'assistant', content: [{ type: 'tool_use', id: 't', name: 'Read', input: {} }] }, parent_tool_use_id: null })
     t.apply({ type: 'user', uuid: 'r1', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }] }, parent_tool_use_id: null })
     // 子代理里的消息不在主链上
     t.apply({ type: 'assistant', uuid: 'sub', timestamp: ts, message: { id: 'm2', role: 'assistant', content: [] }, parent_tool_use_id: 't' })
     t.apply({ type: 'assistant', uuid: 'a2', timestamp: ts, message: { id: 'm3', role: 'assistant', content: [{ type: 'text', text: '好' }] }, parent_tool_use_id: null })
-    t.apply({ type: 'user', uuid: 'u2', timestamp: ts, message: { role: 'user', content: '第二句' }, parent_tool_use_id: null })
+    t.apply({ type: 'user', origin: { kind: 'human' }, uuid: 'u2', timestamp: ts, message: { role: 'user', content: '第二句' }, parent_tool_use_id: null })
     t.addUser('第三句')
 
     const users = t.messages.filter((m) => m.role === 'user')

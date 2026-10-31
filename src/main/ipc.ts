@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
-import type { BtwTurn, ChatEvent, Decision, SessionOptions } from '../shared/chat'
+import type { BtwTurn, ChatEvent, Decision, QueueAction, SessionOptions } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
 import { SessionManager } from './live/SessionManager'
 import * as files from './files'
@@ -14,6 +14,8 @@ import * as store from './store'
 import { CommandCatalog } from './commandCatalog'
 import { readMetadata } from './metadataQuery'
 import { activityRepository } from './activityRepository'
+import { createSessionPreferencesRepository } from './sessionPreferences'
+import { createHumanSubmissionRepository } from './humanSubmissionRepository'
 
 function str(value: unknown, name: string): string {
   if (typeof value !== 'string' || value === '') throw new Error(`参数 ${name} 无效`)
@@ -36,7 +38,7 @@ export const commandCatalog: CommandCatalog = new CommandCatalog({
   load: (cwd, signal, configuration) => chats.commandsFor(cwd, configuration) ?? readMetadata(cwd, signal).then((init) => init.commands),
   publish: (snapshot) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('meta:commands', snapshot) }
 })
-export const chats: SessionManager = new SessionManager(broadcast, activityRepository, { configuration: commandConfiguration, publisher: (cwd) => commandCatalog.publisher(cwd) })
+export const chats: SessionManager = new SessionManager(broadcast, activityRepository, { configuration: commandConfiguration, publisher: (cwd) => commandCatalog.publisher(cwd) }, createHumanSubmissionRepository(() => join(app.getPath('userData'), 'human-submissions')), createSessionPreferencesRepository(() => join(app.getPath('userData'), 'session-preferences')))
 
 export function registerIpc(demo: DemoState | null, focusWindow?: () => void): void {
   const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
@@ -127,7 +129,8 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   handle('chat:fork', (path, from, at, text, o) =>
     chats.fork(str(from, 'from'), str(path, 'path'), str(at, 'at'), str(text, 'text'), opts(o))
   )
-  handle('chat:send', (id, path, text, o) => chats.send(str(id, 'id'), str(path, 'path'), str(text, 'text'), opts(o)))
+  handle('chat:send', (id, path, text, o, attachments) => chats.send(str(id, 'id'), str(path, 'path'), str(text, 'text'), opts(o), Array.isArray(attachments) ? attachments.map(p => str(p, 'attachment')) : []))
+  handle('chat:queue', (id, path, action) => chats.queueAction(str(id, 'id'), str(path, 'path'), action as QueueAction))
   handle('chat:interrupt', (id) => chats.interrupt(str(id, 'id')))
   handle('chat:setMode', (id, mode) => chats.setMode(str(id, 'id'), mode as SessionOptions['mode']))
   handle('chat:setModel', (id, model) => chats.setModel(str(id, 'id'), (model as string | null) ?? null))

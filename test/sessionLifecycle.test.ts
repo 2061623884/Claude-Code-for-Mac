@@ -28,6 +28,7 @@ it('recreates the SDK query after a stream error and consumes the retry', async 
   await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, { kind: 'state', state: 'error' }))
   expect((await manager.open(id, '/tmp')).live).toBe(false)
   await manager.send(id, '/tmp', 'retry', options)
+  await manager.queueAction(id, '/tmp', { type: 'resume' })
   await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(2))
   const init = sdk.query.mock.calls[1][0]
   expect(init.options.resume).toBe(id)
@@ -64,7 +65,8 @@ it('cancels a session closed before SDK loading completes', async () => {
 it('shares one replacement instance between concurrent retries', async () => {
   await Promise.all([manager.send('existing', '/tmp', 'one', options), manager.send('existing', '/tmp', 'two', options)])
   await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(1))
-  expect((await manager.open('existing', '/tmp')).messages).toHaveLength(2)
+  expect((await manager.open('existing', '/tmp')).messages).toHaveLength(1)
+  expect((await manager.open('existing', '/tmp')).queue?.items).toHaveLength(1)
 })
 it('late termination of an old query does not delete its replacement', async () => {
   let finish!: () => void
@@ -168,4 +170,77 @@ it('keeps plan approval pending until its permission mode is accepted', async ()
   await manager.respond(id, 'approval', { type: 'planApprove', mode: 'acceptEdits' })
   await expect(decision).resolves.toMatchObject({ behavior: 'allow' })
   expect((await manager.open(id, '/tmp')).approvals).toHaveLength(0)
+})
+
+it('uses the same human UUID for UI and SDK, deduplicates echoes and retains queued human text', async () => {
+  const original = '  <system-reminder>真人输入</system-reminder>  '
+  const id = manager.start('/tmp', original, options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce())
+  const input = sdk.query.mock.calls[0][0].prompt[Symbol.asyncIterator]()
+  const first = (await input.next()).value
+  expect(first).toMatchObject({ origin: { kind: 'human' }, message: { content: original } })
+  expect((await manager.open(id, '/tmp')).messages[0]).toMatchObject({ id: first.uuid, uuid: first.uuid, source: 'human' })
+  const query = sdk.query.mock.results[0].value
+  query.push({ ...first, is_meta: true, message: { content: 'expanded by CLI' } })
+  query.push({ type: 'assistant', uuid: 'answer', message: { id: 'answer', content: [{ type: 'tool_use', id: 'read', name: 'Read', input: {} }] } })
+  await manager.send(id, '/tmp', '追加真人消息', options)
+  const queued = (await manager.open(id, '/tmp')).queue!.items[0]
+  await manager.queueAction(id, '/tmp', { type: 'insert', id: queued.id })
+  const second = (await input.next()).value
+  query.push({ ...second, message: { content: 'another expansion' } })
+  query.push({ type: 'user', uuid: 'tool-result', message: { content: [{ type: 'tool_result', tool_use_id: 'read', content: 'done' }, { type: 'text', text: '图片说明' }] } })
+  query.push(first)
+  await vi.waitFor(async () => {
+    const snapshot = await manager.open(id, '/tmp')
+    expect(snapshot.messages.find(m => m.id === 'tool-result')).toMatchObject({ source: 'internal', startsTurn: false })
+    expect(snapshot.messages.filter(m => m.source === 'human').map(m => m.blocks)).toEqual([[{ kind: 'text', text: original }], [{ kind: 'text', text: '追加真人消息' }]])
+  })
+})
+
+it('restores saved originals on reload and copies only the retained submissions when forking', async () => {
+  manager.closeAll()
+  const records = new Map<string, import('../src/main/humanSubmissionRepository').HumanSubmission[]>()
+  manager = new SessionManager(emit, undefined, undefined, {
+    load: id => structuredClone(records.get(id) ?? []),
+    save: (id, rows) => { records.set(id, structuredClone(rows)) }
+  })
+  const id = manager.start('/tmp', '<local-command-stdout>原文</local-command-stdout>', options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce())
+  const first = (await sdk.query.mock.calls[0][0].prompt[Symbol.asyncIterator]().next()).value
+  await manager.send(id, '/tmp', '后续输入', options)
+  const queued = (await manager.open(id, '/tmp')).queue!.items[0]
+  await manager.queueAction(id, '/tmp', { type: 'insert', id: queued.id })
+  const second = records.get(id)![1]
+  sdk.getSessionMessages.mockResolvedValue([
+    { ...first, is_meta: true, message: { content: 'expanded first' } },
+    { type: 'assistant', uuid: 'fork-point', message: { id: 'reply', content: [{ type: 'text', text: 'reply' }] } },
+    { type: 'user', uuid: second.uuid, message: { content: 'expanded second' } }
+  ])
+  const restored = await manager.reload(id, '/tmp')
+  expect(restored.messages.filter(m => m.source === 'human').map(m => m.blocks)).toEqual([
+    [{ kind: 'text', text: first.message.content }], [{ kind: 'text', text: '后续输入' }]
+  ])
+  const fork = await manager.fork(id, '/tmp', 'fork-point', '修改后的输入', options)
+  expect(records.get(fork)!.map(s => s.text)).toEqual([first.message.content, '修改后的输入'])
+  expect((await manager.open(fork, '/tmp')).messages.filter(m => m.source === 'human').map(m => m.blocks)).toEqual([
+    [{ kind: 'text', text: first.message.content }], [{ kind: 'text', text: '修改后的输入' }]
+  ])
+  expect(records.get(id)!.map(s => s.text)).toEqual([first.message.content, '后续输入'])
+})
+
+it.each([
+  { stop: false, reason: 'turn_setup_failed', matching: true, stopped: false },
+  { stop: true, reason: 'api_error', matching: true, stopped: false },
+  { stop: true, reason: 'aborted_tools', matching: false, stopped: false },
+  { stop: true, reason: 'aborted_streaming', matching: true, stopped: true }
+])('preserves execution errors and requires correlated abort evidence: %j', async ({ stop, reason, matching, stopped }) => {
+  const id = manager.start('/tmp', 'work', options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce())
+  const input = (await sdk.query.mock.calls[0][0].prompt[Symbol.asyncIterator]().next()).value
+  if (stop) await manager.interrupt(id)
+  sdk.query.mock.results[0].value.push({ type: 'result', subtype: 'error_during_execution', uuid: 'failure', duration_ms: 10, errors: ['diagnostic detail'], terminal_reason: reason, user_message_uuid: matching ? input.uuid : 'unrelated' })
+  await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, expect.objectContaining({
+    kind: 'result', error: expect.stringContaining('diagnostic detail'),
+    diagnostic: expect.objectContaining({ terminalReason: reason, userStopped: stopped, errors: ['diagnostic detail'] })
+  })))
 })

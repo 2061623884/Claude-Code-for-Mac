@@ -7,7 +7,7 @@ import { useDismiss } from '../../hooks/useDismiss'
 const COLORS = ['#d97757', '#6a9bcc', '#788c5d', '#c6a27a', '#b07ab7', '#5fa8a0', '#a3a093']
 
 const pct = (n: number, max: number): string => {
-  const v = (n / max) * 100
+  const v = max > 0 ? (n / max) * 100 : 0
   return `${v < 10 ? Number(v.toFixed(1)) : Math.round(v)}%`
 }
 
@@ -23,7 +23,7 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
 
   // 圆环从 0 画到当前值，之后数值变化时平滑过渡
   const [shown, setShown] = useState(0)
-  const ratio = Math.min(usage.used / usage.max, 1)
+  const ratio = usage.max > 0 ? Math.min(usage.used / usage.max, 1) : 0
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(ratio))
     return () => cancelAnimationFrame(id)
@@ -73,7 +73,8 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
 }
 
 /** 上下文占用明细：总量、彩色分段条、各组成部分和剩余空间 */
-export function ContextBreakdown({ usage, title = '上下文窗口' }: { usage: ContextUsage; title?: string }) {
+export function ContextBreakdown({ usage, title = '当前上下文' }: { usage: ContextUsage; title?: string }) {
+  const free = usage.free ?? Math.max(usage.max - usage.used - (usage.buffer ?? 0), 0)
   return (
     <>
       <div className="flex items-baseline justify-between">
@@ -81,15 +82,21 @@ export function ContextBreakdown({ usage, title = '上下文窗口' }: { usage: 
         <span className="text-[12px] text-fg3 tabular-nums">{usage.percent}%</span>
       </div>
       <div className="mt-0.5 text-[12px] text-fg3 tabular-nums">
-        已用 {formatTokens(usage.used)} / {formatTokens(usage.max)} tokens
+        当前已用 {formatTokens(usage.used)} tokens
       </div>
+      <div className="mt-1 text-[12px] text-fg3">有效统计窗口 {formatTokens(usage.max)} tokens</div>
+      <div className="mt-1 text-[12px] text-fg3">
+        自动压缩：{usage.autoCompactEnabled === false ? '已关闭' : usage.autoCompactEnabled === true ? '已开启' : '状态未知'}
+        {usage.autoCompactEnabled === true && <div>触发阈值：{usage.autoCompactThreshold !== undefined ? `${formatTokens(usage.autoCompactThreshold)} tokens` : '未知'}</div>}
+      </div>
+      <p className="mt-1 text-[11px] text-fg3">统计窗口可能受压缩设置限制，不代表模型硬上限。当前占用为估算值。</p>
 
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-chip">
         <div className="animate-bar-grow context-meter-bar flex h-full">
           {usage.parts.map((p, i) => (
             <div
               key={p.name}
-              style={{ width: `${(p.tokens / usage.max) * 100}%`, background: COLORS[i % COLORS.length] }}
+              style={{ width: pct(p.tokens, usage.max), background: COLORS[i % COLORS.length] }}
               className="h-full min-w-[2px]"
             />
           ))}
@@ -109,14 +116,15 @@ export function ContextBreakdown({ usage, title = '上下文窗口' }: { usage: 
             <span className="w-10 text-right text-fg3 tabular-nums">{pct(p.tokens, usage.max)}</span>
           </li>
         ))}
+        {(usage.buffer ?? 0) > 0 && <li className="flex justify-between text-fg3"><span>压缩预留空间</span><span>{formatTokens(usage.buffer!)}</span></li>}
         <li
           className="context-meter-row animate-fade-up flex items-center gap-2 border-t border-line pt-1.5"
           style={{ animationDelay: `${12 + usage.parts.length * 18}ms` }}
         >
           <span className="size-2 shrink-0 rounded-full border border-line-strong" />
-          <span className="min-w-0 flex-1 text-fg2">剩余空间</span>
-          <span className="text-fg3 tabular-nums">{formatTokens(Math.max(usage.max - usage.used, 0))}</span>
-          <span className="w-10 text-right text-fg3 tabular-nums">{pct(Math.max(usage.max - usage.used, 0), usage.max)}</span>
+          <span className="min-w-0 flex-1 text-fg2">可用空间</span>
+          <span className="text-fg3 tabular-nums">{formatTokens(free)}</span>
+          <span className="w-10 text-right text-fg3 tabular-nums">{pct(free, usage.max)}</span>
         </li>
       </ul>
     </>

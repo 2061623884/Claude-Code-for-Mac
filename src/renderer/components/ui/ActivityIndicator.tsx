@@ -51,6 +51,6 @@ export function ActivitySpark({ active = true }: { active?: boolean }) {
   </svg>
 }
 
-export function ActivityIndicator({ label, active = true }: { label: string; active?: boolean }) {
-  return <div role="status" className="flex min-h-6 items-center gap-2 text-[13px] text-fg2"><ActivitySpark active={active} /><span>{label}</span></div>
+export function ActivityIndicator({ label, active = true, iconOnly = false }: { label: string; active?: boolean; iconOnly?: boolean }) {
+  return <div role="status" aria-label={label} className={`flex min-h-6 items-center gap-2 text-[13px] text-fg2 ${iconOnly ? '-ml-2' : ''}`}><ActivitySpark active={active} />{!iconOnly && <span>{label}</span>}</div>
 }

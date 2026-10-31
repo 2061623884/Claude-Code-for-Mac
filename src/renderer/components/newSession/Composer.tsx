@@ -27,6 +27,10 @@ import { ComposerEditor, type EditorHandle } from './ComposerEditor'
 import { useSuggestions, type Suggestion } from './useSuggestions'
 
 interface ComposerProps {
+  header?: ReactNode
+  clearOnSubmit?: boolean
+  submitLabel?: string
+  history?: { id: string; text: string }[]
   value: string
   onChange(value: string): void
   attachments: ComposerAttachment[]
@@ -55,6 +59,10 @@ interface ComposerProps {
 }
 
 export function Composer({
+  header,
+  clearOnSubmit = true,
+  submitLabel,
+  history = [],
   value,
   onChange,
   attachments,
@@ -75,6 +83,7 @@ export function Composer({
   onCommand
 }: ComposerProps) {
   const editor = useRef<EditorHandle>(null)
+  const historyIndex = useRef(-1)
   const home = useDesk((s) => s.home)
   const fileInput = useRef<HTMLInputElement>(null)
   const showStop = running && !value.trim() && attachments.length === 0 && onStop
@@ -116,6 +125,18 @@ export function Composer({
       if (n && suggest.active >= 0 && (e.key === 'Enter' || e.key === 'Tab')) {
         pick(suggest.items[suggest.active])
         return true
+      }
+    }
+    if (!e.isComposing && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && !panel && !attachments.length && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      if (historyIndex.current >= 0 || (e.key === 'ArrowUp' && valueRef.current === '')) {
+        const next = e.key === 'ArrowUp' ? Math.min(historyIndex.current + 1, history.length - 1) : historyIndex.current - 1
+        if (next >= -1 && history.length) {
+          historyIndex.current = next
+          const recalled = next < 0 ? '' : history[history.length - 1 - next].text
+          valueRef.current = recalled
+          onChange(recalled)
+          return true
+        }
       }
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -216,6 +237,7 @@ export function Composer({
     const cmd = attachments.length === 0 ? /^\/(\S+)\s*([\s\S]*)$/.exec(value.trim()) : null
     if (cmd && onCommand?.(cmd[1], cmd[2].trim())) {
       valueRef.current = ''
+      historyIndex.current = -1
       onChange('')
       return
     }
@@ -227,6 +249,7 @@ export function Composer({
     setSubmitting(true)
     try {
       await onSubmit(submission)
+      if (!clearOnSubmit) return
       const submittedPaths = new Set(submission.attachments.map((file) => file.path))
       const currentAttachments = attachmentsRef.current
       const remaining = currentAttachments.filter((file) => !submittedPaths.has(file.path))
@@ -236,6 +259,7 @@ export function Composer({
       }
       if (valueRef.current.trim() === submission.text) {
         valueRef.current = ''
+        historyIndex.current = -1
         onChange('')
       }
     } catch {
@@ -250,6 +274,7 @@ export function Composer({
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
       <div className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
+        {header}
         {attachments.length > 0 && (
           <AttachmentRail
             attachments={attachments}
@@ -272,6 +297,7 @@ export function Composer({
           onChange={(next, text, caret) => {
             setCursor({ text, caret })
             if (next === valueRef.current) return
+            historyIndex.current = -1
             valueRef.current = next
             onChange(next)
           }}
@@ -325,14 +351,14 @@ export function Composer({
             <button
               type="button"
               title={submitHint}
-              aria-label="发送"
+              aria-label={submitLabel ?? "发送"}
               disabled={!canSend}
               onClick={() => {
                 void submit()
               }}
-              className="flex size-8 items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-25"
+              className={`flex h-8 ${submitLabel ? 'px-3 text-[12px]' : 'w-8'} items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-25`}
             >
-              <ArrowUp size={17} strokeWidth={2.2} />
+              {submitLabel ?? <ArrowUp size={17} strokeWidth={2.2} />}
             </button>
           )}
         </div>

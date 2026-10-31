@@ -8,6 +8,10 @@ export function toContextUsage(r: SDKControlGetContextUsageResponse): ContextUsa
     used: r.totalTokens,
     max: r.maxTokens,
     percent: r.percentage,
+    autoCompactEnabled: r.isAutoCompactEnabled,
+    autoCompactThreshold: r.autoCompactThreshold,
+    free: r.categories.filter(c => c.kind === 'free').reduce((sum, c) => sum + c.tokens, 0),
+    buffer: r.categories.filter(c => c.kind === 'buffer').reduce((sum, c) => sum + c.tokens, 0),
     parts: r.categories.filter((c) => c.kind === 'used' && c.tokens > 0).map((c) => ({ name: c.name, tokens: c.tokens }))
   }
 }

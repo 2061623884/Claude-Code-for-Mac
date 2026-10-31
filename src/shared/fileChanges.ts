@@ -101,11 +101,11 @@ export function collectFileChanges(messages: UiMessage[]): FileChange[] {
   return [...byPath.values()].reverse()
 }
 
-/** 按轮次切分：每轮从一条用户消息开始，到下一条用户消息之前 */
+/** 显式边界优先；只为没有该字段的旧 UI 快照保留 role 回退。 */
 export function turnsOf(messages: UiMessage[]): UiMessage[][] {
   const turns: UiMessage[][] = []
   for (const m of messages) {
-    if (m.role === 'user' && !m.parentToolUseId) turns.push([])
+    if ((m.startsTurn ?? m.role === 'user') && !m.parentToolUseId) turns.push([])
     if (!turns.length) turns.push([])
     turns[turns.length - 1].push(m)
   }

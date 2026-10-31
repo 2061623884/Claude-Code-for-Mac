@@ -8,6 +8,8 @@ export type CommandView =
       used: number
       max: number
       percent: number
+      free?: number
+      buffer?: number
       parts: { name: string; tokens: number }[]
       /** 记忆文件、技能等明细（Markdown） */
       details: string
@@ -53,7 +55,7 @@ export function parseTokenCount(s: string): number | null {
 }
 
 // 不算作已占用的类别：剩余空间、为自动压缩预留的空间、按需加载（未进入上下文）的工具
-const NOT_USED = /^(Free space|Autocompact buffer)$|\(deferred\)/i
+const NOT_USED = /^(Free space|(?:Auto)?compact buffer)$|\(deferred\)/i
 
 function parseContext(text: string): CommandView | null {
   const tokens = /\*\*Tokens:\*\*\s*([\d.,]+[km]?)\s*\/\s*([\d.,]+[km]?)\s*\((\d+(?:\.\d+)?)%\)/i.exec(text)
@@ -69,14 +71,19 @@ function parseContext(text: string): CommandView | null {
   const end = rest.search(/^###\s/m)
   const table = end < 0 ? rest : rest.slice(0, end)
   const parts: { name: string; tokens: number }[] = []
+  let free: number | undefined
+  let buffer: number | undefined
   for (const line of table.split('\n')) {
     const cells = line.split('|').map((c) => c.trim())
     if (cells.length < 4 || cells[1] === 'Category' || /^-+$/.test(cells[1])) continue
     const n = parseTokenCount(cells[2])
-    if (n === null || n <= 0 || NOT_USED.test(cells[1])) continue
+    if (n === null) continue
+    if (/^Free space$/i.test(cells[1])) free = n
+    if (/^(?:Auto)?compact buffer$/i.test(cells[1])) buffer = n
+    if (n <= 0 || NOT_USED.test(cells[1])) continue
     parts.push({ name: cells[1], tokens: n })
   }
-  return { kind: 'context', model, used, max, percent: Number(tokens[3]), parts, details: end < 0 ? '' : rest.slice(end).trim() }
+  return { kind: 'context', model, used, max, percent: Number(tokens[3]), free, buffer, parts, details: end < 0 ? '' : rest.slice(end).trim() }
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']

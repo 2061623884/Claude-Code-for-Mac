@@ -29,6 +29,7 @@ export function UsageDetails({ usage, title }: { usage: TokenUsage; title: strin
           </div>
         ))}
       </dl>
+      <p className="mt-2 text-[11px] text-fg3">累计输入、输出及缓存用量。同一段上下文可能被多次计入，不用于判断自动压缩阈值。</p>
     </div>
   )
 }
@@ -52,6 +53,7 @@ export function UsagePill({ usage, title, align = 'right' }: { usage: TokenUsage
         }`}
       >
         <Database size={12} />
+        <span>累计</span>
         {formatTokens(totalTokens(usage))}
       </button>
       {open && (
