@@ -1,6 +1,6 @@
 // 合成 SDK 事件端到端验证，不调用模型。可通过 CLAUDE_DESK_SMOKE_ENTRY 检查打包资源。
 const { app, ipcMain, nativeTheme } = require('electron')
-const { mkdtempSync, mkdirSync, writeFileSync } = require('node:fs')
+const { mkdtempSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const { buildSync } = require('esbuild')
@@ -53,10 +53,23 @@ app.on('browser-window-created', (_event, win) => {
       await wait(`document.querySelector('[aria-label="思考摘要内容"]')?.scrollTop>0`)
       const dimensions = await js(`(()=>{const b=document.querySelector('[aria-label="思考摘要内容"]');return {height:b.clientHeight,end:b.scrollHeight-b.scrollTop-b.clientHeight}})()`)
       if(dimensions.height>64||dimensions.end>2) throw new Error('Summary is not showing the latest three lines')
-      const widths=[]
-      for(let i=0;i<6;i++){widths.push(await js(`document.querySelector('[data-activity-spark] path').getBBox().width`));await new Promise(r=>setTimeout(r,180))}
-      if(Math.max(...widths)-Math.min(...widths)<5)throw new Error('Spark contour is not morphing')
-      await wait(`document.querySelector('[data-activity-spark] path').getBBox().width > 16`)
+      // Check actual rendered pixels, rather than a path bounding box that could
+      // pass even when an SVG mask/filter produces an invisible indicator.
+      const sparkRect = await js(`(()=>{const r=document.querySelector('[data-activity-spark]').getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),width:20,height:20}})()`)
+      const frames = []
+      for(let i=0;i<9;i++) {
+        await js(`(()=>{const s=document.querySelector('[data-activity-spark]');s.pauseAnimations();s.setCurrentTime(${i * .09 + .045})})()`)
+        await new Promise(r=>setTimeout(r,35))
+        frames.push((await win.capturePage(sparkRect)).toPNG().toString('base64'))
+      }
+      // Frames 4 and 5 are identical in the reference: preserve its expanded hold.
+      if(new Set(frames).size!==8 || frames[3]!==frames[4])throw new Error('Reference Spark frame sequence is incorrect: '+new Set(frames).size+' distinct frames')
+      await js(`document.querySelector('[data-activity-spark]').unpauseAnimations()`)
+      const frameUrls = Array.from({length:9}, (_, i) => 'data:image/png;base64,'+readFileSync(resolve('src/renderer/assets/spark', `frame-${String(i+1).padStart(2,'0')}.png`)).toString('base64'))
+      const proofSvg = await js(`(()=>{const s=document.querySelector('[data-activity-spark]').cloneNode(true);s.setAttribute('width','120');s.setAttribute('height','120');s.setAttribute('style','color:rgb(217,118,86)');s.querySelectorAll('image').forEach((img,i)=>img.setAttribute('href',${JSON.stringify(frameUrls)}[i]));return s.outerHTML})()`)
+      const referenceUrl='data:image/gif;base64,'+readFileSync(resolve('src/renderer/assets/spark/reference.gif')).toString('base64')
+      const darkSvg=proofSvg.replaceAll('spark-mask-','dark-mask-').replaceAll('spark-alpha-','dark-alpha-')
+      writeFileSync(join(output,'spark-reference-comparison.html'), `<!doctype html><meta charset="utf-8"><title>Spark 原素材核对</title><style>body{font:16px system-ui;margin:40px}main{display:flex;gap:24px}section{padding:24px;border:1px solid #ddd;border-radius:12px;min-width:180px}.dark{background:#202020;color:white}p{max-width:700px;line-height:1.7}</style><h1>Spark 原素材核对</h1><p>左侧是提供的原 GIF，中间和右侧是应用的 SVG 遮罩。均使用原来的九帧及 0.81 秒周期。此处放大至 120px，应用中为 20px。不是重新设计的矢量路径。</p><main><section><h2>原 GIF</h2><img width="120" height="120" src="${referenceUrl}"></section><section><h2>应用 · 浅色</h2>${proofSvg}</section><section class="dark"><h2>应用 · 深色</h2>${darkSvg}</section></main>`)
       await shot('thinking-flat-light')
       nativeTheme.themeSource='dark'; await new Promise(r=>setTimeout(r,180)); await shot('thinking-flat-dark'); nativeTheme.themeSource='light'
       win.webContents.debugger.attach('1.3')

@@ -1,18 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import frame0 from '../../assets/spark/frame-01.png'
+import frame1 from '../../assets/spark/frame-02.png'
+import frame2 from '../../assets/spark/frame-03.png'
+import frame3 from '../../assets/spark/frame-04.png'
+import frame4 from '../../assets/spark/frame-05.png'
+import frame5 from '../../assets/spark/frame-06.png'
+import frame6 from '../../assets/spark/frame-07.png'
+import frame7 from '../../assets/spark/frame-08.png'
+import frame8 from '../../assets/spark/frame-09.png'
 
-// 小中心和细长光束分别变化；圆形线帽保证展开时的末端圆润。
-function sparkPath(compact: boolean): string {
-  const lengths = [10, 9.1, 10.4, 9.4, 10.1, 8.9, 10.3, 9.5, 10.2, 9.2, 9.9, 9.4]
-  return lengths.map((length, index) => {
-    const angle = (index * 30 - 90) * Math.PI / 180
-    const point = (radius: number): string => `${(12 + radius * Math.cos(angle)).toFixed(3)} ${(12 + radius * Math.sin(angle)).toFixed(3)}`
-    return `M ${point(compact ? 2.2 : 1.5)} L ${point(compact ? 2.6 + (length - 9) * 0.12 : length)}`
-  }).join(' ')
-}
-const EXPANDED = sparkPath(false), COMPACT = sparkPath(true)
-const TIMING = { dur: '1.8s', repeatCount: 'indefinite', calcMode: 'spline' as const, keyTimes: '0;0.5;1', keySplines: '0.42 0 0.58 1;0.42 0 0.58 1' }
+// Reference silhouettes and cadence, not synthesized rays. See assets/spark/README.md.
+const FRAMES = [frame0, frame1, frame2, frame3, frame4, frame5, frame6, frame7, frame8]
+const FRAME_TIMES = Array.from({ length: 10 }, (_, i) => i / 9).join(';')
 
 export function ActivitySpark({ active = true }: { active?: boolean }) {
+  const id = useId()
+  const maskId = `spark-mask-${id}`, filterId = `spark-alpha-${id}`
   const svg = useRef<SVGSVGElement>(null)
   const [allowed, setAllowed] = useState(false)
   const [intersects, setIntersects] = useState(true)
@@ -31,13 +34,20 @@ export function ActivitySpark({ active = true }: { active?: boolean }) {
     return () => observer.disconnect()
   }, [])
   const animate = active && allowed && intersects
-  return <svg ref={svg} data-activity-spark data-animated={animate} aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" className="shrink-0 text-accent">
-    <path d={EXPANDED} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-      {animate && <animate attributeName="d" values={`${EXPANDED};${COMPACT};${EXPANDED}`} {...TIMING} />}
-    </path>
-    <circle cx="12" cy="12" r="1.8" fill="currentColor">
-      {animate && <animate attributeName="r" values="1.8;3;1.8" {...TIMING} />}
-    </circle>
+  return <svg ref={svg} data-activity-spark data-animated={animate} aria-hidden="true" width="20" height="20" viewBox="0 0 120 120" className="shrink-0 text-accent">
+    <defs>
+      <filter id={filterId} colorInterpolationFilters="sRGB" x="0" y="0" width="100%" height="100%">
+        <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1.50887574 0 1.50887574" />
+      </filter>
+      <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="120" style={{ maskType: 'alpha' }}>
+        <g filter={`url(#${filterId})`}>
+          {FRAMES.map((frame, index) => <image key={index} href={frame} width="120" height="120" opacity={index === 4 ? 1 : 0}>
+            {animate && <animate attributeName="opacity" values={Array.from({ length: 10 }, (_, step) => step % 9 === index ? 1 : 0).join(';')} keyTimes={FRAME_TIMES} dur="0.81s" repeatCount="indefinite" calcMode="discrete" />}
+          </image>)}
+        </g>
+      </mask>
+    </defs>
+    <rect width="120" height="120" fill="currentColor" mask={`url(#${maskId})`} />
   </svg>
 }
 

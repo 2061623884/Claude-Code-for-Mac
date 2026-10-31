@@ -69,6 +69,18 @@ it('stops Spark on reduced motion, hidden documents and inactive side pages', ()
   view.rerender(<ActivitySpark active={false} />)
   expect(view.container.querySelector('animate')).toBeNull()
 })
+it('isolates SVG masks between indicators and retains the expanded reference when paused', () => {
+  const view = render(<><ActivitySpark /><ActivitySpark active={false} /></>)
+  const indicators = [...view.container.querySelectorAll('[data-activity-spark]')]
+  const masks = indicators.map(svg => svg.querySelector('mask')!.id)
+  expect(new Set(masks).size).toBe(2)
+  indicators.forEach((svg, index) => {
+    expect(svg.querySelector('rect')!.getAttribute('mask')).toBe(`url(#${masks[index]})`)
+    expect(svg.querySelectorAll('image')).toHaveLength(9)
+  })
+  expect(indicators[1].querySelectorAll('image[opacity="1"]')).toHaveLength(1)
+  expect(indicators[1].querySelector('image[opacity="1"]')!.getAttribute('href')).toContain('frame-05.png')
+})
 it('keeps session activity isolated and rejects an older activity snapshot', async () => {
   useChat.setState({ chats: {} })
   useDesk.setState({ projects: [{ id: 'p', name: 'P', path: '/p', addedAt: 0, collapsed: false }] })
