@@ -27,6 +27,9 @@ it('starts collapsed, previews three items on demand and has one global view-all
   fireEvent.click(screen.getByRole('button', { name: '切换摘要面板状态' }))
   const panel = screen.getByRole('region', { name: '会话摘要' })
   expect(within(panel).queryByText('Source 1')).toBeNull()
+  for (const name of ['变更分类', '项目分类', '任务分类', '子 Agent分类']) {
+    expect(within(panel).queryByRole('button', { name })).toBeNull()
+  }
   expect(within(panel).getAllByRole('button', { name: '查看全部' })).toHaveLength(1)
   fireEvent.click(within(panel).getByRole('button', { name: '来源分类' }))
   expect(within(panel).getByRole('button', { name: '来源分类' }).getAttribute('aria-expanded')).toBe('true')
@@ -38,6 +41,7 @@ it('starts collapsed, previews three items on demand and has one global view-all
   expect(useLayout.getState().rightOpen).toBe(true)
   render(<SummaryDetail sessionId="first" projectId="p" section="all" />)
   expect(within(screen.getByRole('region', { name: '会话摘要详情' })).getByText('Source 5')).toBeTruthy()
+  expect(screen.queryByRole('region', { name: '子 Agent完整列表' })).toBeNull()
 })
 it('keeps summary visibility and data isolated by session and updates live', () => {
   const view = render(<SessionSummary sessionId="first" projectId="p" />)
@@ -46,6 +50,7 @@ it('keeps summary visibility and data isolated by session and updates live', () 
   expect(screen.queryByRole('region', { name: '会话摘要' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '切换摘要面板状态' }))
   expect(screen.queryByText('Source 1')).toBeNull()
+  expect(screen.queryByRole('button', { name: '子 Agent分类' })).toBeNull()
   act(() => {
     const summary = emptySessionSummary(); summary.sections.agents = [{ id: 'agent', title: 'Review agent', description: 'Explore', status: 'running' }]
     useChat.getState().handle('second', { kind: 'summary', summary })
@@ -53,6 +58,8 @@ it('keeps summary visibility and data isolated by session and updates live', () 
   fireEvent.click(screen.getByRole('button', { name: '子 Agent分类' }))
   expect(screen.getByText('Review agent')).toBeTruthy()
   expect(screen.getByText('进行中')).toBeTruthy()
+  act(() => useChat.getState().handle('second', { kind: 'summary', summary: emptySessionSummary() }))
+  expect(screen.queryByRole('button', { name: '子 Agent分类' })).toBeNull()
 })
 it('counts actual tabs and does not reset the badge when the sidebar closes', () => {
   render(<RightPanelToggle />)
@@ -69,6 +76,9 @@ it('counts actual tabs and does not reset the badge when the sidebar closes', ()
 })
 
 it('collapses categories independently and remembers their state per session', () => {
+  const summary = structuredClone(useChat.getState().chats.first.summary!)
+  summary.sections.tasks = [{ id: 'task', title: 'Review', description: '', status: 'pending' }]
+  useChat.getState().handle('first', { kind: 'summary', summary })
   const view = render(<SessionSummary sessionId="first" projectId="p" />)
   fireEvent.click(screen.getByRole('button', { name: '切换摘要面板状态' }))
   fireEvent.click(screen.getByRole('button', { name: '来源分类' }))
@@ -78,5 +88,7 @@ it('collapses categories independently and remembers their state per session', (
   expect(screen.getByRole('button', { name: '任务分类' }).getAttribute('aria-expanded')).toBe('true')
   view.rerender(<SessionSummary sessionId="second" projectId="p" />)
   fireEvent.click(screen.getByRole('button', { name: '切换摘要面板状态' }))
-  expect(screen.getByRole('button', { name: '任务分类' }).getAttribute('aria-expanded')).toBe('false')
+  expect(screen.queryByRole('button', { name: '任务分类' })).toBeNull()
+  view.rerender(<SessionSummary sessionId="first" projectId="p" />)
+  expect(screen.getByRole('button', { name: '任务分类' }).getAttribute('aria-expanded')).toBe('true')
 })

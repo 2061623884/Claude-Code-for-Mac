@@ -13,6 +13,7 @@ export function SessionSummary({ sessionId, projectId }: { sessionId: string; pr
   const opened = useSummaryUi((s) => s.opened[sessionId] ?? false)
   const summary = useChat((s) => s.chats[sessionId]?.summary ?? EMPTY)
   const project = useDesk((s) => s.projects.find((p) => p.id === projectId))
+  const visibleSections = SUMMARY_SECTIONS.filter((section) => summary.sections[section].length > 0)
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!opened) return
@@ -30,7 +31,8 @@ export function SessionSummary({ sessionId, projectId }: { sessionId: string; pr
     {opened && <section aria-label="会话摘要" className="absolute right-0 top-full z-40 mt-3 max-h-[calc(100vh-100px)] w-[340px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-2xl border border-line-strong bg-card p-5 shadow-pop animate-pop-in [transform-origin:top_right]">
       <h2 className="mb-3 truncate text-[14px] font-medium text-fg2" title={project?.path}>{project?.name ?? '当前会话'}</h2>
       <div className="border-t border-line py-2">
-        {SUMMARY_SECTIONS.map((section) => {
+        {visibleSections.length === 0 && <p className="px-1 py-2 text-[12px] text-fg3">暂无活动记录</p>}
+        {visibleSections.map((section) => {
           const Icon = SUMMARY_ICONS[section]
           const items = summary.sections[section]
           const isExpanded = expanded?.[section] ?? false
@@ -64,19 +66,19 @@ export function SummaryDetail({ sessionId, projectId, section }: { sessionId: st
   const [error, setError] = useState<string | null>(null)
   useEffect(() => { let stale = false; void useChat.getState().load(sessionId, projectId).catch((e: Error) => { if (!stale) setError(e.message) }); return () => { stale = true } }, [sessionId, projectId])
   const summary = chat?.summary ?? EMPTY
-  const sections = section === 'all' ? SUMMARY_SECTIONS : [section]
+  const sections = section === 'all' ? SUMMARY_SECTIONS.filter((category) => summary.sections[category].length > 0) : [section]
   const label = section === 'all' ? '会话摘要' : SUMMARY_LABELS[section]
   return <section aria-label={`${label}详情`} className="flex h-full flex-col">
     <div className="shrink-0 border-b border-line px-5 py-3"><h2 className="text-[15px] font-medium">{label}</h2><p className="mt-1 truncate text-[11px] text-fg3" title={title}>{project?.name ?? '项目已移除'} · {title || sessionId.slice(0, 8)}</p></div>
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
-      {error ? <p role="alert" className="py-4 text-danger">{error}</p> : !chat?.loaded ? <p className="py-4 text-fg3">正在读取会话摘要…</p> : sections.map((category) => {
+      {error ? <p role="alert" className="py-4 text-danger">{error}</p> : !chat?.loaded ? <p className="py-4 text-fg3">正在读取会话摘要…</p> : sections.length === 0 ? <p className="py-4 text-[12px] text-fg3">暂无活动记录</p> : sections.map((category) => {
         const Icon = SUMMARY_ICONS[category]
         return <section key={category} aria-label={`${SUMMARY_LABELS[category]}完整列表`} className="border-b border-line py-4 last:border-0">
           <h3 className="flex items-center gap-2 text-[13px] font-medium"><Icon size={16} />{SUMMARY_LABELS[category]} <span className="text-fg3">{summary.sections[category].length}</span></h3>
           <SummaryRows section={category} items={summary.sections[category]} />
         </section>
       })}
-      {(section === 'changes' || section === 'all') && <p className="mt-4 text-[11px] text-fg3">仅汇总已确认成功的文件工具操作，行数为操作累计。无法确认的差异显示未知；通过终端或外部程序产生的改动可能不包含在内。</p>}
+      {(section === 'changes' || (section === 'all' && summary.sections.changes.length > 0)) && <p className="mt-4 text-[11px] text-fg3">仅汇总已确认成功的文件工具操作，行数为操作累计。无法确认的差异显示未知；通过终端或外部程序产生的改动可能不包含在内。</p>}
       {summary.historyIncomplete && <p className="mt-4 text-[11px] text-fg3">此会话历史记录不完整，部分来源、任务或子 Agent 状态可能未保存。</p>}
     </div>
   </section>
