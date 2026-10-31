@@ -47,6 +47,14 @@ app.on('browser-window-created', (_event, win) => {
     const flush = () => { const messages=transcript.takeChanged(); if(messages.length)win.webContents.send('chat:event','a',{kind:'upsert',messages:structuredClone(messages)}); const value=activity.takeChanged();if(value)win.webContents.send('chat:event','a',{kind:'activity',activity:value}) }
     const send = message => { apply(message); flush() }
     const setState = value => { state=value;win.webContents.send('chat:event','a',{kind:'state',state}) }
+    const checkSummaryOrder = async () => {
+      const correct = await js(`(()=>{
+        const summary=document.querySelector('[data-thinking-summary]');
+        const answer=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');
+        return Boolean(summary && answer && (summary.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING));
+      })()`)
+      if(!correct)throw new Error('Thinking summary must precede the answer')
+    }
     try {
       await wait(`document.body.innerText.includes('动效测试 a')`); await open('a')
       await wait(`document.querySelector('[data-activity-spark]')?.dataset.animated==='true'`)
@@ -96,13 +104,16 @@ app.on('browser-window-created', (_event, win) => {
       setState('running');send({type:'user',message:{content:[{type:'tool_result',tool_use_id:'read',content:'ok'}]}})
       send(event({type:'content_block_start',index:1,content_block:{type:'text',text:''}}));send(event({type:'content_block_delta',index:1,delta:{type:'text_delta',text:'检查完成。'}}))
       await wait(`document.querySelector('[data-thinking-summary] [role="status"]')?.innerText.includes('正在生成回复')`)
+      await checkSummaryOrder()
       await open('b');if(await js(`!!document.querySelector('[data-thinking-summary]')`))throw new Error('Summary leaked across sessions')
       await open('a');await wait(`!!document.querySelector('[data-thinking-summary]')`)
       activity.stop();flush();await wait(`document.body.innerText.includes('正在停止')`)
       if(await js(`!!document.querySelector('[data-thinking-summary] animate')`))throw new Error('Stopping is animating')
       activity.finish();flush();setState('idle')
       await wait(`!document.querySelector('[aria-label="思考摘要内容"]')`)
+      await checkSummaryOrder()
       await click('展开思考摘要');await wait(`!!document.querySelector('[aria-label="思考摘要内容"]')`)
+      await checkSummaryOrder()
       if(await js(`!!document.querySelector('[data-thinking-summary] animate')`))throw new Error('Finished turn is animating')
       await shot('thinking-completed')
       await click('展开右栏（⌘⇧B）');await card('基于当前会话')

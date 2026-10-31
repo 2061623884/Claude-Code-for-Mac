@@ -6,8 +6,8 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.3-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.3-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.4-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.4-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。应用尚未使用 Apple Developer ID 签名或经过 Apple 公证，macOS 可能显示安全提示。

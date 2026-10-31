@@ -90,6 +90,16 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
   const turns = turnsOf(chat.messages)
   const sessionUsage = sumUsage(chat.messages)
   const approval = chat.approvals[0]
+  const renderMessage = (message: UiMessage) => (
+    <Message
+      key={message.id}
+      message={message}
+      running={running}
+      cwd={cwd}
+      // 编辑历史消息：会话空闲时才能改
+      onEdit={running || approval || message.forkFrom === undefined ? undefined : (text) => edit(sessionId, message.id, text)}
+    />
+  )
   // 命令卡片里的选项（切换模型等）：会话空闲时才能点
   const runCommand = chat.loaded && !running && !approval ? (command: string) => void send(sessionId, command) : undefined
   const panelCtx: PanelContext = {
@@ -135,18 +145,12 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
               {turns.map((turn, i) => (
                 <Fragment key={turn[0]!.id}>
                   {turn
-                    .filter((m) => !m.parentToolUseId && !hidden.has(m.id))
-                    .map((m) => (
-                      <Message
-                        key={m.id}
-                        message={m}
-                        running={running}
-                        cwd={cwd}
-                        // 编辑历史消息：会话空闲时才能改
-                        onEdit={running || approval || m.forkFrom === undefined ? undefined : (text) => edit(sessionId, m.id, text)}
-                      />
-                    ))}
+                    .filter((m) => m.role === 'user' && !m.parentToolUseId && !hidden.has(m.id))
+                    .map(renderMessage)}
                   <ThinkingSummary messages={turn} state={i === turns.length - 1 ? chat.state : 'idle'} activity={i === turns.length - 1 ? chat.activity : undefined} />
+                  {turn
+                    .filter((m) => m.role !== 'user' && !m.parentToolUseId && !hidden.has(m.id))
+                    .map(renderMessage)}
                   {/* 每轮结束后列出这一轮改过的文件，点开在右栏看对比 */}
                   {!(running && i === turns.length - 1) && (
                     <>
@@ -257,7 +261,7 @@ function Message({
       {message.blocks.map((b, i) => {
         if (!b) return null
         if (b.kind === 'text') return b.text ? <Markdown key={i} text={b.text} /> : null
-        if (b.kind === 'thinking') return null // 本轮摘要统一展示在消息末尾
+        if (b.kind === 'thinking') return null // 本轮摘要统一展示在回答正文之前
         if (b.kind === 'command') return <CommandRecord key={i} block={b} onOpen={() => usePanel.getState().open({ kind: 'output', block: b })} />
         return <ToolCard key={b.id} block={b} running={running} cwd={cwd} />
       })}
