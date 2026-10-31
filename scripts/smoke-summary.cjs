@@ -1,0 +1,79 @@
+// 使用合成 SDK 事件验证摘要 UI，不请求模型，不访问真实会话。
+const { app, BrowserWindow, ipcMain } = require('electron')
+const { mkdtempSync, mkdirSync, writeFileSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { join, resolve } = require('node:path')
+const { buildSync } = require('esbuild')
+const scratch = mkdtempSync(join(tmpdir(), 'claude-summary-'))
+const project = join(scratch, 'project')
+const userdata = join(scratch, 'userdata')
+mkdirSync(project); mkdirSync(userdata)
+for (let i = 1; i <= 5; i++) writeFileSync(join(project, `notes-${i}.md`), `# Notes ${i}\n`)
+writeFileSync(join(userdata, 'claude-desk.json'), JSON.stringify({ version: 1, projects: [{ id: 'p', name: 'Claude Code for Mac', path: project, addedAt: 0, collapsed: false }], archived: {}, settings: { theme: 'light' }, seededFromHistory: true }))
+process.env.CLAUDE_DESK_USERDATA = userdata
+buildSync({ entryPoints: [resolve('src/main/sessionActivity.ts')], outfile: join(scratch, 'activity.cjs'), bundle: true, platform: 'node', format: 'cjs' })
+const { SessionActivity } = require(join(scratch, 'activity.cjs'))
+const collector = new SessionActivity(project)
+const call = (id, name, input) => collector.apply({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } })
+const result = (id, output = {}) => collector.apply({ type: 'user', tool_use_result: output, message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'OK' }] } })
+for (let i = 1; i <= 5; i++) collector.reference(`@notes-${i}.md`)
+call('edit', 'Edit', { file_path: 'notes-1.md', old_string: 'old', new_string: 'new\nline' }); result('edit', { structuredPatch: [{ lines: ['-old', '+new', '+line'] }] })
+call('web', 'WebSearch', { query: 'Claude Agent SDK' }); result('web')
+call('github', 'mcp__GitHub__get_repository', {}); result('github')
+call('todo', 'TodoWrite', { todos: [{ content: '构建摘要面板', status: 'completed' }, { content: '验证历史会话与实时更新', status: 'in_progress' }] }); result('todo')
+call('agent', 'Agent', { description: '检查会话数据流', subagent_type: 'Explore', run_in_background: true })
+collector.apply({ type: 'system', subtype: 'task_started', task_id: 'agent-task', tool_use_id: 'agent', task_type: 'local_agent', description: '检查会话数据流' })
+const originalHandle = ipcMain.handle.bind(ipcMain)
+ipcMain.handle = (name, handler) => {
+  const stubs = {
+    'sessions:list': () => [{ id: 'summary-test', title: '会话摘要集成验证', cwd: project, lastModified: Date.now(), archived: false }],
+    'chat:open': () => ({ messages: [{ id: 'welcome', role: 'assistant', parentToolUseId: null, blocks: [{ kind: 'text', text: '本会话已读取参考文件、搜索网页并修改代码。摘要展示项目、任务和子 Agent 的真实事件记录。' }] }], state: 'idle', approvals: [], live: false, summary: collector.snapshot() }),
+    'chat:context': () => null, 'chat:checkExternal': () => false,
+    'meta:get': () => ({ models: [{ value: 'opus', label: 'Opus', efforts: [] }], subscriptionType: null, claudeVersion: 'fixture' }),
+    'meta:commands': () => []
+  }
+  originalHandle(name, stubs[name] || handler)
+}
+const output = resolve('dist/build-check')
+mkdirSync(output, { recursive: true })
+const timeout = setTimeout(() => { console.error('Summary smoke timeout'); app.exit(1) }, 45000)
+app.on('browser-window-created', (_event, win) => {
+  win.webContents.once('did-finish-load', async () => {
+    const js = (code) => win.webContents.executeJavaScript(code, true)
+    const wait = async (code) => { for (let i = 0; i < 100; i++) { if (await js(code)) return; await new Promise(r => setTimeout(r, 100)) } throw new Error('Condition failed: ' + code) }
+    const click = (label) => js(`(() => { const button=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===${JSON.stringify(label)} && b.offsetParent); if(!button) throw new Error('Missing button: '+${JSON.stringify(label)}); button.click() })()`)
+    try {
+      await wait(`document.body.innerText.includes('会话摘要集成验证')`)
+      await js(`([...document.querySelectorAll('[role="button"]')].find(e=>e.innerText.includes('会话摘要集成验证'))).click()`)
+      await wait(`!!document.querySelector('[aria-label="切换摘要面板状态"]')`)
+      await click('切换摘要面板状态')
+      await wait(`!!document.querySelector('[aria-label="会话摘要"]')`)
+      await new Promise(r => setTimeout(r, 1000))
+      const collapsed = await js(`(() => { const panel=document.querySelector('[aria-label="会话摘要"]');return {height:panel.getBoundingClientRect().height,text:panel.innerText,all:panel.querySelectorAll('[aria-label="查看全部"]').length} })()`)
+      if (collapsed.height > 400 || collapsed.text.includes('notes-1.md') || collapsed.all !== 1) throw new Error('Summary is not compact or contains duplicate view-all actions')
+      writeFileSync(join(output, 'session-summary.png'), (await win.capturePage()).toPNG())
+      await click('来源分类')
+      await wait(`document.querySelector('[aria-label="会话摘要"]')?.innerText.includes('notes-3.md')`)
+      if (await js(`document.querySelector('[aria-label="会话摘要"]').innerText.includes('notes-4.md')`)) throw new Error('Compact source preview exceeds three items')
+      await new Promise(r => setTimeout(r, 1000))
+      writeFileSync(join(output, 'session-summary-expanded.png'), (await win.capturePage()).toPNG())
+      await click('来源分类')
+      await click('查看全部')
+      await wait(`document.querySelector('[aria-label="来源完整列表"]')?.innerText.includes('notes-5.md')`)
+      await new Promise(r => setTimeout(r, 350))
+      const count = await js(`document.querySelector('[aria-label^="已打开 "]').getAttribute('aria-label')`)
+      await click('查看全部')
+      if (await js(`document.querySelector('[aria-label^="已打开 "]').getAttribute('aria-label')`) !== count) throw new Error('Detail tab duplicated')
+      collector.apply({ type: 'system', subtype: 'task_notification', task_id: 'agent-task', tool_use_id: 'agent', status: 'completed', summary: '检查完成' })
+      win.webContents.send('chat:event', 'summary-test', { kind: 'summary', summary: collector.snapshot() })
+      await wait(`document.querySelector('[aria-label="子 Agent完整列表"]')?.innerText.includes('已完成')`)
+      await new Promise(r => setTimeout(r, 1000))
+      if (await js('document.documentElement.scrollWidth > innerWidth')) throw new Error('Summary caused horizontal overflow')
+      writeFileSync(join(output, 'session-summary-details.png'), (await win.capturePage()).toPNG())
+      for (const label of ['变更', '来源', '项目', '任务', '子 Agent']) await wait(`!!document.querySelector('[aria-label="${label}完整列表"]')`)
+      console.log('PASS: collapsed categories, single footer action, complete sidebar summary, tab reuse, live agent status')
+      clearTimeout(timeout); app.quit()
+    } catch (error) { console.error(error); writeFileSync(join(output, 'summary-failure.png'), (await win.capturePage()).toPNG()); clearTimeout(timeout); app.exit(1) }
+  })
+})
+require('../out/main/index.js')

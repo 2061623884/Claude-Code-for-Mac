@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Compass, FileText, FolderOpen, Globe, Maximize2, MessageCircleQuestion, Minimize2, PanelRight, Plus, Terminal, X } from 'lucide-react'
+import { Compass, FileText, FolderOpen, Globe, ListTree, Maximize2, MessageCircleQuestion, Minimize2, PanelRight, Plus, Terminal, X } from 'lucide-react'
 import { fileName } from '@shared/fileLinks'
 import { FilePreview } from '../files/FilePreview'
 import { useChat } from '../../chatStore'
-import { RIGHT, useLayout, type SidePage } from '../../layoutStore'
+import { RIGHT, sidebarPageCount, useLayout, type SidePage } from '../../layoutStore'
 import { useDesk } from '../../store'
 import { useModal } from '../../modalStore'
 import { IconButton } from '../sidebar/SessionRow'
@@ -14,9 +14,11 @@ import { FileContext } from '../files/FileLink'
 import { StartPane } from './StartPane'
 import { TerminalPane } from './TerminalPane'
 import { BrowserPane } from './BrowserPane'
+import { SummaryDetail } from '../summary/SessionSummary'
+import { SUMMARY_LABELS } from '@shared/sessionSummary'
 
-const LABELS = { start: '开始', files: '工作区文件', terminal: '终端', browser: '浏览器' }
-const ICONS = { start: Compass, files: FolderOpen, terminal: Terminal, browser: Globe }
+const LABELS = { start: '开始', files: '工作区文件', terminal: '终端', browser: '浏览器', summary: '摘要' }
+const ICONS = { start: Compass, files: FolderOpen, terminal: Terminal, browser: Globe, summary: ListTree }
 
 export function RightPanel({ sessionId, projectId }: { sessionId?: string; projectId?: string }) {
   const layout = useLayout()
@@ -60,7 +62,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
   const tabs = [
     ...(sessionId ? [{ id: 'btw' as const, label: '顺便问一下', icon: MessageCircleQuestion }] : []),
     ...(rightTab === 'project' ? [{ id: 'project' as const, label: '工作区文件', icon: FolderOpen }] : []),
-    ...pages.map((p) => ({ id: p.id, label: LABELS[p.kind], icon: ICONS[p.kind], close: () => layout.closePage(p.id) })),
+    ...pages.map((p) => ({ id: p.id, label: p.kind === 'summary' && p.section ? (p.section === 'all' ? '会话摘要' : SUMMARY_LABELS[p.section]) : LABELS[p.kind], icon: ICONS[p.kind], close: () => layout.closePage(p.id) })),
     ...openFiles.map((f) => ({ id: `file:${f.path}` as const, label: fileName(f.path), icon: FileText, close: () => layout.closeFile(f.path), title: f.path }))
   ]
 
@@ -93,7 +95,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
           <div className="no-drag flex">
             <IconButton label="新建侧栏页面" onClick={() => layout.newPage(cwd)}><Plus size={16} /></IconButton>
             <IconButton label={expanded ? '还原侧栏宽度' : '展开侧栏页面'} onClick={() => layout.setExpanded(!expanded)}>{expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>
-            <IconButton label="收起右栏（⌘⇧B）" onClick={() => layout.setRightOpen(false)}><PanelRight size={16} /></IconButton>
+<IconButton label="收起右栏（⌘⇧B）" onClick={() => layout.setRightOpen(false)}><PanelRight size={16} /></IconButton>
           </div>
         </div>
         <FileContext.Provider value={{ cwd }}>
@@ -105,6 +107,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
               const active = page.id === rightTab && rightOpen
               return (
                 <div key={page.id} hidden={page.id !== rightTab} className={page.id === rightTab ? 'h-full' : 'hidden'}>
+                  {page.kind === 'summary' && page.sessionId && page.projectId && page.section && <SummaryDetail sessionId={page.sessionId} projectId={page.projectId} section={page.section} />}
                   {page.kind === 'start' && <StartPane hasProject={Boolean(page.cwd ?? cwd)} onSelect={(kind) => choose(page, kind)} />}
                   {page.kind === 'files' && <ProjectFilesPane cwd={page.cwd ?? cwd} refreshKey={0} />}
                   {page.kind === 'terminal' && <TerminalPane id={page.id} cwd={page.cwd ?? cwd} active={active} />}
@@ -122,7 +125,13 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
 }
 
 export function RightPanelToggle() {
-  const { rightOpen, setRightOpen } = useLayout()
-  if (rightOpen) return null
-  return <div className="no-drag"><IconButton label="展开右栏（⌘⇧B）" onClick={() => setRightOpen(true)}><PanelRight size={16} /></IconButton></div>
+  const layout = useLayout()
+  const hasSession = useDesk((s) => s.view.kind === 'session')
+  const count = sidebarPageCount(layout, hasSession)
+  const label = layout.rightOpen ? '收起右栏（⌘⇧B）' : '展开右栏（⌘⇧B）'
+  return <div className="no-drag border-l border-line pl-2">
+    <button type="button" title={`${label} · ${count} 个页面`} aria-label={label} aria-expanded={layout.rightOpen} onClick={() => layout.setRightOpen(!layout.rightOpen)} className="flex size-8 items-center justify-center rounded-lg text-fg2 hover:bg-active">
+      <span aria-label={`已打开 ${count} 个侧栏页面`} className="flex size-[19px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[11px] font-medium tabular-nums">{count}</span>
+    </button>
+  </div>
 }

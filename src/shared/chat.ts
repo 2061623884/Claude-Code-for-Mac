@@ -1,4 +1,5 @@
 // 对话相关的数据结构：主进程把 SDK 消息整理成这些类型后推给界面。
+import type { SessionSummaryData } from './sessionSummary'
 import type { EffortLevel, PermissionMode } from './types'
 
 export type UiBlock =
@@ -68,6 +69,7 @@ export type Decision =
   | { type: 'planRevise'; feedback: string }
 
 export type ChatEvent =
+  | { kind: 'summary'; summary: SessionSummaryData }
   | { kind: 'upsert'; messages: UiMessage[] }
   | { kind: 'state'; state: ChatState }
   | { kind: 'approval'; request: ApprovalRequest }
@@ -85,6 +87,7 @@ export interface ContextUsage {
 }
 
 export interface ChatSnapshot {
+  summary?: SessionSummaryData
   messages: UiMessage[]
   state: ChatState
   approvals: ApprovalRequest[]

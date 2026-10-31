@@ -1,5 +1,5 @@
 // 一个常驻的 claude 进程，对应一个打开着的会话（流式输入模式，可随时追加消息、中断、切换模式）。
-import type { CanUseTool, McpServerStatus, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { CanUseTool, HookCallback, McpServerStatus, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ApprovalRequest, BtwTurn, ChatEvent, ChatState, ContextUsage, Decision, SessionOptions } from '../../shared/chat'
 import { toPermissionResult } from '../approval'
 import { toContextUsage } from '../context'
@@ -85,6 +85,10 @@ export class LiveSession {
           includePartialMessages: true,
           // SDK 会话默认不返回思考文字（只有签名），界面就看不到思考过程；要求返回思考摘要
           extraArgs: { 'thinking-display': 'summarized' },
+          hooks: {
+            CwdChanged: [{ hooks: [this.observeDirectory] }],
+            DirectoryAdded: [{ hooks: [this.observeDirectory] }]
+          },
           canUseTool: this.canUseTool,
           allowDangerouslySkipPermissions: store.read().settings.allowBypass,
           pathToClaudeCodeExecutable: claudeExecutable(),
@@ -160,6 +164,7 @@ export class LiveSession {
     }
     this.pending.clear()
     this.input.end()
+    this.init.transcript.activity.markInactive()
     this.flush()
     try {
       this.q?.close()
@@ -181,6 +186,15 @@ export class LiveSession {
     this.init.emit({ kind: 'notice', text: `${prefix}：${error instanceof Error ? error.message : String(error)}` })
     this.setState('error')
     this.close()
+  }
+
+  private observeDirectory: HookCallback = async (input) => {
+    if (this.closed) return {}
+    if (input.hook_event_name === 'CwdChanged') this.init.transcript.activity.observeDirectory(input.new_cwd, !input.agent_id, input.agent_id ? '子 Agent 工作目录' : '会话工作目录')
+    else if (input.hook_event_name === 'DirectoryAdded') this.init.transcript.activity.observeDirectory(input.directory)
+    else return {}
+    this.scheduleFlush()
+    return {}
   }
 
   private canUseTool: CanUseTool = (toolName, input, options) =>
@@ -261,6 +275,8 @@ export class LiveSession {
   private flush(): void {
     if (this.flushTimer) clearTimeout(this.flushTimer)
     this.flushTimer = null
+    const summary = this.init.transcript.activity.takeChanged()
+    if (summary) this.init.emit({ kind: 'summary', summary })
     const messages = this.init.transcript.takeChanged()
     // 深拷贝一份再发，避免后续流式修改影响已发出的数据
     if (messages.length) this.init.emit({ kind: 'upsert', messages: structuredClone(messages) })

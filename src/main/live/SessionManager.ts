@@ -4,6 +4,7 @@ import { peekContext } from '../context'
 import { loadSdk, withIdleQuery } from '../sdk'
 import { Transcript } from '../transcript'
 import { LiveSession } from './LiveSession'
+import type { ActivityRepository } from '../activityRepository'
 
 const MAX_LIVE = 4
 const IDLE_MS = 15 * 60_000
@@ -18,12 +19,13 @@ export class SessionManager {
   private seen = new Map<string, number>()
   private sweeper = setInterval(() => this.closeIdle(), 60_000)
 
-  constructor(private emit: Emit) {}
+  constructor(private emit: Emit, private activityStore?: ActivityRepository) {}
 
   async open(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
     const transcript = await this.transcript(sessionId, projectPath)
     const session = this.live.get(sessionId)
     return {
+      summary: transcript.activity.snapshot(),
       messages: structuredClone(transcript.messages),
       state: session?.state ?? 'idle',
       approvals: session?.approvals ?? [],
@@ -33,7 +35,7 @@ export class SessionManager {
 
   start(projectPath: string, text: string, options: SessionOptions): string {
     const sessionId = randomUUID()
-    const transcript = new Transcript()
+    const transcript = new Transcript(projectPath)
     this.transcripts.set(sessionId, transcript)
     this.spawn(sessionId, projectPath, false, options, transcript).send(text)
     return sessionId
@@ -45,12 +47,13 @@ export class SessionManager {
   async fork(sourceId: string, projectPath: string, at: string, text: string, options: SessionOptions): Promise<string> {
     const sdk = await loadSdk()
     const sessionId = randomUUID()
-    const transcript = new Transcript()
+    const transcript = new Transcript(projectPath)
     for (const m of await sdk.getSessionMessages(sourceId, { dir: projectPath })) {
       transcript.apply(m)
       if (m.uuid === at) break
     }
     transcript.finish()
+    transcript.activity.finishHistory(true)
     transcript.takeChanged()
     this.transcripts.set(sessionId, transcript)
     this.spawn(sessionId, projectPath, false, options, transcript, { from: sourceId, at }).send(text)
@@ -144,10 +147,12 @@ export class SessionManager {
     if (pending) return pending
     // 并发恢复共享同一份记录，避免缓存和 LiveSession 持有不同实例。
     const loading = loadSdk().then(async (sdk) => {
-      const transcript = new Transcript()
+      const saved = this.activityStore?.load(sessionId)
+      const transcript = new Transcript(projectPath, saved)
       const messages = await sdk.getSessionMessages(sessionId, { dir: projectPath })
       for (const m of messages) transcript.apply(m)
       transcript.finish()
+      transcript.activity.finishHistory(!saved)
       transcript.takeChanged()
       if (this.transcriptLoads.get(sessionId) === loading) {
         this.seen.set(sessionId, messages.length)
@@ -172,7 +177,10 @@ export class SessionManager {
     fork?: { from: string; at: string }
   ): LiveSession {
     this.evictIfFull()
-    const emit = (event: ChatEvent): void => this.emit(sessionId, event)
+    const emit = (event: ChatEvent): void => {
+      if (event.kind === 'summary') this.activityStore?.save(sessionId, transcript.activity.export())
+      this.emit(sessionId, event)
+    }
     const session = new LiveSession({
       sessionId, cwd, resume, fork, options, transcript, emit,
       onClosed: (closed) => {

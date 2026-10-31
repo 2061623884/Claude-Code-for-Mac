@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest'
+import { SessionActivity } from '../src/main/sessionActivity'
+const call = (id: string, name: string, input: Record<string, unknown> = {}, parent: string | null = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { content: [{ type: 'tool_use', id, name, input }] } })
+const result = (id: string, output: Record<string, unknown> = {}, error = false, content = '') => ({ type: 'user', tool_use_result: output, message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error: error }] } })
+describe('session activity evidence', () => {
+  it('deduplicates replayed tool calls and results, counts only successful applied edits', () => {
+    const activity = new SessionActivity('/project')
+    const edit = call('edit', 'Edit', { file_path: 'a.ts', old_string: 'one', new_string: 'two\nthree' })
+    const edited = result('edit', { structuredPatch: [{ lines: ['-one', '+two', '+three'] }] })
+    for (const item of [edit, edited, edit, edited]) activity.apply(item)
+    activity.apply(call('failed', 'Write', { file_path: 'failed.ts', content: 'x' })); activity.apply(result('failed', {}, true))
+    activity.apply(call('staged', 'Write', { file_path: 'staged.ts', content: 'x' })); activity.apply(result('staged', { staged: true }))
+    expect(activity.snapshot().sections.changes).toEqual([expect.objectContaining({ path: '/project/a.ts', added: 2, removed: 1 })])
+  })
+  it('reports unknown line counts for an overwrite without a reliable diff', () => {
+    const activity = new SessionActivity('/project')
+    activity.apply(call('write', 'Write', { file_path: 'file.txt', content: 'replacement' }))
+    activity.apply(result('write', { type: 'update', originalFile: null, structuredPatch: [] }))
+    expect(activity.snapshot().sections.changes[0]).toMatchObject({ added: null, removed: null })
+  })
+  it('records references, searches, page visits and actual MCP usage with safe fields', () => {
+    const activity = new SessionActivity('/project')
+    activity.reference('@docs/notes.md\n\nExplain this')
+    activity.reference('@docs/notes.md')
+    activity.apply(call('read', 'Read', { file_path: 'docs/notes.md' })); activity.apply(result('read'))
+    activity.apply(call('search', 'WebSearch', { query: 'docs' })); activity.apply(result('search', { results: [{ content: [{ title: 'Docs', url: 'https://example.com' }] }] }))
+    activity.apply(call('fetch', 'WebFetch', { url: 'https://example.com' })); activity.apply(result('fetch'))
+    activity.apply(call('github', 'mcp__github__get_repository', { token: 'SECRET_NOT_TO_PERSIST' })); activity.apply(result('github'))
+    const sources = activity.snapshot().sections.sources
+    expect(sources).toHaveLength(3)
+    expect(sources.find((s) => s.id === 'web')).toMatchObject({ description: '调用 2 次 · 成功 2', links: [expect.objectContaining({ url: 'https://example.com' })] })
+    expect(JSON.stringify(activity.export())).not.toContain('SECRET_NOT_TO_PERSIST')
+  })
+  it('merges TaskCreate/TaskUpdate and replaces TodoWrite snapshots', () => {
+    const activity = new SessionActivity('/project')
+    activity.apply(call('create', 'TaskCreate', { subject: 'Write tests', description: 'Add regression checks' })); activity.apply(result('create', { task: { id: '1', subject: 'Write tests' } }))
+    activity.apply(call('update', 'TaskUpdate', { taskId: '1', status: 'completed' })); activity.apply(result('update', { success: true }))
+    activity.apply(call('todo', 'TodoWrite', { todos: [{ content: 'Old todo', status: 'pending' }] })); activity.apply(result('todo'))
+    activity.apply(call('todo2', 'TodoWrite', { todos: [{ content: 'New todo', status: 'in_progress' }] })); activity.apply(result('todo2'))
+    expect(activity.snapshot().sections.tasks).toEqual([expect.objectContaining({ title: 'Write tests', status: 'completed' }), expect.objectContaining({ title: 'New todo', status: 'running' })])
+  })
+  it('keeps subagent tasks isolated and follows lifecycle events without including shell tasks', () => {
+    const activity = new SessionActivity('/project')
+    activity.apply(call('agent', 'Agent', { description: 'Inspect code', subagent_type: 'Explore', run_in_background: true }))
+    activity.apply({ type: 'system', subtype: 'task_started', task_id: 'a1', tool_use_id: 'agent', task_type: 'local_agent', run_id: '02', description: 'Inspect code' })
+    activity.apply({ type: 'system', subtype: 'task_notification', task_id: 'a1', tool_use_id: 'agent', run_id: '02', status: 'completed', summary: 'Done' })
+    activity.apply({ type: 'system', subtype: 'task_progress', task_id: 'a1', tool_use_id: 'agent', run_id: '01', description: 'Old update' })
+    activity.apply({ type: 'system', subtype: 'task_started', task_id: 'shell', task_type: 'local_bash', description: 'Run server' })
+    expect(activity.snapshot().sections.agents).toEqual([expect.objectContaining({ title: 'Inspect code', status: 'completed', description: 'Done' })])
+    for (const parent of [null, 'agent']) {
+      activity.apply(call(`create-${parent}`, 'TaskCreate', { subject: `Task ${parent}` }, parent)); activity.apply(result(`create-${parent}`, { task: { id: '1' } }))
+    }
+    expect(activity.snapshot().sections.tasks).toHaveLength(2)
+  })
+  it('restores persisted facts without double-counting and marks stale live states unknown', () => {
+    const activity = new SessionActivity('/project')
+    const raw = call('read', 'Read', { file_path: 'a.ts' }); const done = result('read')
+    activity.apply(raw); activity.apply(done)
+    activity.apply(call('agent', 'Agent', { description: 'Pending work' }))
+    const restored = new SessionActivity('/project', activity.export())
+    restored.apply(raw); restored.apply(done); restored.finishHistory(false)
+    expect(restored.snapshot().sections.sources[0].description).toBe('调用 1 次 · 成功 1')
+    expect(restored.snapshot().sections.agents[0].status).toBe('unknown')
+    expect(restored.snapshot().sections.projects).toHaveLength(1)
+  })
+  it('retains structured results before transcript text truncation and flags legacy history', () => {
+    const activity = new SessionActivity('/project')
+    activity.apply(call('task', 'TaskCreate', { subject: 'Historic task' }))
+    activity.apply(result('task', {}, false, 'Task #12 created successfully: Historic task'))
+    activity.finishHistory(true)
+    expect(activity.snapshot().historyIncomplete).toBe(true)
+    expect(activity.snapshot().sections.tasks[0]).toMatchObject({ id: 'main:12', title: 'Historic task' })
+  })
+})
+
+it('does not resolve main-thread references against a subagent directory', () => {
+  const activity = new SessionActivity('/project')
+  activity.observeDirectory('/worktree', false, '子 Agent 工作目录')
+  activity.reference('@notes.md')
+  expect(activity.snapshot().sections.sources[0].path).toBe('/project/notes.md')
+  expect(activity.snapshot().sections.projects[1]).toMatchObject({ path: '/worktree', description: '子 Agent 工作目录' })
+})

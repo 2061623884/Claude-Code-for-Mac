@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { emptySessionSummary, type SessionSummaryData } from '@shared/sessionSummary'
 import type { ApprovalRequest, ChatEvent, ChatState, Decision, SessionOptions, UiMessage } from '@shared/chat'
 import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
@@ -7,6 +8,7 @@ import { useDesk } from './store'
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
 export interface ChatEntry {
+  summary?: SessionSummaryData
   projectId: string
   messages: UiMessage[]
   state: ChatState
@@ -45,7 +47,7 @@ function projectPath(projectId: string): string {
 }
 
 function blank(projectId: string, options = defaultOptions()): ChatEntry {
-  return { projectId, messages: [], state: 'idle', approvals: [], loaded: false, options, error: null }
+  return { summary: emptySessionSummary(), projectId, messages: [], state: 'idle', approvals: [], loaded: false, options, error: null }
 }
 
 export const useChat = create<ChatStore>((set, get) => {
@@ -63,7 +65,7 @@ export const useChat = create<ChatStore>((set, get) => {
       if (existing?.loaded) return
       set({ chats: { ...get().chats, [sessionId]: existing ?? blank(projectId) } })
       const snap = await desk().chat.open(sessionId, projectPath(projectId))
-      patch(sessionId, () => ({ ...snap, loaded: true }))
+      patch(sessionId, (current) => ({ ...snap, summary: (current.summary?.revision ?? 0) > (snap.summary?.revision ?? 0) ? current.summary : snap.summary, loaded: true }))
     },
 
     async reload(sessionId) {
@@ -138,6 +140,9 @@ export const useChat = create<ChatStore>((set, get) => {
         set({ chats: { ...get().chats, [sessionId]: { ...blank(''), loaded: true } } })
       }
       switch (event.kind) {
+        case 'summary':
+          patch(sessionId, () => ({ summary: event.summary }))
+          break
         case 'upsert':
           patch(sessionId, (c) => {
             const messages = [...c.messages]

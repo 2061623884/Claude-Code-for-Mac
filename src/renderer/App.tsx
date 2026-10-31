@@ -15,6 +15,7 @@ import { ResizeHandle } from './components/ui/ResizeHandle'
 import { AddProjectDialog } from './components/dialogs/AddProjectDialog'
 import { ImportHistoryDialog } from './components/dialogs/ImportHistoryDialog'
 import { SearchDialog } from './components/dialogs/SearchDialog'
+import { SessionSummary } from './components/summary/SessionSummary'
 
 export function App() {
   const { ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, refreshSessions, setSearchOpen } =
@@ -102,8 +103,8 @@ export function App() {
         </div>
         {!sidebarCollapsed && <ResizeHandle side="left" width={leftWidth} defaultWidth={LEFT.default} onResize={setLeftWidth} />}
       </div>
-      <main inert={rightOpen && expanded && view.kind !== 'settings'} className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-        <div className="drag flex h-[52px] shrink-0 items-center gap-1 pl-[84px]">
+      <main inert={rightOpen && expanded && view.kind !== 'settings'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
+        <div className="drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 pl-[84px]">
           {sidebarCollapsed && (
             <div className="no-drag animate-fade-in flex gap-1">
               <IconButton label="展开侧栏" onClick={toggleSidebar}>
@@ -116,7 +117,8 @@ export function App() {
           )}
           {title && <span className="min-w-0 flex-1 truncate pr-6 text-[13.5px] font-medium">{title}</span>}
           {view.kind !== 'settings' && (
-            <div className="ml-auto pr-3">
+            <div className="ml-auto flex items-center gap-3 pr-3">
+              {view.kind === 'session' && <SessionSummary sessionId={view.sessionId} projectId={view.projectId} />}
               <RightPanelToggle />
             </div>
           )}

@@ -1,5 +1,6 @@
 // 把 SDK 消息（实时流或历史记录）整理成界面用的 UiMessage 列表。纯逻辑，不依赖 Electron。
 import { randomUUID } from 'node:crypto'
+import { SessionActivity, type ActivityState } from './sessionActivity'
 import type { TokenUsage, UiBlock, UiMessage } from '../shared/chat'
 
 type ToolBlock = Extract<UiBlock, { kind: 'tool' }>
@@ -53,6 +54,8 @@ function toBlock(raw: Json): UiBlock | null {
 }
 
 export class Transcript {
+  readonly activity: SessionActivity
+  constructor(cwd?: string, savedActivity?: ActivityState) { this.activity = new SessionActivity(cwd, savedActivity) }
   readonly messages: UiMessage[] = []
   private byId = new Map<string, UiMessage>()
   private streamIndex = new Map<string, number>()
@@ -68,6 +71,7 @@ export class Transcript {
   }
 
   addUser(text: string): void {
+    this.activity.reference(text)
     this.time = Date.now()
     this.addTyped(text)
   }
@@ -86,6 +90,7 @@ export class Transcript {
   }
 
   apply(raw: unknown): void {
+    this.activity.apply(raw)
     const m = raw as Json
     const parent = (m.parent_tool_use_id as string | null) ?? null
     // 历史消息带时间戳；实时消息就用收到的时间

@@ -1,12 +1,16 @@
 // 三栏布局：左右栏宽度、右栏开关和当前标签。宽度和开关记在本机（localStorage），重启后保持
 import { create } from 'zustand'
+import type { SummaryView } from '@shared/sessionSummary'
 
 /** 右栏标签：顺便问一下、项目文件，以及打开的文件（file:<绝对路径>） */
 export type RightTab = 'btw' | 'project' | `file:${string}` | `page:${string}`
 
 export interface SidePage {
   id: `page:${string}`
-  kind: 'start' | 'files' | 'terminal' | 'browser'
+  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary'
+  sessionId?: string
+  projectId?: string
+  section?: SummaryView
   cwd?: string
 }
 
@@ -41,7 +45,7 @@ function load(): Saved {
       rightWidth: clamp(Number(saved.rightWidth) || RIGHT.default, RIGHT),
       rightOpen: saved.rightOpen === true,
       // 打开的文件不保存，重启后回到固定标签
-      rightTab: saved.rightTab === 'project' || (saved.rightTab as string) === 'files' ? 'project' : saved.rightTab === 'btw' ? 'btw' : 'page:home'
+      rightTab: saved.rightTab === 'btw' ? 'btw' : 'page:home'
     }
   } catch {
     return fallback
@@ -59,6 +63,7 @@ interface LayoutStore extends Saved {
   newPage(cwd?: string, kind?: SidePage['kind']): void
   changePage(id: SidePage['id'], kind: SidePage['kind'], cwd?: string): void
   closePage(id: SidePage['id']): void
+  openSummary(sessionId: string, projectId: string, section: SummaryView): void
   openFile(path: string, line?: number): void
   closeFile(path: string): void
   setLeftWidth(width: number): void
@@ -88,6 +93,12 @@ export const useLayout = create<LayoutStore>((set, get) => {
     newPage: (cwd, kind = 'start') => {
       const id = `page:${crypto.randomUUID()}` as const
       set({ pages: [...get().pages, { id, kind, cwd }] })
+      save({ rightOpen: true, rightTab: id })
+    },
+    openSummary: (sessionId, projectId, section) => {
+      const existing = get().pages.find((p) => p.kind === 'summary' && p.sessionId === sessionId && p.section === section)
+      const id = existing?.id ?? `page:${crypto.randomUUID()}` as const
+      if (!existing) set({ pages: [...get().pages, { id, kind: 'summary', sessionId, projectId, section }] })
       save({ rightOpen: true, rightTab: id })
     },
     changePage: (id, kind, cwd) => {
@@ -120,7 +131,7 @@ export const useLayout = create<LayoutStore>((set, get) => {
       set({ openFiles: next })
       if (get().rightTab === `file:${path}`) {
         const neighbour = next[Math.min(i, next.length - 1)]
-        save({ rightTab: neighbour ? `file:${neighbour.path}` : 'project' })
+        save({ rightTab: neighbour ? `file:${neighbour.path}` : get().pages.find((p) => p.kind === 'files')?.id ?? get().pages[0].id })
       }
     },
     setLeftWidth: (width) => save({ leftWidth: clamp(width, LEFT) }),
@@ -130,3 +141,7 @@ export const useLayout = create<LayoutStore>((set, get) => {
     setResizing: (resizing) => set({ resizing })
   }
 })
+
+export function sidebarPageCount(state: Pick<LayoutStore, 'pages' | 'openFiles' | 'rightTab'>, hasSession: boolean): number {
+  return state.pages.length + state.openFiles.length + (hasSession ? 1 : 0) + (state.rightTab === 'project' ? 1 : 0)
+}

@@ -5,6 +5,7 @@ import type { DemoState } from '../shared/types'
 import { adoptLoginShellPath } from './env'
 import { applyTheme, chats, registerIpc } from './ipc'
 import * as store from './store'
+import { flushActivityRepository } from './activityRepository'
 import { registerWorkspaceIpc, closeWorkspace } from './workspace'
 
 if (app.isPackaged) adoptLoginShellPath()
@@ -75,5 +76,5 @@ if (process.argv.includes('--probe')) {
     createWindow()
   })
   app.on('window-all-closed', () => app.quit())
-  app.on('before-quit', () => { chats.closeAll(); closeWorkspace() })
+  app.on('before-quit', () => { chats.closeAll(); flushActivityRepository(); closeWorkspace() })
 }

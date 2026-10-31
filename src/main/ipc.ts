@@ -11,6 +11,7 @@ import { runLocalCommand } from './localCommand'
 import * as projects from './projects'
 import * as sessions from './sessions'
 import * as store from './store'
+import { activityRepository } from './activityRepository'
 
 function str(value: unknown, name: string): string {
   if (typeof value !== 'string' || value === '') throw new Error(`参数 ${name} 无效`)
@@ -26,7 +27,7 @@ function broadcast(sessionId: string, event: ChatEvent): void {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send('chat:event', sessionId, event)
 }
 
-export const chats = new SessionManager(broadcast)
+export const chats = new SessionManager(broadcast, activityRepository)
 
 export function registerIpc(demo: DemoState | null): void {
   const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
