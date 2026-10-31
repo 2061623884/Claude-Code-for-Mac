@@ -6,8 +6,8 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.1-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.1-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.2-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.2-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。应用尚未使用 Apple Developer ID 签名或经过 Apple 公证，macOS 可能显示安全提示。
@@ -17,12 +17,13 @@
 ## 功能
 
 - 项目管理、历史会话、流式回复、权限确认、模型和思考程度选择。
+- 输入 `/` 立即显示常用命令，项目命令在后台加载。命令目录按项目和可执行文件配置缓存，失败可重试；逐字过滤在本地完成。
 - 右侧栏仅在会话内开放，标签和展开状态按会话隔离。加号新建“开始”页，提供工作区文件、终端、浏览器和侧边聊天四个入口。
 - 文件树与代码、Markdown、图片、HTML、PDF、DOCX、Excel（XLSX/XLS）内嵌预览。PDF 支持密码输入；Excel 支持工作表切换与大表按可见区域渲染。
 - 在项目目录运行的内嵌交互终端，以及内嵌浏览器。
 - 可主动创建多个独立侧边聊天，分别保存草稿和问答。没有消息时显示引导，发送后隐藏，清空后重新显示。`/btw` 每次创建独立聊天页。
 - 归档当前会话后返回主页，不再停留在已归档页面。
-- 主聊天和侧边聊天使用扁平化橙色 Spark 动效，循环收缩与舒展；等待确认、停止、完成或减少动态效果模式下保持静态。
+- 主聊天和侧边聊天使用扁平化橙色 Spark 动效，以小中心、细长圆头光束循环收缩与舒展；等待确认、停止、完成或减少动态效果模式下保持静态。
 - 主会话实时展示思考摘要，默认最新三行，可展开查看本轮完整返回内容。工作状态区分思考、读取文件、运行命令及生成回复。
 - 侧栏调宽、展开与收起动效，浅色和深色主题。
 - 独立的会话摘要面板，汇总文件变更、来源、关联项目目录、任务／待办与子 Agent。
@@ -36,7 +37,11 @@
 
 HTML 和 DOCX 预览不执行脚本，也不加载文档中的远程资源。Office 预览只读，不保证完整还原排版或图表，不执行宏或重新计算公式。PDF 预览上限 100 MB，Office 文件上限 30 MB；超限或不支持的文件可用系统默认应用打开。
 
+macOS 红色关闭按钮和 `Command-W` 仅隐藏窗口，聊天、草稿、终端和浏览器继续保留。点击 Dock 图标或再次打开应用可恢复原窗口；`Command-Q`、应用菜单或 Dock 的退出操作才会退出应用并清理资源。
+
 切换会话、返回主页、归档或进入设置时，会保留终端进程与浏览器页面；关闭标签、移除所属项目或退出应用时释放资源。侧栏标签、草稿和侧边聊天仅在本次应用运行期间保留，重启后不会恢复。
+
+命令目录成功加载后保存在用户数据目录的 `command-catalog/`。超过五分钟后在下次使用时后台刷新，已有会话的命令变化也会更新目录。首次发现的项目自定义命令仍需等待 SDK 初始化；常用命令和缓存目录不受该等待影响。
 
 ## 本地开发
 
@@ -83,6 +88,12 @@ env -u ELECTRON_RUN_AS_NODE node_modules/.bin/electron scripts/smoke-summary.cjs
 
 ```sh
 env -u ELECTRON_RUN_AS_NODE node_modules/.bin/electron scripts/smoke-thinking.cjs
+```
+
+命令响应与窗口生命周期验证（包含退出后 PTY 进程检查）：
+
+```sh
+node scripts/smoke-window.cjs
 ```
 
 该验证使用临时项目和合成会话，检查会话隔离、归档导航、侧边聊天、DOCX/Excel/PDF 文件预览、终端和本地浏览器，不发送 Claude 对话。Office 样本在运行时生成；PDF 样本可通过 `scripts/generate-pdf-fixtures.py` 重新生成（需要 Python 的 reportlab、pypdf）。`npm run probe` 则会实际调用模型，应按需要手动运行。

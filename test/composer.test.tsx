@@ -182,3 +182,12 @@ describe('Composer attachment submission', () => {
     expect(submit.mock.calls[0]![0]).toMatchObject({ prompt: '看看 @src/b.ts 的问题' })
   })
 })
+
+it('submits a directly typed command when the ready catalogue has no matching suggestion', async () => {
+  window.desk = { meta: { commands: vi.fn().mockResolvedValue({ cwd: '/work/project', revision: 1, commands: [], status: 'ready', updatedAt: 1 }), onCommands: () => () => {} } } as unknown as Window['desk']
+  const submit = vi.fn().mockResolvedValue(undefined)
+  render(<Harness submit={submit} initialText="/project-command" initialAttachments={[]} />)
+  await screen.findByText('没有匹配的命令')
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', code: 'Enter' })
+  await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: '/project-command' })))
+})

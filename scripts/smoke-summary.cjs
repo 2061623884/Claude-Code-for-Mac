@@ -30,7 +30,7 @@ ipcMain.handle = (name, handler) => {
     'chat:open': () => ({ messages: [{ id: 'welcome', role: 'assistant', parentToolUseId: null, blocks: [{ kind: 'text', text: '本会话已读取参考文件、搜索网页并修改代码。摘要展示项目、任务和子 Agent 的真实事件记录。' }] }], state: 'idle', approvals: [], live: false, summary: collector.snapshot() }),
     'chat:context': () => null, 'chat:checkExternal': () => false,
     'meta:get': () => ({ models: [{ value: 'opus', label: 'Opus', efforts: [] }], subscriptionType: null, claudeVersion: 'fixture' }),
-    'meta:commands': () => []
+    'meta:commands': (_event, cwd) => ({ cwd, revision: 1, commands: [], status: 'ready', updatedAt: Date.now() })
   }
   originalHandle(name, stubs[name] || handler)
 }

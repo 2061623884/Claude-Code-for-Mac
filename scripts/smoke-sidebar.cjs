@@ -33,7 +33,7 @@ ipcMain.handle = (name, handler) => {
     'chat:open': () => ({ messages: [], state: 'idle', approvals: [], live: false }),
     'chat:context': () => null, 'chat:checkExternal': () => false,
     'meta:get': () => ({ models: [], subscriptionType: null, claudeVersion: 'fixture' }),
-    'meta:commands': () => [],
+    'meta:commands': (_event, cwd) => ({ cwd, revision: 1, commands: [], status: 'ready', updatedAt: Date.now() }),
     'meta:usage': () => ({ subscriptionType: null, available: false, windows: [] }),
     'chat:btw': async (_event, _id, _path, question) => { await new Promise(r => setTimeout(r, 150)); return '测试回答：' + question }
   }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { CommandInfo } from '../../shared/types'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, McpStatus, SessionOptions } from '../../shared/chat'
 import { peekContext } from '../context'
 import { loadSdk, withIdleQuery } from '../sdk'
@@ -9,17 +10,28 @@ import type { ActivityRepository } from '../activityRepository'
 const MAX_LIVE = 4
 const IDLE_MS = 15 * 60_000
 
+interface CommandObserver {
+  configuration(): string
+  publisher(cwd: string): (commands: CommandInfo[]) => void
+}
+
 type Emit = (sessionId: string, event: ChatEvent) => void
 
 export class SessionManager {
   private live = new Map<string, LiveSession>()
+  private commandConfigurations = new WeakMap<LiveSession, string>()
   private transcripts = new Map<string, Transcript>()
   private transcriptLoads = new Map<string, Promise<Transcript>>()
   /** 最近一次和会话文件同步时，文件里的消息条数；用来发现别处（终端、VS Code）续写了这个会话 */
   private seen = new Map<string, number>()
   private sweeper = setInterval(() => this.closeIdle(), 60_000)
 
-  constructor(private emit: Emit, private activityStore?: ActivityRepository) {}
+  constructor(private emit: Emit, private activityStore?: ActivityRepository, private commandObserver?: CommandObserver) {}
+
+  commandsFor(cwd: string, configuration?: string): Promise<CommandInfo[]> | undefined {
+    const session = [...this.live.values()].find((candidate) => candidate.cwd === cwd && (configuration === undefined || this.commandConfigurations.get(candidate) === configuration))
+    return session?.commands()
+  }
 
   async open(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
     const transcript = await this.transcript(sessionId, projectPath)
@@ -182,8 +194,9 @@ export class SessionManager {
       if (event.kind === 'summary') this.activityStore?.save(sessionId, transcript.activity.export())
       this.emit(sessionId, event)
     }
+    const configuration = this.commandObserver?.configuration()
     const session = new LiveSession({
-      sessionId, cwd, resume, fork, options, transcript, emit,
+      sessionId, cwd, resume, fork, options, transcript, emit, onCommands: this.commandObserver?.publisher(cwd),
       onClosed: (closed) => {
         // 迟到的旧实例退出事件不能删除已经替换它的新实例。
         if (this.live.get(sessionId) !== closed) return
@@ -191,6 +204,7 @@ export class SessionManager {
         this.seen.delete(sessionId)
       }
     })
+    if (configuration !== undefined) this.commandConfigurations.set(session, configuration)
     this.live.set(sessionId, session)
     void session.start()
     return session

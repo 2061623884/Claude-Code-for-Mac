@@ -1,5 +1,6 @@
 // 一个常驻的 claude 进程，对应一个打开着的会话（流式输入模式，可随时追加消息、中断、切换模式）。
 import type { CanUseTool, HookCallback, McpServerStatus, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { CommandInfo } from '../../shared/types'
 import type { ApprovalRequest, BtwTurn, ChatEvent, ChatState, ContextUsage, Decision, SessionOptions } from '../../shared/chat'
 import { toPermissionResult } from '../approval'
 import { toContextUsage } from '../context'
@@ -34,6 +35,7 @@ interface LiveSessionInit {
   transcript: Transcript
   emit(event: ChatEvent): void
   onClosed(session: LiveSession): void
+  onCommands?(commands: CommandInfo[]): void
 }
 
 const FLUSH_MS = 50
@@ -50,6 +52,7 @@ export class LiveSession {
   private abort = new AbortController()
   private q: Query | null = null
   private closed = false
+  private commandsChanged = false
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private onStarted!: (q: Query) => void
   private onStartFailed!: (err: unknown) => void
@@ -99,12 +102,19 @@ export class LiveSession {
         }
       })
       this.onStarted(this.q)
+      if (this.init.onCommands) void this.q.initializationResult().then((result) => {
+        if (!this.closed && !this.commandsChanged) this.publishCommands(result.commands)
+      }).catch(() => {})
       void this.pump(this.q)
     } catch (err) {
       this.onStartFailed(err)
       if (!this.closed) this.fail(err, '无法启动 Claude')
     }
   }
+
+  get cwd(): string { return this.init.cwd }
+
+  async commands(): Promise<CommandInfo[]> { return (await this.query()).supportedCommands() }
 
   async mcpStatus(): Promise<McpServerStatus[]> {
     return (await this.query()).mcpServerStatus()
@@ -186,6 +196,11 @@ export class LiveSession {
     }
   }
 
+  private publishCommands(commands: CommandInfo[]): void {
+    try { this.init.onCommands?.(commands) }
+    catch (error) { console.error('更新命令目录失败', error) }
+  }
+
   private async query(): Promise<Query> {
     const q = await this.started
     if (this.closed) throw new Error('会话已结束，请重试')
@@ -255,6 +270,7 @@ export class LiveSession {
 
   private handle(m: SDKMessage): void {
     this.lastActive = Date.now()
+    if (m.type === 'system' && m.subtype === 'commands_changed') { this.commandsChanged = true; this.publishCommands(m.commands) }
     this.activity.apply(m)
     this.init.transcript.apply(m)
     this.scheduleFlush()

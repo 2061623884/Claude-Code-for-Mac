@@ -40,7 +40,7 @@ const api: DeskApi = {
     setArchived: call('sessions:setArchived')
   },
   settings: { get: call('settings:get'), set: call('settings:set') },
-  meta: { get: call('meta:get'), commands: call('meta:commands'), usage: call('meta:usage'), config: call('meta:config') },
+  meta: { get: call('meta:get'), commands: call('meta:commands'), onCommands: (listener) => subscribe('meta:commands', listener), usage: call('meta:usage'), config: call('meta:config') },
   files: {
     pathFor: (file) => webUtils.getPathForFile(file),
     describe: call('files:describe'),

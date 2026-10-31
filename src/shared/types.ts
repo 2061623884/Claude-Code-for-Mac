@@ -1,3 +1,4 @@
+import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, McpStatus, SessionOptions } from './chat'
 
@@ -43,11 +44,7 @@ export interface Settings {
   allowBypass: boolean
 }
 
-export interface CommandInfo {
-  name: string
-  description: string
-  argumentHint: string
-}
+export type { CommandInfo } from './commandCatalog'
 
 /** 右栏文件预览的内容 */
 export type FilePreview =
@@ -159,7 +156,8 @@ export interface DeskApi {
   }
   meta: {
     get(): Promise<MetaInfo>
-    commands(projectPath: string): Promise<CommandInfo[]>
+    commands(projectPath: string, force?: boolean): Promise<CommandCatalogSnapshot>
+    onCommands(listener: (snapshot: CommandCatalogSnapshot) => void): () => void
     /** 套餐用量（和终端里 /usage 看到的一样），不消耗额度 */
     usage(): Promise<PlanUsage>
     /** 执行 /config：不带参数返回设置清单，带 key=value 修改一项（临时会话，不写入任何对话） */

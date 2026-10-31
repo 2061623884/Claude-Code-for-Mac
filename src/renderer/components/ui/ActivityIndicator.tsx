@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
-// 两种轮廓使用相同的二次曲线拓扑，内收时尖角随轮廓变化，不缩放整张图片。
+// 小中心和细长光束分别变化；圆形线帽保证展开时的末端圆润。
 function sparkPath(compact: boolean): string {
-  const rays = [10, 9.1, 10.4, 9.4, 10.1, 8.9, 10.3, 9.5, 10.2, 9.2, 9.9, 9.4]
-  const points = rays.flatMap((length, ray) => [-10, -3, 3].map((offset, edge) => {
-    const angle = ((ray * 30 + offset - 90) * Math.PI) / 180
-    const radius = compact ? 3.2 + 0.15 * Math.sin(ray) : edge === 0 ? 4.7 : length
-    return { x: 12 + radius * Math.cos(angle), y: 12 + radius * Math.sin(angle) }
-  }))
-  const number = (n: number): string => n.toFixed(3)
-  const midpoint = (a: typeof points[number], b: typeof points[number]): string => `${number((a.x + b.x) / 2)} ${number((a.y + b.y) / 2)}`
-  return `M ${midpoint(points.at(-1)!, points[0])} ` + points.map((point, i) => `Q ${number(point.x)} ${number(point.y)} ${midpoint(point, points[(i + 1) % points.length])}`).join(' ') + ' Z'
+  const lengths = [10, 9.1, 10.4, 9.4, 10.1, 8.9, 10.3, 9.5, 10.2, 9.2, 9.9, 9.4]
+  return lengths.map((length, index) => {
+    const angle = (index * 30 - 90) * Math.PI / 180
+    const point = (radius: number): string => `${(12 + radius * Math.cos(angle)).toFixed(3)} ${(12 + radius * Math.sin(angle)).toFixed(3)}`
+    return `M ${point(compact ? 2.2 : 1.5)} L ${point(compact ? 2.6 + (length - 9) * 0.12 : length)}`
+  }).join(' ')
 }
 const EXPANDED = sparkPath(false), COMPACT = sparkPath(true)
+const TIMING = { dur: '1.8s', repeatCount: 'indefinite', calcMode: 'spline' as const, keyTimes: '0;0.5;1', keySplines: '0.42 0 0.58 1;0.42 0 0.58 1' }
 
 export function ActivitySpark({ active = true }: { active?: boolean }) {
   const svg = useRef<SVGSVGElement>(null)
@@ -34,9 +32,12 @@ export function ActivitySpark({ active = true }: { active?: boolean }) {
   }, [])
   const animate = active && allowed && intersects
   return <svg ref={svg} data-activity-spark data-animated={animate} aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" className="shrink-0 text-accent">
-    <path d={EXPANDED} fill="currentColor">
-      {animate && <animate attributeName="d" values={`${EXPANDED};${COMPACT};${EXPANDED}`} dur="1.8s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" />}
+    <path d={EXPANDED} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      {animate && <animate attributeName="d" values={`${EXPANDED};${COMPACT};${EXPANDED}`} {...TIMING} />}
     </path>
+    <circle cx="12" cy="12" r="1.8" fill="currentColor">
+      {animate && <animate attributeName="r" values="1.8;3;1.8" {...TIMING} />}
+    </circle>
   </svg>
 }
 

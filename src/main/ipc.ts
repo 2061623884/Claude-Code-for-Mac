@@ -1,5 +1,5 @@
 import { homedir } from 'node:os'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import type { BtwTurn, ChatEvent, Decision, SessionOptions } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
@@ -11,6 +11,8 @@ import { runLocalCommand } from './localCommand'
 import * as projects from './projects'
 import * as sessions from './sessions'
 import * as store from './store'
+import { CommandCatalog } from './commandCatalog'
+import { readMetadata } from './metadataQuery'
 import { activityRepository } from './activityRepository'
 
 function str(value: unknown, name: string): string {
@@ -27,15 +29,23 @@ function broadcast(sessionId: string, event: ChatEvent): void {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send('chat:event', sessionId, event)
 }
 
-export const chats = new SessionManager(broadcast, activityRepository)
+const commandConfiguration = (): string => JSON.stringify([store.read().settings.claudePath ?? null, app.getVersion()])
+export const commandCatalog: CommandCatalog = new CommandCatalog({
+  directory: () => join(app.getPath('userData'), 'command-catalog'),
+  configuration: commandConfiguration,
+  load: (cwd, signal, configuration) => chats.commandsFor(cwd, configuration) ?? readMetadata(cwd, signal).then((init) => init.commands),
+  publish: (snapshot) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('meta:commands', snapshot) }
+})
+export const chats: SessionManager = new SessionManager(broadcast, activityRepository, { configuration: commandConfiguration, publisher: (cwd) => commandCatalog.publisher(cwd) })
 
-export function registerIpc(demo: DemoState | null): void {
+export function registerIpc(demo: DemoState | null, focusWindow?: () => void): void {
   const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
     ipcMain.handle(channel, (_e, ...args) => fn(...args))
   }
 
   handle('app:state', () => ({ seededFromHistory: store.read().seededFromHistory, demo, home: homedir() }))
   ipcMain.handle('app:focus', (e) => {
+    if (focusWindow) { focusWindow(); return }
     const win = BrowserWindow.fromWebContents(e.sender)
     if (win?.isMinimized()) win.restore()
     win?.show()
@@ -57,15 +67,21 @@ export function registerIpc(demo: DemoState | null): void {
 
   handle('settings:get', () => store.read().settings)
   handle('settings:set', (patch) => {
+    const previousPath = store.read().settings.claudePath
     const next = store.update((d) => {
       d.settings = { ...d.settings, ...(patch as Partial<Settings>) }
     }).settings
+    if (next.claudePath !== previousPath) commandCatalog.invalidate()
     applyTheme(next.theme)
     return next
   })
 
   handle('meta:get', () => meta.get())
-  handle('meta:commands', (path) => meta.commands(str(path, 'path')))
+  handle('meta:commands', (path, force) => {
+    const cwd = str(path, 'path')
+    if (!isAbsolute(cwd)) throw new Error('项目路径必须是绝对路径')
+    return commandCatalog.get(cwd, force === true)
+  })
   handle('meta:usage', () => planUsage())
   handle('meta:config', (path, setting) =>
     runLocalCommand(str(path, 'path'), typeof setting === 'string' && setting ? `/config ${setting}` : '/config')

@@ -20,10 +20,11 @@ import {
   type ComposerSubmission
 } from '@shared/attachments'
 import type { CommandInfo, EffortLevel, PermissionMode } from '@shared/types'
-import { EFFORT_LEVELS, findTrigger, formatBytes, PERMISSION_MODES, shortenPath, type Trigger } from '@shared/format'
+import { EFFORT_LEVELS, findTrigger, formatBytes, PERMISSION_MODES, shortenPath } from '@shared/format'
 import { useDesk } from '../../store'
 import { Menu } from '../ui/Menu'
 import { ComposerEditor, type EditorHandle } from './ComposerEditor'
+import { useSuggestions, type Suggestion } from './useSuggestions'
 
 interface ComposerProps {
   value: string
@@ -107,16 +108,13 @@ export function Composer({
   const onKey = (e: KeyboardEvent): boolean => {
     if (suggest.open) {
       const n = suggest.items.length
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        suggest.setActive((suggest.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n)
+      if (e.key === 'Escape') { suggest.dismiss(); return true }
+      if (n && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        suggest.setActive(suggest.active < 0 ? (e.key === 'ArrowDown' ? 0 : n - 1) : (suggest.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n)
         return true
       }
-      if (e.key === 'Enter' || e.key === 'Tab') {
+      if (n && suggest.active >= 0 && (e.key === 'Enter' || e.key === 'Tab')) {
         pick(suggest.items[suggest.active])
-        return true
-      }
-      if (e.key === 'Escape') {
-        suggest.dismiss()
         return true
       }
     }
@@ -250,7 +248,7 @@ export function Composer({
   return (
     <div className="relative">
       {panel}
-      {suggest.open && !panel && <SuggestionList items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
+      {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
       <div className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
         {attachments.length > 0 && (
           <AttachmentRail
@@ -403,80 +401,18 @@ function AttachmentRail({
   )
 }
 
-interface Suggestion {
-  key: string
-  label: string
-  hint?: string
-  detail?: string
-  insert: string
-}
-
-const NO_COMMANDS: CommandInfo[] = []
-
-// 命令列表按项目缓存，整个应用共用
-const commandCache = new Map<string, Promise<CommandInfo[]>>()
-function loadCommands(cwd: string): Promise<CommandInfo[]> {
-  let p = commandCache.get(cwd)
-  if (!p) {
-    p = window.desk.meta.commands(cwd).catch((err) => {
-      commandCache.delete(cwd)
-      throw err
-    })
-    commandCache.set(cwd, p)
-  }
-  return p
-}
-
-function matchCommands(commands: CommandInfo[], query: string): Suggestion[] {
-  const q = query.toLowerCase()
-  return commands
-    .filter((c) => c.name.toLowerCase().includes(q))
-    .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) || a.name.localeCompare(b.name))
-    .map((c) => ({ key: c.name, label: '/' + c.name, hint: c.argumentHint || undefined, detail: c.description, insert: '/' + c.name }))
-}
-
-function useSuggestions(trigger: Trigger | null, cwd: string | undefined, extra: CommandInfo[] = NO_COMMANDS) {
-  const [items, setItems] = useState<Suggestion[]>([])
-  const [active, setActive] = useState(0)
-  const [dismissed, setDismissed] = useState<string | null>(null)
-  const id = trigger && `${trigger.kind}${trigger.start}`
-  const kind = trigger?.kind
-  const query = trigger?.query
-
-  useEffect(() => {
-    if (!kind || query === undefined || !cwd) return setItems([])
-    let stale = false
-    const load: Promise<Suggestion[]> =
-      kind === '/'
-        ? loadCommands(cwd).then((cmds) => matchCommands([...extra, ...cmds], query))
-        : window.desk.files.search(cwd, query).then((files) => files.map((f) => ({ key: f, label: f, insert: '@' + f })))
-    load
-      .then((next) => {
-        if (stale) return
-        setItems(next)
-        setActive(0)
-      })
-      .catch(() => !stale && setItems([]))
-    return () => {
-      stale = true
-    }
-  }, [kind, query, cwd, extra])
-
-  return {
-    items,
-    active: Math.min(active, Math.max(items.length - 1, 0)),
-    setActive,
-    open: Boolean(id && items.length > 0 && dismissed !== id),
-    dismiss: () => setDismissed(id)
-  }
-}
-
 function SuggestionList({
   items,
   active,
   onPick,
-  onHover
+  onHover,
+  status,
+  error,
+  onRetry
 }: {
+  status: 'loading' | 'ready' | 'error'
+  error?: string
+  onRetry(): void
   items: Suggestion[]
   active: number
   onPick(item: Suggestion): void
@@ -484,14 +420,14 @@ function SuggestionList({
 }) {
   const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    list.current?.children[active]?.scrollIntoView({ block: 'nearest' })
+    list.current?.querySelectorAll('[role="option"]')[active]?.scrollIntoView({ block: 'nearest' })
   }, [active])
   return (
     <div
       ref={list}
-      role="listbox"
       className="absolute bottom-full left-0 right-0 z-40 mb-2 max-h-[280px] overflow-y-auto rounded-xl border border-line bg-card p-1 shadow-pop"
     >
+      <div role="listbox" aria-label="输入建议">
       {items.map((item, i) => (
         <div
           key={item.key}
@@ -510,6 +446,10 @@ function SuggestionList({
           {item.detail && <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg3">{item.detail}</span>}
         </div>
       ))}
+      </div>
+      {status === 'loading' && <p role="status" className="px-2.5 py-2 text-[12px] text-fg3">正在加载项目命令…</p>}
+      {status === 'error' && <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[12px] text-fg3"><span role="status" title={error}>项目命令加载失败</span><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onRetry} className="rounded px-2 py-1 text-fg2 hover:bg-active">重试</button></div>}
+      {status === 'ready' && items.length === 0 && <p role="status" className="px-2.5 py-2 text-[12px] text-fg3">没有匹配的命令</p>}
     </div>
   )
 }

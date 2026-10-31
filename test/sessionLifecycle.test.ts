@@ -133,3 +133,23 @@ it('publishes current activity in events and snapshots and clears it after inter
   await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, { kind: 'state', state: 'idle' }))
   expect((await manager.open(id, '/tmp')).activity?.phase).toBe('idle')
 })
+
+it('reuses live command lists only for the same executable configuration and forwards updates', async () => {
+  manager.closeAll()
+  let configuration = 'sdk-a'
+  const publish = vi.fn()
+  manager = new SessionManager(emit, undefined, { configuration: () => configuration, publisher: () => publish })
+  let initialize!: (value: unknown) => void
+  const query = Object.assign(liveQuery(), { initializationResult: () => new Promise(resolve => { initialize = resolve }), supportedCommands: vi.fn().mockResolvedValue([{ name: 'latest', description: '', argumentHint: '' }]) })
+  sdk.query.mockReturnValue(query)
+  manager.start('/tmp', 'question', options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce())
+  query.push({ type: 'system', subtype: 'commands_changed', commands: [{ name: 'latest', description: '', argumentHint: '' }] })
+  await vi.waitFor(() => expect(publish).toHaveBeenCalledWith([{ name: 'latest', description: '', argumentHint: '' }]))
+  initialize({ commands: [{ name: 'old', description: '', argumentHint: '' }] })
+  await Promise.resolve()
+  expect(publish).toHaveBeenCalledTimes(1)
+  await expect(manager.commandsFor('/tmp', 'sdk-a')).resolves.toEqual([{ name: 'latest', description: '', argumentHint: '' }])
+  configuration = 'sdk-b'
+  expect(manager.commandsFor('/tmp', configuration)).toBeUndefined()
+})

@@ -29,7 +29,7 @@ ipcMain.handle = (name, handler) => {
     'chat:context': () => null, 'chat:checkExternal': () => false,
     'chat:btw': () => new Promise(resolve => { answerSideQuestion = resolve }),
     'meta:get': () => ({ models: [], subscriptionType: null, claudeVersion: 'fixture' }),
-    'meta:usage': () => ({ subscriptionType: null, available: false, windows: [] }), 'meta:commands': () => []
+    'meta:usage': () => ({ subscriptionType: null, available: false, windows: [] }), 'meta:commands': (_event, cwd) => ({ cwd, revision: 1, commands: [], status: 'ready', updatedAt: Date.now() })
   }
   originalHandle(name, stubs[name] || handler)
 }
