@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Archive, ArchiveRestore, Pencil } from 'lucide-react'
+import { Archive, ArchiveRestore, Pencil, Pin, PinOff } from 'lucide-react'
 import type { ChatState } from '@shared/chat'
 import type { SessionSummary } from '@shared/types'
+import { useSessionMarks } from '../../sessionMarks'
 import { relativeTimeZh } from '@shared/format'
 
 interface SessionRowProps {
@@ -15,6 +16,9 @@ interface SessionRowProps {
 }
 
 export function SessionRow({ session, active, status, indent = true, onOpen, onRename, onArchive }: SessionRowProps) {
+  const pinned = useSessionMarks((s) => s.pinned.includes(session.id))
+  const unread = useSessionMarks((s) => !!s.unread[session.id])
+  const togglePin = useSessionMarks((s) => s.togglePin)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(session.title)
 
@@ -48,17 +52,18 @@ export function SessionRow({ session, active, status, indent = true, onOpen, onR
       role="button"
       tabIndex={0}
       onClick={onOpen}
-      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
+      onKeyDown={(e) => e.target === e.currentTarget && e.key === 'Enter' && onOpen()}
       title={session.title}
       className={`group flex h-8 items-center gap-2 rounded-lg pr-2 ${indent ? 'pl-8' : 'pl-2.5'} ${
         active ? 'bg-active' : 'hover:bg-hover'
       }`}
     >
       <span className={`min-w-0 flex-1 truncate ${active ? 'text-fg' : 'text-fg/85'}`}>{session.title}</span>
-      {status === 'running' && <span title="运行中" className="size-2 shrink-0 animate-pulse rounded-full bg-fg3 group-hover:hidden" />}
-      {status === 'awaiting' && <span title="等待你确认" className="size-2 shrink-0 rounded-full bg-accent group-hover:hidden" />}
-      <span className="shrink-0 text-[11.5px] text-fg3 group-hover:hidden">{relativeTimeZh(session.lastModified)}</span>
-      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+      {status === 'running' && <span title="运行中" className="size-2 shrink-0 animate-pulse rounded-full bg-fg3 group-hover:hidden group-focus-within:hidden" />}
+      {status === 'awaiting' && <span className="shrink-0 text-[11px] text-accent">待确认</span>}
+      {unread && <span role="status" aria-label="有未读回复" title="有未读回复" className="size-1.5 shrink-0 rounded-full bg-orange-500" />}
+      <span className="shrink-0 text-[11.5px] text-fg3 group-hover:hidden group-focus-within:hidden">{relativeTimeZh(session.lastModified)}</span>
+      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
         {!session.archived && (
           <IconButton
             label="重命名"
@@ -74,6 +79,13 @@ export function SessionRow({ session, active, status, indent = true, onOpen, onR
           {session.archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
         </IconButton>
       </span>
+      {!session.archived && (
+        <span className={pinned ? "shrink-0" : "shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}>
+          <IconButton label={pinned ? "取消置顶" : "置顶"} onClick={() => togglePin(session.id)}>
+            {pinned ? <PinOff size={13} /> : <Pin size={13} />}
+          </IconButton>
+        </span>
+      )}
     </div>
   )
 }

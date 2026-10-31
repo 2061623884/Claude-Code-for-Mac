@@ -284,7 +284,7 @@ export class LiveSession {
           : m.subtype === 'error_during_execution'
             ? null // 用户中断
             : `运行结束：${m.subtype}`
-      this.init.emit({ kind: 'result', durationMs: m.duration_ms, error })
+      this.init.emit({ kind: 'result', resultId: m.uuid, durationMs: m.duration_ms, error })
       this.setState(this.pending.size > 0 ? 'awaiting' : 'idle')
     }
   }

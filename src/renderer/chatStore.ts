@@ -3,6 +3,7 @@ import { emptySessionSummary, type SessionSummaryData } from '@shared/sessionSum
 import type { ApprovalRequest, ChatActivity, ChatEvent, ChatState, Decision, SessionOptions, UiMessage } from '@shared/chat'
 import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
+import { useSessionMarks } from './sessionMarks'
 import { useDesk } from './store'
 
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
@@ -37,6 +38,7 @@ interface ChatStore {
 }
 
 let messageRevision = 0
+const completed = new Set<string>()
 
 const desk = (): Window['desk'] => window.desk
 
@@ -68,7 +70,7 @@ export const useChat = create<ChatStore>((set, get) => {
     async load(sessionId, projectId) {
       const existing = get().chats[sessionId]
       if (existing?.loaded) return
-      set({ chats: { ...get().chats, [sessionId]: existing ?? blank(projectId) } })
+      set({ chats: { ...get().chats, [sessionId]: { ...(existing ?? blank(projectId)), projectId } } })
       const requestedAt = messageRevision
       const snap = await desk().chat.open(sessionId, projectPath(projectId))
       patch(sessionId, (current) => {
@@ -156,7 +158,7 @@ export const useChat = create<ChatStore>((set, get) => {
     handle(sessionId, event) {
       if (!get().chats[sessionId]) {
         // 新会话的事件可能比 start() 的返回值先到，先占个位
-        set({ chats: { ...get().chats, [sessionId]: { ...blank(''), loaded: true } } })
+        set({ chats: { ...get().chats, [sessionId]: blank('') } })
       }
       switch (event.kind) {
         case 'activity':
@@ -188,6 +190,13 @@ export const useChat = create<ChatStore>((set, get) => {
           patch(sessionId, (c) => ({ approvals: c.approvals.filter((a) => a.requestId !== event.requestId) }))
           break
         case 'result': {
+          const current = get().chats[sessionId]
+          const lastMessage = current?.messages.at(-1)
+          const completionKey = `${sessionId}:${event.resultId ?? `${lastMessage?.id ?? ''}:${current?.activity?.revision ?? 0}`}`
+          if (!completed.has(completionKey)) {
+            completed.add(completionKey)
+            useSessionMarks.getState().complete(sessionId)
+          }
           patch(sessionId, () => ({ error: event.error }))
           const projectId = get().chats[sessionId]?.projectId
           if (projectId) void useDesk.getState().refreshSessions(projectId)

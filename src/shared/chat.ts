@@ -83,7 +83,7 @@ export type ChatEvent =
   | { kind: 'state'; state: ChatState }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'approvalDone'; requestId: string }
-  | { kind: 'result'; durationMs: number; error: string | null }
+  | { kind: 'result'; resultId?: string; durationMs: number; error: string | null }
   | { kind: 'notice'; text: string }
 
 /** 当前上下文窗口的占用情况 */

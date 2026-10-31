@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { Project, SessionSummary } from '@shared/types'
 import { useDesk } from '../../store'
+import { useSessionMarks } from '../../sessionMarks'
 import { useChat } from '../../chatStore'
 import { Menu } from '../ui/Menu'
 import { Button, Dialog } from '../ui/Dialog'
@@ -27,6 +28,8 @@ export function Sidebar({ width }: { width: number }) {
   const [removing, setRemoving] = useState<Project | null>(null)
   const removeProject = useDesk((s) => s.removeProject)
 
+  const pinnedIds = useSessionMarks((s) => s.pinned)
+  const pinned = pinnedIds.flatMap((id) => projects.flatMap((p) => (sessions[p.id] ?? []).filter((s) => s.id === id && !s.archived).map((s) => ({ s, p }))))
   const archived = projects.flatMap((p) => (sessions[p.id] ?? []).filter((s) => s.archived).map((s) => ({ s, p })))
 
   return (
@@ -49,14 +52,17 @@ export function Sidebar({ width }: { width: number }) {
         <NavItem icon={<Search size={16} />} label="搜索" hint="⌘K" active={false} onClick={() => setSearchOpen(true)} />
       </nav>
 
-      <div className="mt-5 flex items-center justify-between px-4 pb-1">
-        <span className="text-[12px] font-medium text-fg3">项目</span>
-        <IconButton label="添加项目" onClick={pickProject}>
-          <FolderPlus size={14} />
-        </IconButton>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        {pinned.length > 0 && (
+          <div className="mb-3">
+            <div className="px-2 pb-1 text-[12px] font-medium text-fg3">置顶</div>
+            {pinned.map(({ s, p }) => <StandaloneSessionRow key={s.id} session={s} project={p} />)}
+          </div>
+        )}
+        <div className="flex items-center justify-between px-2 pb-1">
+          <span className="text-[12px] font-medium text-fg3">项目</span>
+          <IconButton label="添加项目" onClick={pickProject}><FolderPlus size={14} /></IconButton>
+        </div>
         {projects.length === 0 ? (
           <button
             type="button"
@@ -72,7 +78,7 @@ export function Sidebar({ width }: { width: number }) {
             <ProjectGroup
               key={p.id}
               project={p}
-              sessions={(sessions[p.id] ?? []).filter((s) => !s.archived)}
+              sessions={(sessions[p.id] ?? []).filter((s) => !s.archived && !pinnedIds.includes(s.id))}
               menuOpen={demo?.openMenu === 'project' && i === 0}
               onRemove={() => setRemoving(p)}
             />
@@ -89,7 +95,7 @@ export function Sidebar({ width }: { width: number }) {
               {archivedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               已归档（{archived.length}）
             </button>
-            {archivedOpen && archived.map(({ s, p }) => <ArchivedRow key={s.id} session={s} project={p} />)}
+            {archivedOpen && archived.map(({ s, p }) => <StandaloneSessionRow key={s.id} session={s} project={p} />)}
           </div>
         )}
       </div>
@@ -251,10 +257,12 @@ function ProjectGroup({
   )
 }
 
-function ArchivedRow({ session, project }: { session: SessionSummary; project: Project }) {
+function StandaloneSessionRow({ session, project }: { session: SessionSummary; project: Project }) {
   const { view, setView, renameSession, setArchived } = useDesk()
+  const status = useChat((s) => s.chats[session.id]?.state)
   return (
     <SessionRow
+      status={status}
       session={session}
       indent={false}
       active={view.kind === 'session' && view.sessionId === session.id}

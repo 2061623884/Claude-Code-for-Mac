@@ -6,6 +6,7 @@ import type { CommandInfo } from '@shared/types'
 import { turnsOf } from '@shared/fileChanges'
 import { sumUsage, totalTokens } from '@shared/usageStats'
 import { useBtw } from '../../btwStore'
+import { useSessionMarks } from '../../sessionMarks'
 import { useChat } from '../../chatStore'
 import { useLayout } from '../../layoutStore'
 import { openAppPanel, usePanel } from '../../panelStore'
@@ -44,6 +45,23 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
     void load(sessionId, projectId)
     stick.current = true
   }, [load, sessionId, projectId])
+
+  const unread = useSessionMarks((s) => !!s.unread[sessionId])
+  const sidebarExpanded = useLayout((s) => s.rightOpen && s.expanded)
+  useEffect(() => {
+    const markViewed = (): void => {
+      if (chat?.loaded && !sidebarExpanded && document.visibilityState === 'visible' && document.hasFocus()) {
+        useSessionMarks.getState().markRead(sessionId)
+      }
+    }
+    markViewed()
+    window.addEventListener('focus', markViewed)
+    document.addEventListener('visibilitychange', markViewed)
+    return () => {
+      window.removeEventListener('focus', markViewed)
+      document.removeEventListener('visibilitychange', markViewed)
+    }
+  }, [sessionId, chat?.loaded, unread, sidebarExpanded])
 
   // 回到窗口时检查这个会话是否在终端或 VS Code 里被续写了
   const [external, setExternal] = useState(false)
