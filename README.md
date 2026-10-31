@@ -6,8 +6,8 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.1.0-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.1.0-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.1.1-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.1.1-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。应用尚未使用 Apple Developer ID 签名或经过 Apple 公证，macOS 可能显示安全提示。
@@ -23,7 +23,7 @@
 - “顺便问一下”侧边聊天。没有消息时显示引导，发送后隐藏，清空后重新显示。
 - 侧栏调宽、展开与收起，浅色和深色主题。
 
-HTML 预览不执行脚本；二进制或超过预览大小限制的文件可用系统默认应用打开。终端和侧栏页面状态不保证跨应用重启恢复。
+HTML 预览不执行脚本；二进制或超过预览大小限制的文件可用系统默认应用打开。切换到设置页会保留终端进程与浏览器页面；关闭对应标签时才释放资源。终端和侧栏页面状态不保证跨应用重启恢复。
 
 ## 本地开发
 

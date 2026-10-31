@@ -1,3 +1,4 @@
+import { useModalLayer } from '../../modalStore'
 import { useEffect, type ReactNode } from 'react'
 
 interface DialogProps {
@@ -9,6 +10,7 @@ interface DialogProps {
 }
 
 export function Dialog({ title, children, footer, onClose, width = 440 }: DialogProps) {
+  useModalLayer()
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
@@ -21,6 +23,7 @@ export function Dialog({ title, children, footer, onClose, width = 440 }: Dialog
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay" onMouseDown={onClose}>
       <div
         role="dialog"
+        aria-modal="true"
         aria-label={title}
         className="max-h-[80vh] overflow-hidden rounded-2xl border border-line bg-card shadow-pop flex flex-col"
         style={{ width }}

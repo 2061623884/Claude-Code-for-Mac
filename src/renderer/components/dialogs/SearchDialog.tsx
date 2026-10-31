@@ -1,3 +1,4 @@
+import { useModalLayer } from '../../modalStore'
 import { useEffect, useRef, useState } from 'react'
 import { Archive, MessageSquare, Search } from 'lucide-react'
 import { relativeTimeZh } from '@shared/format'
@@ -7,6 +8,7 @@ const LIMIT = 50
 
 /** ⌘K：按标题搜索所有项目里的会话（含已归档） */
 export function SearchDialog() {
+  useModalLayer()
   const { projects, sessions, setView, setSearchOpen } = useDesk()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -36,6 +38,7 @@ export function SearchDialog() {
     <div className="fixed inset-0 z-50 flex justify-center bg-overlay pt-[14vh]" onMouseDown={close}>
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="搜索会话"
         className="flex h-fit max-h-[60vh] w-[580px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-pop"
         onMouseDown={(e) => e.stopPropagation()}

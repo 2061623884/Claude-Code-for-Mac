@@ -13,6 +13,7 @@ type Emit = (sessionId: string, event: ChatEvent) => void
 export class SessionManager {
   private live = new Map<string, LiveSession>()
   private transcripts = new Map<string, Transcript>()
+  private transcriptLoads = new Map<string, Promise<Transcript>>()
   /** 最近一次和会话文件同步时，文件里的消息条数；用来发现别处（终端、VS Code）续写了这个会话 */
   private seen = new Map<string, number>()
   private sweeper = setInterval(() => this.closeIdle(), 60_000)
@@ -60,7 +61,7 @@ export class SessionManager {
     let session = this.live.get(sessionId)
     if (!session) {
       const transcript = await this.transcript(sessionId, projectPath)
-      session = this.spawn(sessionId, projectPath, true, options, transcript)
+      session = this.live.get(sessionId) ?? this.spawn(sessionId, projectPath, true, options, transcript)
     }
     session.send(text)
   }
@@ -74,7 +75,10 @@ export class SessionManager {
     options: SessionOptions
   ): Promise<string | null> {
     let session = this.live.get(sessionId)
-    if (!session) session = this.spawn(sessionId, projectPath, true, options, await this.transcript(sessionId, projectPath))
+    if (!session) {
+      const transcript = await this.transcript(sessionId, projectPath)
+      session = this.live.get(sessionId) ?? this.spawn(sessionId, projectPath, true, options, transcript)
+    }
     return session.sideQuestion(question, history)
   }
 
@@ -123,6 +127,7 @@ export class SessionManager {
   reload(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
     this.closeSession(sessionId)
     this.transcripts.delete(sessionId)
+    this.transcriptLoads.delete(sessionId)
     return this.open(sessionId, projectPath)
   }
 
@@ -133,18 +138,29 @@ export class SessionManager {
   }
 
   private async transcript(sessionId: string, projectPath: string): Promise<Transcript> {
-    let t = this.transcripts.get(sessionId)
-    if (!t) {
-      const sdk = await loadSdk()
-      t = new Transcript()
+    const existing = this.transcripts.get(sessionId)
+    if (existing) return existing
+    const pending = this.transcriptLoads.get(sessionId)
+    if (pending) return pending
+    // 并发恢复共享同一份记录，避免缓存和 LiveSession 持有不同实例。
+    const loading = loadSdk().then(async (sdk) => {
+      const transcript = new Transcript()
       const messages = await sdk.getSessionMessages(sessionId, { dir: projectPath })
-      for (const m of messages) t.apply(m)
-      t.finish()
-      t.takeChanged()
-      this.seen.set(sessionId, messages.length)
-      this.transcripts.set(sessionId, t)
+      for (const m of messages) transcript.apply(m)
+      transcript.finish()
+      transcript.takeChanged()
+      if (this.transcriptLoads.get(sessionId) === loading) {
+        this.seen.set(sessionId, messages.length)
+        this.transcripts.set(sessionId, transcript)
+      }
+      return transcript
+    })
+    this.transcriptLoads.set(sessionId, loading)
+    try {
+      return await loading
+    } finally {
+      if (this.transcriptLoads.get(sessionId) === loading) this.transcriptLoads.delete(sessionId)
     }
-    return t
   }
 
   private spawn(
@@ -157,13 +173,17 @@ export class SessionManager {
   ): LiveSession {
     this.evictIfFull()
     const emit = (event: ChatEvent): void => this.emit(sessionId, event)
-    const session = new LiveSession({ sessionId, cwd, resume, fork, options, transcript, emit })
-    this.live.set(sessionId, session)
-    session.start().catch((err: Error) => {
-      emit({ kind: 'notice', text: `无法启动 Claude：${err.message}` })
-      emit({ kind: 'state', state: 'error' })
-      this.live.delete(sessionId)
+    const session = new LiveSession({
+      sessionId, cwd, resume, fork, options, transcript, emit,
+      onClosed: (closed) => {
+        // 迟到的旧实例退出事件不能删除已经替换它的新实例。
+        if (this.live.get(sessionId) !== closed) return
+        this.live.delete(sessionId)
+        this.seen.delete(sessionId)
+      }
     })
+    this.live.set(sessionId, session)
+    void session.start()
     return session
   }
 
@@ -181,8 +201,9 @@ export class SessionManager {
   }
 
   private closeSession(id: string): void {
-    this.live.get(id)?.close()
+    const session = this.live.get(id)
     this.live.delete(id)
+    session?.close()
     this.seen.delete(id) // 进程刚写完文件，下次检查时重新记基准
   }
 }

@@ -96,6 +96,9 @@ export const useLayout = create<LayoutStore>((set, get) => {
     closePage: (id) => {
       const before = get().pages
       const index = before.findIndex((p) => p.id === id)
+      if (index < 0) return
+      // 标签拥有资源生命周期；隐藏或卸载展示组件时保留主进程中的资源。
+      void window.desk.workspace.closePage(id).catch((error) => console.error('关闭工作区页面失败', error))
       const pages = before.filter((p) => p.id !== id)
       if (!pages.length) pages.push({ id: `page:${crypto.randomUUID()}`, kind: 'start' })
       set({ pages })

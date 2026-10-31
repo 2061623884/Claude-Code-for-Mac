@@ -41,7 +41,6 @@ export function TerminalPane({ id, cwd, active }: { id: string; cwd?: string; ac
       cancelled = true
       observer.disconnect(); offData(); offExit(); input.dispose(); resize.dispose(); term.dispose()
       terminal.current = null; fit.current = null
-      void window.desk.terminal.close(id).catch(() => {})
     }
   }, [id, cwd, generation])
   useEffect(() => {
@@ -50,7 +49,9 @@ export function TerminalPane({ id, cwd, active }: { id: string; cwd?: string; ac
   return (
     <div className="flex h-full flex-col bg-[#202020] text-[#e8e6df]">
       <div title={cwd} className="truncate border-b border-white/10 px-3 py-2 font-mono text-[11px] text-white/50">{cwd ?? '未选择项目'}</div>
-      {(error || exited) && <div role="status" className="flex items-center gap-2 px-3 py-2 text-[12px]"><span className="min-w-0 flex-1 break-words">{error || '终端已退出'}</span><button type="button" className="shrink-0 rounded bg-white/10 px-2 py-1" onClick={() => setGeneration((v) => v + 1)}>重新启动</button></div>}
+      {(error || exited) && <div role="status" className="flex items-center gap-2 px-3 py-2 text-[12px]"><span className="min-w-0 flex-1 break-words">{error || '终端已退出'}</span><button type="button" className="shrink-0 rounded bg-white/10 px-2 py-1" onClick={() => {
+        void window.desk.terminal.close(id).then(() => setGeneration((v) => v + 1), (err: Error) => setError(err.message))
+      }}>重新启动</button></div>}
       <div ref={host} className="min-h-0 flex-1 overflow-hidden p-2" />
     </div>
   )

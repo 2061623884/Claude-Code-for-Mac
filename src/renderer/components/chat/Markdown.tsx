@@ -1,3 +1,4 @@
+import { useModalLayer } from '../../modalStore'
 import { memo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
@@ -150,11 +151,12 @@ function TableBlock({ children }: { children: React.ReactNode }) {
 }
 
 function TableDialog({ children, onClose }: { children: React.ReactNode; onClose(): void }) {
+  useModalLayer()
   const box = useRef<HTMLDivElement>(null)
   useDismiss(box, true, onClose)
   return (
     <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-overlay p-8 [animation-delay:0s]">
-      <div ref={box} className="animate-pop-in relative max-h-full max-w-full overflow-auto rounded-2xl border border-line bg-card p-6 shadow-pop [transform-origin:center]">
+      <div ref={box} role="dialog" aria-modal="true" aria-label="表格预览" className="animate-pop-in relative max-h-full max-w-full overflow-auto rounded-2xl border border-line bg-card p-6 shadow-pop [transform-origin:center]">
         <button
           type="button"
           aria-label="关闭"

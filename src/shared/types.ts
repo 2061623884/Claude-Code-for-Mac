@@ -112,6 +112,8 @@ export interface AppState {
 
 export interface DeskApi {
   workspace: {
+    /** 明确关闭页面时销毁资源；组件卸载不等于关闭页面。 */
+    closePage(id: string): Promise<void>
     onShortcut(listener: (kind: 'files' | 'terminal' | 'browser') => void): () => void
   }
   terminal: {

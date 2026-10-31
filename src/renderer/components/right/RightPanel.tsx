@@ -5,6 +5,7 @@ import { FilePreview } from '../files/FilePreview'
 import { useChat } from '../../chatStore'
 import { RIGHT, useLayout, type SidePage } from '../../layoutStore'
 import { useDesk } from '../../store'
+import { useModal } from '../../modalStore'
 import { IconButton } from '../sidebar/SessionRow'
 import { ResizeHandle } from '../ui/ResizeHandle'
 import { BtwPane } from './BtwPane'
@@ -31,7 +32,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
   const rightWidth = expanded ? available : Math.max(RIGHT.min, Math.min(layout.rightWidth, available - 420))
   const cwd = useDesk((s) => s.projects.find((p) => p.id === projectId)?.path)
   const options = useChat((s) => sessionId ? s.chats[sessionId]?.options : undefined)
-  const modalOpen = useDesk((s) => s.searchOpen || Boolean(s.pendingProjectPath || s.importCandidates))
+  const modalOpen = useModal((s) => s.count > 0)
   const current = openFiles.find((f) => `file:${f.path}` === rightTab)
   const choose = (page: SidePage, kind: SidePage['kind']): void => layout.changePage(page.id, kind, page.cwd ?? cwd)
 

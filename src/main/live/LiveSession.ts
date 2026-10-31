@@ -32,6 +32,7 @@ interface LiveSessionInit {
   options: SessionOptions
   transcript: Transcript
   emit(event: ChatEvent): void
+  onClosed(session: LiveSession): void
 }
 
 const FLUSH_MS = 50
@@ -56,7 +57,7 @@ export class LiveSession {
   })
 
   constructor(private init: LiveSessionInit) {
-    this.started.catch(() => {}) // 启动失败由 SessionManager 提示，这里只防止未处理的 rejection
+    this.started.catch(() => {}) // 启动失败由 start() 提示，这里只防止未处理的 rejection
   }
 
   get approvals(): ApprovalRequest[] {
@@ -64,50 +65,54 @@ export class LiveSession {
   }
 
   async start(): Promise<void> {
-    const sdk = await loadSdk().catch((err: unknown) => {
+    try {
+      const sdk = await loadSdk()
+      if (this.closed) return
+      const { sessionId, cwd, resume, fork, options } = this.init
+      this.q = sdk.query({
+        prompt: this.input,
+        options: {
+          cwd,
+          ...(fork
+            ? { resume: fork.from, resumeSessionAt: fork.at, forkSession: true, sessionId }
+            : resume
+              ? { resume: sessionId }
+              : { sessionId }),
+          model: options.model ?? undefined,
+          permissionMode: options.mode,
+          effort: options.effort ?? undefined,
+          systemPrompt: { type: 'preset', preset: 'claude_code' },
+          includePartialMessages: true,
+          // SDK 会话默认不返回思考文字（只有签名），界面就看不到思考过程；要求返回思考摘要
+          extraArgs: { 'thinking-display': 'summarized' },
+          canUseTool: this.canUseTool,
+          allowDangerouslySkipPermissions: store.read().settings.allowBypass,
+          pathToClaudeCodeExecutable: claudeExecutable(),
+          abortController: this.abort,
+          stderr: (data) => console.error('[claude]', data.trimEnd())
+        }
+      })
+      this.onStarted(this.q)
+      void this.pump(this.q)
+    } catch (err) {
       this.onStartFailed(err)
-      throw err
-    })
-    const { sessionId, cwd, resume, fork, options } = this.init
-    this.q = sdk.query({
-      prompt: this.input,
-      options: {
-        cwd,
-        ...(fork
-          ? { resume: fork.from, resumeSessionAt: fork.at, forkSession: true, sessionId }
-          : resume
-            ? { resume: sessionId }
-            : { sessionId }),
-        model: options.model ?? undefined,
-        permissionMode: options.mode,
-        effort: options.effort ?? undefined,
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
-        includePartialMessages: true,
-        // SDK 会话默认不返回思考文字（只有签名），界面就看不到思考过程；要求返回思考摘要
-        extraArgs: { 'thinking-display': 'summarized' },
-        canUseTool: this.canUseTool,
-        allowDangerouslySkipPermissions: store.read().settings.allowBypass,
-        pathToClaudeCodeExecutable: claudeExecutable(),
-        abortController: this.abort,
-        stderr: (data) => console.error('[claude]', data.trimEnd())
-      }
-    })
-    this.onStarted(this.q)
-    void this.pump(this.q)
+      if (!this.closed) this.fail(err, '无法启动 Claude')
+    }
   }
 
   async mcpStatus(): Promise<McpServerStatus[]> {
-    return (await this.started).mcpServerStatus()
+    return (await this.query()).mcpServerStatus()
   }
 
   async sideQuestion(question: string, history: BtwTurn[]): Promise<string | null> {
     this.lastActive = Date.now()
-    const q = (await this.started) as Query & SideQuestionApi
+    const q = (await this.query()) as Query & SideQuestionApi
     const r = await q.askSideQuestion(question, { history })
     return r?.refusalFallback?.content ?? r?.response ?? null
   }
 
   send(text: string): void {
+    if (this.closed) throw new Error('会话已结束，请重试')
     this.lastActive = Date.now()
     this.init.transcript.addUser(text)
     this.flush()
@@ -116,19 +121,19 @@ export class LiveSession {
   }
 
   async interrupt(): Promise<void> {
-    await this.q?.interrupt()
+    await (await this.query()).interrupt()
   }
 
   async setMode(mode: SessionOptions['mode']): Promise<void> {
-    await this.q?.setPermissionMode(mode)
+    await (await this.query()).setPermissionMode(mode)
   }
 
   async setModel(model: string | null): Promise<void> {
-    await this.q?.setModel(model ?? undefined)
+    await (await this.query()).setModel(model ?? undefined)
   }
 
   async setEffort(effort: SessionOptions['effort']): Promise<void> {
-    await this.q?.applyFlagSettings({ effortLevel: effort })
+    await (await this.query()).applyFlagSettings({ effortLevel: effort })
   }
 
   async contextUsage(): Promise<ContextUsage | null> {
@@ -148,13 +153,42 @@ export class LiveSession {
   close(): void {
     if (this.closed) return
     this.closed = true
+    this.onStartFailed(new Error('会话已关闭'))
+    for (const [requestId, pending] of this.pending) {
+      this.init.emit({ kind: 'approvalDone', requestId })
+      pending.resolve({ behavior: 'deny', message: '会话已结束' })
+    }
+    this.pending.clear()
     this.input.end()
-    this.q?.close()
-    this.abort.abort()
+    this.flush()
+    try {
+      this.q?.close()
+    } catch (error) {
+      debug('close error', error)
+    } finally {
+      this.abort.abort()
+      this.init.onClosed(this)
+    }
+  }
+
+  private async query(): Promise<Query> {
+    const q = await this.started
+    if (this.closed) throw new Error('会话已结束，请重试')
+    return q
+  }
+
+  private fail(error: unknown, prefix = '会话出错'): void {
+    this.init.emit({ kind: 'notice', text: `${prefix}：${error instanceof Error ? error.message : String(error)}` })
+    this.setState('error')
+    this.close()
   }
 
   private canUseTool: CanUseTool = (toolName, input, options) =>
     new Promise((resolve) => {
+      if (this.closed || options.signal.aborted) {
+        resolve({ behavior: 'deny', message: '会话已结束' })
+        return
+      }
       const requestId = options.requestId ?? options.toolUseID
       const request: ApprovalRequest = {
         requestId,
@@ -178,19 +212,20 @@ export class LiveSession {
     debug('pump start', this.init.sessionId)
     try {
       for await (const m of q) {
+        if (this.closed) break
         debug('msg', m.type, 'subtype' in m ? m.subtype : '')
         this.handle(m)
       }
       debug('pump end')
+      if (!this.closed && (this.state === 'running' || this.state === 'awaiting')) {
+        this.fail(new Error('Claude 进程已退出，请重试'))
+      }
     } catch (err) {
       debug('pump error', err)
-      // 关闭会话时 SDK 会把上一轮的错误再抛一次，属于预期情况
-      if (!this.closed) {
-        this.init.emit({ kind: 'notice', text: `会话出错：${err instanceof Error ? err.message : String(err)}` })
-        this.setState('error')
-      }
+      if (!this.closed) this.fail(err)
     } finally {
-      this.flush()
+      // 即便 SDK 正常结束迭代，也不能继续向没有消费者的队列发送消息。
+      this.close()
     }
   }
 

@@ -22,7 +22,7 @@ export function BrowserPane({ id, active }: { id: string; active: boolean }) {
       if (cancelled) return
       setState(next); setAddress(next.url); setReady(true)
     }, (err: Error) => { if (!cancelled) setError(err.message) })
-    return () => { cancelled = true; off(); void window.desk.browser.close(id).catch(() => {}) }
+    return () => { cancelled = true; off(); void window.desk.browser.bounds(id, null).catch(() => {}) }
   }, [id])
   useEffect(() => {
     if (!ready || !viewport.current) return

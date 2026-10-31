@@ -55,6 +55,10 @@ export function registerWorkspaceIpc(): void {
       return fn(owner, idOf(id), ...args)
     })
   }
+  handle('workspace:closePage', (owner, id) => {
+    closeTerminal(key(owner, id))
+    closeBrowser(key(owner, id))
+  })
   handle('terminal:open', (owner, id, cwd: string) => {
     const k = key(owner, id)
     const existing = terminals.get(k)
