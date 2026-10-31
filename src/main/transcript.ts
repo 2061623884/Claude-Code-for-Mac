@@ -1,0 +1,234 @@
+// 把 SDK 消息（实时流或历史记录）整理成界面用的 UiMessage 列表。纯逻辑，不依赖 Electron。
+import { randomUUID } from 'node:crypto'
+import type { TokenUsage, UiBlock, UiMessage } from '../shared/chat'
+
+type ToolBlock = Extract<UiBlock, { kind: 'tool' }>
+type Json = Record<string, unknown>
+
+const MAX_RESULT = 20_000
+const HIDDEN_USER_TEXT = /^<(command-|local-command-)/
+/** 历史记录里的斜杠命令：<command-name>/model</command-name> … <command-args>sonnet</command-args> */
+const COMMAND_NAME = /<command-name>\/?([^<]*)<\/command-name>/
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
+/** 本地命令的输出（历史记录里存成用户消息） */
+const COMMAND_OUTPUT = /^<local-command-(stdout|stderr)>([\s\S]*?)<\/local-command-\1>/
+/** 实时输入的斜杠命令 */
+const TYPED_COMMAND = /^\/(\S+)\s*([\s\S]*)$/
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;]*m/g
+const INTERRUPTED = /^\[Request interrupted by user/
+
+function cleanUserText(text: string): string {
+  return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
+}
+
+function resultText(content: unknown): string {
+  const text =
+    typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content.map((c: Json) => (c.type === 'text' ? String(c.text) : `[${String(c.type)}]`)).join('\n')
+        : ''
+  return text.length > MAX_RESULT ? text.slice(0, MAX_RESULT) + '\n…（已截断）' : text
+}
+
+function toUsage(raw: unknown, prev?: TokenUsage): TokenUsage | undefined {
+  if (!raw || typeof raw !== 'object') return prev
+  const u = raw as Json
+  const n = (key: string, fallback = 0): number => (typeof u[key] === 'number' ? (u[key] as number) : fallback)
+  return {
+    input: n('input_tokens', prev?.input),
+    output: n('output_tokens', prev?.output),
+    cacheRead: n('cache_read_input_tokens', prev?.cacheRead),
+    cacheWrite: n('cache_creation_input_tokens', prev?.cacheWrite)
+  }
+}
+
+function toBlock(raw: Json): UiBlock | null {
+  if (raw.type === 'text') return { kind: 'text', text: String(raw.text ?? '') }
+  if (raw.type === 'thinking') return { kind: 'thinking', text: String(raw.thinking ?? '') }
+  if (raw.type === 'tool_use')
+    return { kind: 'tool', id: String(raw.id), name: String(raw.name), input: (raw.input as Json) ?? {} }
+  return null
+}
+
+export class Transcript {
+  readonly messages: UiMessage[] = []
+  private byId = new Map<string, UiMessage>()
+  private streamIndex = new Map<string, number>()
+  private partialJson = new Map<ToolBlock, string>()
+  private tools = new Map<string, ToolBlock>()
+  private changed = new Set<UiMessage>()
+
+  /** 取出自上次调用以来有变化的消息 */
+  takeChanged(): UiMessage[] {
+    const list = [...this.changed]
+    this.changed.clear()
+    return list
+  }
+
+  addUser(text: string): void {
+    this.time = Date.now()
+    this.addTyped(text)
+  }
+
+  /** 用户输入的一条消息；斜杠命令先记下来，等它的输出 */
+  private addTyped(text: string): void {
+    this.flushCommand()
+    this.addUserMessage(text)
+    const cmd = TYPED_COMMAND.exec(text.trim())
+    this.pendingCommand = cmd ? { name: cmd[1], args: cmd[2].trim() } : null
+  }
+
+  /** 历史记录读完后调用：最后一条命令如果没有输出，也要显示出来 */
+  finish(): void {
+    this.flushCommand()
+  }
+
+  apply(raw: unknown): void {
+    const m = raw as Json
+    const parent = (m.parent_tool_use_id as string | null) ?? null
+    // 历史消息带时间戳；实时消息就用收到的时间
+    this.time = typeof m.timestamp === 'string' ? Date.parse(m.timestamp) || Date.now() : Date.now()
+    if (m.type === 'stream_event') this.applyStream(m.event as Json, parent)
+    else if (m.type === 'assistant') this.applyAssistant(m.message as Json, parent, m.uuid)
+    else if (m.type === 'user') this.applyUser(m.message as Json, parent)
+    // 主链上的条目（助手消息、用户消息、工具结果）：编辑之后的用户消息时从这里分叉
+    if ((m.type === 'assistant' || m.type === 'user') && !parent && typeof m.uuid === 'string') this.lastUuid = m.uuid
+  }
+
+  /** 用户消息：记下分叉点（它前面最后一个主链条目） */
+  private addUserMessage(text: string): void {
+    const msg = this.ensure(randomUUID(), 'user', null)
+    msg.blocks.push({ kind: 'text', text })
+    msg.forkFrom = this.lastUuid
+  }
+
+  private ensure(id: string, role: UiMessage['role'], parent: string | null): UiMessage {
+    let msg = this.byId.get(id)
+    if (!msg) {
+      msg = { id, role, blocks: [], parentToolUseId: parent, time: this.time }
+      this.byId.set(id, msg)
+      this.messages.push(msg)
+    }
+    this.changed.add(msg)
+    return msg
+  }
+
+  private current: UiMessage | null = null
+  /** 正在处理的消息的时间 */
+  private time = Date.now()
+  /** 最近一个主链条目的 uuid */
+  private lastUuid: string | null = null
+  /** 刚发出、还没等到输出的斜杠命令。本地命令的输出会紧跟着到来；模型处理的命令（技能等）则接着是正常回复 */
+  private pendingCommand: { name: string; args: string } | null = null
+
+  private addCommand(output: string | null): void {
+    const { name, args } = this.pendingCommand ?? { name: '', args: '' }
+    this.pendingCommand = null
+    const text = output === null ? null : output.replace(ANSI, '').trim()
+    this.ensure(randomUUID(), 'assistant', null).blocks.push({ kind: 'command', name, args, output: text })
+  }
+
+  /** 上一条命令没等到输出就有了新的用户消息：说明输出没有保存在记录里 */
+  private flushCommand(): void {
+    if (this.pendingCommand) this.addCommand(null)
+  }
+
+  private applyStream(e: Json, parent: string | null): void {
+    if (e.type === 'message_start') {
+      if (!parent) this.pendingCommand = null
+      this.current = this.ensure(String((e.message as Json).id), 'assistant', parent)
+      this.current.usage = toUsage((e.message as Json).usage, this.current.usage)
+      return
+    }
+    const msg = this.current
+    if (!msg) return
+    this.changed.add(msg)
+    // 流式结束前的 message_delta 带着最终的输出 token 数
+    if (e.type === 'message_delta') msg.usage = toUsage(e.usage, msg.usage)
+    const index = Number(e.index)
+    if (e.type === 'content_block_start') {
+      const block = toBlock(e.content_block as Json)
+      if (!block) return
+      if (block.kind === 'tool') this.tools.set(block.id, block)
+      msg.blocks[index] = block
+      this.streamIndex.set(msg.id, index)
+    } else if (e.type === 'content_block_delta') {
+      const block = msg.blocks[index]
+      const d = e.delta as Json
+      if (block?.kind === 'text' && d.type === 'text_delta') block.text += String(d.text)
+      else if (block?.kind === 'thinking' && d.type === 'thinking_delta') block.text += String(d.thinking)
+      else if (block?.kind === 'tool' && d.type === 'input_json_delta') {
+        const json = (this.partialJson.get(block) ?? '') + String(d.partial_json)
+        this.partialJson.set(block, json)
+        try {
+          block.input = JSON.parse(json)
+        } catch {
+          // 片段还不完整，等后续 delta
+        }
+      }
+    }
+  }
+
+  private applyAssistant(message: Json, parent: string | null, uuid?: unknown): void {
+    // 本地命令的输出是一条不经过模型的合成消息
+    if (!parent && message.model === '<synthetic>' && this.pendingCommand) {
+      const content = Array.isArray(message.content) ? (message.content as Json[]) : []
+      return this.addCommand(content.map((c) => (c.type === 'text' ? String(c.text) : '')).join('\n'))
+    }
+    if (!parent) this.pendingCommand = null
+    const msg = this.ensure(String(message.id ?? randomUUID()), 'assistant', parent)
+    msg.usage = toUsage(message.usage, msg.usage)
+    if (typeof uuid === 'string') msg.uuid = uuid
+    const content = Array.isArray(message.content) ? (message.content as Json[]) : []
+    const streamed = this.streamIndex.get(msg.id)
+    content.forEach((raw) => {
+      const block = toBlock(raw)
+      if (!block) return
+      // 流式过程中每个块结束时会补一条只含该块的完整消息，放回流式时的位置
+      const index = streamed !== undefined && content.length === 1 ? streamed : msg.blocks.length
+      if (block.kind === 'tool') {
+        const existing = this.tools.get(block.id)
+        if (existing?.result) block.result = existing.result
+        this.tools.set(block.id, block)
+      }
+      msg.blocks[index] = block
+    })
+  }
+
+  private applyUser(message: Json, parent: string | null): void {
+    const content = message.content
+    if (typeof content === 'string') return this.addUserText(content, parent)
+    if (!Array.isArray(content)) return
+    const texts: string[] = []
+    for (const c of content as Json[]) {
+      if (c.type === 'tool_result') {
+        const tool = this.tools.get(String(c.tool_use_id))
+        if (!tool) continue
+        tool.result = { text: resultText(c.content), isError: c.is_error === true }
+        for (const msg of this.messages) if (msg.blocks.includes(tool)) this.changed.add(msg)
+      } else if (c.type === 'text') texts.push(String(c.text))
+    }
+    if (texts.length) this.addUserText(texts.join('\n'), parent)
+  }
+
+  private addUserText(raw: string, parent: string | null): void {
+    const text = cleanUserText(raw)
+    if (!text || parent) return
+    const output = COMMAND_OUTPUT.exec(text)
+    if (output) return this.addCommand(output[2])
+    const command = COMMAND_NAME.exec(text)
+    if (command) {
+      const args = COMMAND_ARGS.exec(text)?.[1].trim() ?? ''
+      return this.addTyped(`/${command[1]}${args ? ` ${args}` : ''}`)
+    }
+    if (HIDDEN_USER_TEXT.test(text)) return
+    this.flushCommand()
+    if (INTERRUPTED.test(text)) {
+      this.ensure(randomUUID(), 'notice', null).blocks.push({ kind: 'text', text: '已中断' })
+      return
+    }
+    this.addUserMessage(text)
+  }
+}

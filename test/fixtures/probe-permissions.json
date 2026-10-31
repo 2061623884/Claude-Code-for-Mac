@@ -1,0 +1,35 @@
+[
+  {
+    "toolName": "Write",
+    "input": {
+      "file_path": "/tmp/claude-desk-probe/hello.txt",
+      "content": "hi"
+    },
+    "options": {
+      "suggestions": [
+        {
+          "type": "setMode",
+          "mode": "acceptEdits",
+          "destination": "session"
+        }
+      ],
+      "displayName": "Write",
+      "description": "hello.txt",
+      "toolUseID": "toolu_017XZjFZch7Ea39KEozCcJsd",
+      "requestId": "c8c9b58b-a304-4195-9c09-24ee361f9528"
+    }
+  },
+  {
+    "toolName": "ExitPlanMode",
+    "input": {
+      "plan": "# Plan: Append \"bye\" to hello.txt\n\n## Context\n`hello.txt` (in `/tmp/claude-desk-probe/`) currently contains `hi` with no trailing newline. The goal is to add a second line, `bye`, at the end.\n\n## Steps\n1. Use Edit on `hello.txt`: replace `hi` with `hi\\nbye` (adds the newline separator plus the new line).\n\n## Verification\n- Read `hello.txt` and confirm it contains two lines: `hi` and `bye`.\n",
+      "planFilePath": "/Users/example/.claude/plans/hello-txt-bye-sorted-moth.md"
+    },
+    "options": {
+      "displayName": "ExitPlanMode",
+      "toolUseID": "toolu_014tz6LYb725mtQt5sk75X7r",
+      "requestId": "06e6b3fa-e8d2-43db-a4f8-2ffaf5cf1877",
+      "requiresUserInteraction": true
+    }
+  }
+]
