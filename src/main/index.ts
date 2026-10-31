@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { app } from 'electron'
-import { closeMetadataQueries } from './metadataQuery'
+import { closeTemporaryQueries } from './temporaryQuery'
 import { AppWindow } from './appWindow'
 import type { DemoState } from '../shared/types'
 import { adoptLoginShellPath } from './env'
@@ -33,7 +33,7 @@ if (process.argv.includes('--probe')) {
   app.quit()
 } else {
   const window = new AppWindow(() => {
-    for (const cleanup of [() => commandCatalog.close(), closeMetadataQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
+    for (const cleanup of [() => commandCatalog.close(), closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
       try { cleanup() } catch (error) { console.error('退出清理失败', error) }
     }
   })

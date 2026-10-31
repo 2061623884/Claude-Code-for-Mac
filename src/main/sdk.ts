@@ -1,9 +1,9 @@
 // 整个应用里唯一引入 Claude Agent SDK 的地方。
 // SDK 只提供 ESM，主进程打包成 CJS，所以用动态 import 加载。
 import { join } from 'node:path'
-import type { Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { Options, Query } from '@anthropic-ai/claude-agent-sdk'
 import { app } from 'electron'
-import { PushQueue } from './live/PushQueue'
+import { temporaryQuery } from './temporaryQuery'
 import * as store from './store'
 
 export type Sdk = typeof import('@anthropic-ai/claude-agent-sdk')
@@ -28,20 +28,11 @@ export function claudeExecutable(): string | undefined {
   )
 }
 
-/** 启动一个不发消息的会话，只做查询（不耗额度、不写会话文件），查完让子进程正常退出 */
-export async function withIdleQuery<T>(options: Options, fn: (q: Query) => Promise<T>): Promise<T> {
-  const sdk = await loadSdk()
-  const input = new PushQueue<SDKUserMessage>()
-  const q = sdk.query({
-    prompt: input,
-    options: { persistSession: false, pathToClaudeCodeExecutable: claudeExecutable(), ...options }
-  })
-  try {
-    return await fn(q)
-  } finally {
-    input.end()
-    for await (const _ of q) {
-      // 排空消息，让子进程正常退出
-    }
-  }
+/** 不发消息、不持久化，取得结果后立即释放查询。 */
+export function withIdleQuery<T>(options: Options, fn: (q: Query) => Promise<T>): Promise<T> {
+  return temporaryQuery(async (abortController, input) => {
+    const sdk = await loadSdk()
+    if (abortController.signal.aborted) throw new Error('临时查询已取消')
+    return sdk.query({ prompt: input, options: { pathToClaudeCodeExecutable: claudeExecutable(), ...options, persistSession: false, abortController } })
+  }, fn, options.abortController?.signal)
 }

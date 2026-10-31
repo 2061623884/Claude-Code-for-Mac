@@ -121,8 +121,8 @@ export class SessionManager {
     return this.live.get(sessionId)?.setEffort(effort)
   }
 
-  respond(sessionId: string, requestId: string, decision: Decision): void {
-    this.live.get(sessionId)?.respond(requestId, decision)
+  async respond(sessionId: string, requestId: string, decision: Decision): Promise<void> {
+    await this.live.get(sessionId)?.respond(requestId, decision)
   }
 
   async checkExternal(sessionId: string, projectPath: string): Promise<boolean> {

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useLayout } from './layoutStore'
+import { projectRemoved } from './projectLifecycle'
 import { errorText } from './ipcError'
 import type { DemoState, DetectedFolder, EffortLevel, MetaInfo, PermissionMode, Project, SessionSummary, Settings } from '@shared/types'
 
@@ -133,7 +134,7 @@ export const useDesk = create<DeskState>((set, get) => ({
 
   async removeProject(id) {
     const projects = await desk().projects.remove(id)
-    useLayout.getState().removeProject(id)
+    projectRemoved(id)
     const sessions = { ...get().sessions }
     delete sessions[id]
     const selectedProjectId = get().selectedProjectId === id ? (projects[0]?.id ?? null) : get().selectedProjectId

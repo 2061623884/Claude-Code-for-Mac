@@ -153,3 +153,19 @@ it('reuses live command lists only for the same executable configuration and for
   configuration = 'sdk-b'
   expect(manager.commandsFor('/tmp', configuration)).toBeUndefined()
 })
+
+it('keeps plan approval pending until its permission mode is accepted', async () => {
+  const setPermissionMode = vi.fn().mockRejectedValueOnce(new Error('mode rejected')).mockResolvedValue(undefined)
+  const query = Object.assign(liveQuery(), { setPermissionMode })
+  sdk.query.mockReturnValue(query)
+  const id = manager.start('/tmp', 'plan', options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce())
+  const canUseTool = sdk.query.mock.calls[0][0].options.canUseTool
+  const decision = canUseTool('ExitPlanMode', {}, { requestId: 'approval', toolUseID: 'tool', signal: new AbortController().signal })
+  await expect(manager.respond(id, 'approval', { type: 'planApprove', mode: 'acceptEdits' })).rejects.toThrow('mode rejected')
+  expect((await manager.open(id, '/tmp')).approvals).toHaveLength(1)
+  expect(emit).not.toHaveBeenCalledWith(id, { kind: 'approvalDone', requestId: 'approval' })
+  await manager.respond(id, 'approval', { type: 'planApprove', mode: 'acceptEdits' })
+  await expect(decision).resolves.toMatchObject({ behavior: 'allow' })
+  expect((await manager.open(id, '/tmp')).approvals).toHaveLength(0)
+})

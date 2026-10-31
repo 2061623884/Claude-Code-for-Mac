@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { SummaryView } from '@shared/sessionSummary'
 import { useBtw } from './btwStore'
+import { onProjectRemoved } from './projectLifecycle'
 
 export type RightTab = `file:${string}` | `page:${string}`
 export interface SidePage {
@@ -146,3 +147,5 @@ export const useLayout = create<LayoutStore>((set, get) => {
 export function sidebarPageCount(state: Pick<LayoutStore, 'pages' | 'openFiles'>): number {
   return state.pages.length + state.openFiles.length
 }
+
+onProjectRemoved((id) => useLayout.getState().removeProject(id))

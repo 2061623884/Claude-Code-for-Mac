@@ -163,13 +163,14 @@ export class LiveSession {
     return this.q ? toContextUsage(await this.q.getContextUsage({ detail: 'summary' })) : null
   }
 
-  respond(requestId: string, decision: Decision): void {
+  async respond(requestId: string, decision: Decision): Promise<void> {
     const p = this.pending.get(requestId)
     if (!p) return
+    if (decision.type === 'planApprove') await this.setMode(decision.mode)
+    if (this.closed || this.pending.get(requestId) !== p) return
     this.pending.delete(requestId)
     this.init.emit({ kind: 'approvalDone', requestId })
     p.resolve(toPermissionResult(decision, p.request.input, p.suggestions))
-    if (decision.type === 'planApprove') void this.setMode(decision.mode)
     this.setState(this.pending.size > 0 ? 'awaiting' : 'running')
   }
 

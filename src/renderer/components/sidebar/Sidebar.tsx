@@ -56,7 +56,7 @@ export function Sidebar({ width }: { width: number }) {
         {pinned.length > 0 && (
           <div className="mb-3">
             <div className="px-2 pb-1 text-[12px] font-medium text-fg3">置顶</div>
-            {pinned.map(({ s, p }) => <StandaloneSessionRow key={s.id} session={s} project={p} />)}
+            {pinned.map(({ s, p }) => <ConnectedSessionRow key={s.id} session={s} project={p} />)}
           </div>
         )}
         <div className="flex items-center justify-between px-2 pb-1">
@@ -95,7 +95,7 @@ export function Sidebar({ width }: { width: number }) {
               {archivedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               已归档（{archived.length}）
             </button>
-            {archivedOpen && archived.map(({ s, p }) => <StandaloneSessionRow key={s.id} session={s} project={p} />)}
+            {archivedOpen && archived.map(({ s, p }) => <ConnectedSessionRow key={s.id} session={s} project={p} />)}
           </div>
         )}
       </div>
@@ -174,9 +174,8 @@ function ProjectGroup({
   menuOpen: boolean
   onRemove(): void
 }) {
-  const { view, newChat, toggleProject, setView, renameSession, setArchived } = useDesk()
+  const { newChat, toggleProject } = useDesk()
   const [showAll, setShowAll] = useState(false)
-  const chats = useChat((s) => s.chats)
   const visible = showAll ? sessions : sessions.slice(0, VISIBLE_SESSIONS)
 
   return (
@@ -232,15 +231,7 @@ function ProjectGroup({
         <div className="mt-0.5 flex flex-col gap-px">
           {sessions.length === 0 && <div className="py-1.5 pl-8 text-[12.5px] text-fg3">还没有对话</div>}
           {visible.map((s) => (
-            <SessionRow
-              key={s.id}
-              session={s}
-              active={view.kind === 'session' && view.sessionId === s.id}
-              status={chats[s.id]?.state}
-              onOpen={() => setView({ kind: 'session', sessionId: s.id, projectId: project.id })}
-              onRename={(title) => void renameSession(s, project.id, title)}
-              onArchive={(a) => void setArchived(s, project.id, a)}
-            />
+            <ConnectedSessionRow key={s.id} session={s} project={project} indent />
           ))}
           {sessions.length > VISIBLE_SESSIONS && (
             <button
@@ -257,14 +248,14 @@ function ProjectGroup({
   )
 }
 
-function StandaloneSessionRow({ session, project }: { session: SessionSummary; project: Project }) {
+function ConnectedSessionRow({ session, project, indent = false }: { session: SessionSummary; project: Project; indent?: boolean }) {
   const { view, setView, renameSession, setArchived } = useDesk()
   const status = useChat((s) => s.chats[session.id]?.state)
   return (
     <SessionRow
       status={status}
       session={session}
-      indent={false}
+      indent={indent}
       active={view.kind === 'session' && view.sessionId === session.id}
       onOpen={() => setView({ kind: 'session', sessionId: session.id, projectId: project.id })}
       onRename={(title) => void renameSession(session, project.id, title)}

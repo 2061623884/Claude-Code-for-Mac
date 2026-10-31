@@ -7,7 +7,7 @@ import { turnsOf } from '@shared/fileChanges'
 import { sumUsage, totalTokens } from '@shared/usageStats'
 import { useBtw } from '../../btwStore'
 import { useSessionMarks } from '../../sessionMarks'
-import { useChat } from '../../chatStore'
+import { useChat, useChatActions } from '../../chatStore'
 import { useLayout } from '../../layoutStore'
 import { openAppPanel, usePanel } from '../../panelStore'
 import { useDesk } from '../../store'
@@ -33,7 +33,7 @@ const EXTRA_COMMANDS: CommandInfo[] = [
 
 export function ChatView({ sessionId, projectId }: { sessionId: string; projectId: string }) {
   const chat = useChat((s) => s.chats[sessionId])
-  const { load, reload, send, edit, interrupt, setOptions, respond } = useChat()
+  const { load, reload, send, edit, interrupt, setOptions, respond } = useChatActions()
   const cwd = useDesk((s) => s.projects.find((p) => p.id === projectId)?.path)
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
@@ -124,7 +124,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
     sessionId,
     cwd,
     options: chat.options,
-    setOptions: (patch) => void setOptions(sessionId, patch),
+    setOptions: (patch) => void setOptions(sessionId, patch).catch(() => {}),
     onRun: runCommand,
     sessionUsage
   }
@@ -195,7 +195,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   request={approval}
                   total={chat.approvals.length}
                   cwd={cwd}
-                  onDecide={(d) => void respond(sessionId, approval.requestId, d)}
+                  onDecide={(d) => void respond(sessionId, approval.requestId, d).catch(() => {})}
                 />
               )}
               <Composer
@@ -239,14 +239,14 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 }
                 chips={
                   <>
-                    <ModelChip placement="top" value={chat.options.model} onChange={(model) => void setOptions(sessionId, { model })} />
+                    <ModelChip placement="top" value={chat.options.model} onChange={(model) => void setOptions(sessionId, { model }).catch(() => {})} />
                     <EffortChip
                       placement="top"
                       model={chat.options.model}
                       value={chat.options.effort}
-                      onChange={(effort) => void setOptions(sessionId, { effort })}
+                      onChange={(effort) => void setOptions(sessionId, { effort }).catch(() => {})}
                     />
-                    <PermissionChip placement="top" value={chat.options.mode} onChange={(mode) => void setOptions(sessionId, { mode })} />
+                    <PermissionChip placement="top" value={chat.options.mode} onChange={(mode) => void setOptions(sessionId, { mode }).catch(() => {})} />
                   </>
                 }
               />

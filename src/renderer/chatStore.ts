@@ -5,6 +5,9 @@ import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
 import { useSessionMarks } from './sessionMarks'
 import { useDesk } from './store'
+import { onProjectRemoved } from './projectLifecycle'
+import { errorText } from './ipcError'
+import { useShallow } from 'zustand/react/shallow'
 
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
@@ -64,12 +67,24 @@ export const useChat = create<ChatStore>((set, get) => {
     set({ chats: { ...get().chats, [sessionId]: { ...current, ...fn(current) } } })
   }
 
+  // 同一会话的设置按请求顺序提交；一次失败不阻塞后续修改。
+  const optionChanges = new Map<string, Promise<void>>()
+  const enqueueOptions = (id: string, apply: () => Promise<void>): Promise<void> => {
+    const task = (optionChanges.get(id) ?? Promise.resolve()).catch(() => {}).then(apply)
+    optionChanges.set(id, task)
+    void task.finally(() => { if (optionChanges.get(id) === task) optionChanges.delete(id) }).catch(() => {})
+    return task
+  }
+
   return {
     chats: {},
 
     async load(sessionId, projectId) {
       const existing = get().chats[sessionId]
-      if (existing?.loaded) return
+      if (existing?.loaded) {
+        if (existing.projectId !== projectId) patch(sessionId, () => ({ projectId }))
+        return
+      }
       set({ chats: { ...get().chats, [sessionId]: { ...(existing ?? blank(projectId)), projectId } } })
       const requestedAt = messageRevision
       const snap = await desk().chat.open(sessionId, projectPath(projectId))
@@ -125,14 +140,16 @@ export const useChat = create<ChatStore>((set, get) => {
     },
 
     async send(sessionId, text) {
+      await optionChanges.get(sessionId)
       const c = get().chats[sessionId]
       if (!c) return
       // /model、/effort 会直接改会话设置，选择器也跟着变
       const cmd = /^\/(model|effort)\s+(\S+)\s*$/.exec(text.trim())
       const value = cmd && (cmd[2] === 'default' || cmd[2] === 'auto' ? null : cmd[2])
-      if (cmd?.[1] === 'model') patch(sessionId, (x) => ({ options: { ...x.options, model: value } }))
-      if (cmd?.[1] === 'effort' && (value === null || EFFORTS.includes(value as EffortLevel)))
-        patch(sessionId, (x) => ({ options: { ...x.options, effort: value as EffortLevel | null } }))
+      if (cmd?.[1] === 'model') { await get().setOptions(sessionId, { model: value }); return }
+      if (cmd?.[1] === 'effort' && (value === null || EFFORTS.includes(value as EffortLevel))) {
+        await get().setOptions(sessionId, { effort: value as EffortLevel | null }); return
+      }
       patch(sessionId, () => ({ error: null }))
       await desk().chat.send(sessionId, projectPath(c.projectId), text, c.options)
     },
@@ -142,17 +159,40 @@ export const useChat = create<ChatStore>((set, get) => {
     },
 
     async setOptions(sessionId, next) {
-      patch(sessionId, (c) => ({ options: { ...c.options, ...next } }))
-      // 会话进程还没启动时，新设置会在下次发消息时生效
-      if (next.mode !== undefined) await desk().chat.setMode(sessionId, next.mode)
-      if (next.model !== undefined) await desk().chat.setModel(sessionId, next.model)
-      if (next.effort !== undefined) await desk().chat.setEffort(sessionId, next.effort)
+      const { mode, model, effort } = next
+      return enqueueOptions(sessionId, async () => {
+        patch(sessionId, () => ({ error: null }))
+        try {
+          // 每个字段确认后再提交，部分失败时保留已经生效的字段。
+          if (mode !== undefined) {
+            await desk().chat.setMode(sessionId, mode)
+            patch(sessionId, (c) => ({ options: { ...c.options, mode } }))
+          }
+          if (model !== undefined) {
+            await desk().chat.setModel(sessionId, model)
+            patch(sessionId, (c) => ({ options: { ...c.options, model } }))
+          }
+          if (effort !== undefined) {
+            await desk().chat.setEffort(sessionId, effort)
+            patch(sessionId, (c) => ({ options: { ...c.options, effort } }))
+          }
+        } catch (error) {
+          patch(sessionId, () => ({ error: `会话设置更新失败：${errorText(error)}` }))
+          throw error
+        }
+      })
     },
 
     async respond(sessionId, requestId, decision) {
-      // 批准计划后会话切换到所选权限模式，选择器也要跟着变
-      if (decision.type === 'planApprove') patch(sessionId, (c) => ({ options: { ...c.options, mode: decision.mode } }))
-      await desk().chat.respond(sessionId, requestId, decision)
+      return enqueueOptions(sessionId, async () => {
+        try {
+          await desk().chat.respond(sessionId, requestId, decision)
+          if (decision.type === 'planApprove') patch(sessionId, (c) => ({ options: { ...c.options, mode: decision.mode } }))
+        } catch (error) {
+          patch(sessionId, () => ({ error: `权限确认失败：${errorText(error)}` }))
+          throw error
+        }
+      })
     },
 
     handle(sessionId, event) {
@@ -209,3 +249,12 @@ export const useChat = create<ChatStore>((set, get) => {
     }
   }
 })
+
+// 移除的是项目列表项。运行中的会话仍可接收事件，重新添加目录时重新绑定。
+onProjectRemoved((projectId) => useChat.setState((state) => ({
+  chats: Object.fromEntries(Object.entries(state.chats).map(([id, chat]) => [id, chat.projectId === projectId ? { ...chat, projectId: '' } : chat]))
+})))
+
+export function useChatActions() {
+  return useChat(useShallow(({ load, reload, send, edit, interrupt, setOptions, respond }) => ({ load, reload, send, edit, interrupt, setOptions, respond })))
+}

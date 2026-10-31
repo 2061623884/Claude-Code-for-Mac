@@ -10,7 +10,7 @@ export type Panel = { kind: 'app'; name: AppPanel } | { kind: 'output'; block: C
 
 const PANEL_BY_COMMAND = Object.fromEntries(APP_COMMANDS.map((command) => [command.name, command.panel]))
 
-/** 不带参数的 /usage、/model… 由应用自己弹出面板；带参数（如 /model sonnet）的仍交给 Claude Code 执行 */
+/** 不带参数的 /usage、/model… 由应用自己弹出面板；带参数的命令由会话发送入口处理 */
 export function appPanelFor(name: string, args: string): AppPanel | null {
   return args ? null : (PANEL_BY_COMMAND[name] ?? null)
 }

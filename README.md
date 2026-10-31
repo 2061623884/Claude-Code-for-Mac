@@ -6,8 +6,8 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.4-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.4-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.6-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.6-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。应用尚未使用 Apple Developer ID 签名或经过 Apple 公证，macOS 可能显示安全提示。
@@ -42,6 +42,14 @@ macOS 红色关闭按钮和 `Command-W` 仅隐藏窗口，聊天、草稿、终�
 切换会话、返回主页、归档或进入设置时，会保留终端进程与浏览器页面；关闭标签、移除所属项目或退出应用时释放资源。侧栏标签、草稿和侧边聊天仅在本次应用运行期间保留，重启后不会恢复。
 
 命令目录成功加载后保存在用户数据目录的 `command-catalog/`。超过五分钟后在下次使用时后台刷新，已有会话的命令变化也会更新目录。首次发现的项目自定义命令仍需等待 SDK 初始化；常用命令和缓存目录不受该等待影响。
+
+## v0.3.6 修复
+
+- 会话模型、思考程度和权限模式在 SDK 确认后更新，失败会显示错误；连续修改按会话顺序提交。
+- `/model <值>` 和 `/effort <值>` 使用与选择器相同的确认流程，不额外写入聊天消息。
+- 移除项目会统一释放侧栏资源并解除聊天缓存的旧项目绑定，重新添加同一目录后可继续发送。
+- 元信息、用量、上下文、MCP 和本地配置的临时查询统一处理取消、15 秒超时和退出清理。
+- 聊天操作与侧栏状态使用精确订阅，后台会话的正文更新不会触发无关会话重绘。
 
 ## 本地开发
 
