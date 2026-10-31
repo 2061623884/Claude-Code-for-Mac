@@ -89,7 +89,7 @@ export function App() {
   const title = view.kind === 'session' ? sessions[view.projectId]?.find((s) => s.id === view.sessionId)?.title : undefined
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full">
       {/* 侧栏收起/展开：宽度和透明度过渡，内容宽度固定只做裁切，避免文字挤压换行；拖动右边缘调宽 */}
       <div
         inert={sidebarCollapsed}
@@ -117,9 +117,8 @@ export function App() {
           )}
           {title && <span className="min-w-0 flex-1 truncate pr-6 text-[13.5px] font-medium">{title}</span>}
           {view.kind !== 'settings' && (
-            <div className="ml-auto flex items-center gap-3 pr-3">
+            <div className={`ml-auto flex items-center gap-3 ${rightOpen ? 'pr-3' : 'pr-16'}`}>
               {view.kind === 'session' && <SessionSummary sessionId={view.sessionId} projectId={view.projectId} />}
-              <RightPanelToggle />
             </div>
           )}
         </div>
@@ -128,6 +127,7 @@ export function App() {
         {view.kind === 'session' && <ChatView key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       </main>
       {view.kind !== 'settings' && <RightPanel sessionId={view.kind === 'session' ? view.sessionId : undefined} projectId={view.kind === 'session' ? view.projectId : useDesk.getState().selectedProjectId ?? undefined} />}
+      {view.kind !== 'settings' && <div className="absolute right-3 top-[10px] z-40"><RightPanelToggle /></div>}
       {pendingProjectPath && <AddProjectDialog path={pendingProjectPath} />}
       {importCandidates && <ImportHistoryDialog candidates={importCandidates} />}
       {searchOpen && <SearchDialog />}

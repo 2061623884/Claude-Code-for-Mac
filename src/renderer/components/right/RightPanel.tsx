@@ -74,7 +74,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
     >
       <div data-sidebar-viewport className="h-full overflow-hidden">
       <aside style={{ width: rightWidth }} aria-label="工作区侧栏" className="flex h-full flex-col border-l border-line bg-bg">
-        <div className="drag flex h-[52px] shrink-0 items-center gap-1 px-2">
+        <div className="drag flex h-[52px] shrink-0 items-center gap-1 pl-2 pr-14">
           <div role="tablist" aria-label="侧栏页面" className="no-drag flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none]">
             {tabs.map((tab) => {
               const active = tab.id === rightTab
@@ -95,7 +95,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
           <div className="no-drag flex">
             <IconButton label="新建侧栏页面" onClick={() => layout.newPage(cwd)}><Plus size={16} /></IconButton>
             <IconButton label={expanded ? '还原侧栏宽度' : '展开侧栏页面'} onClick={() => layout.setExpanded(!expanded)}>{expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>
-<IconButton label="收起右栏（⌘⇧B）" onClick={() => layout.setRightOpen(false)}><PanelRight size={16} /></IconButton>
+
           </div>
         </div>
         <FileContext.Provider value={{ cwd }}>
@@ -129,9 +129,9 @@ export function RightPanelToggle() {
   const hasSession = useDesk((s) => s.view.kind === 'session')
   const count = sidebarPageCount(layout, hasSession)
   const label = layout.rightOpen ? '收起右栏（⌘⇧B）' : '展开右栏（⌘⇧B）'
-  return <div className="no-drag border-l border-line pl-2">
-    <button type="button" title={`${label} · ${count} 个页面`} aria-label={label} aria-expanded={layout.rightOpen} onClick={() => layout.setRightOpen(!layout.rightOpen)} className="flex size-8 items-center justify-center rounded-lg text-fg2 hover:bg-active">
-      <span aria-label={`已打开 ${count} 个侧栏页面`} className="flex size-[19px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[11px] font-medium tabular-nums">{count}</span>
+  return <div className="no-drag">
+    <button type="button" title={`${label} · ${count} 个页面`} aria-label={label} aria-expanded={layout.rightOpen} data-page-count={count} onClick={() => layout.setRightOpen(!layout.rightOpen)} className={`flex size-8 items-center justify-center rounded-lg text-fg2 hover:bg-active ${layout.rightOpen ? 'bg-active' : ''}`}>
+      {layout.rightOpen ? <PanelRight size={19} aria-hidden="true" /> : <span aria-label={`已打开 ${count} 个侧栏页面`} className="flex size-[19px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[11px] font-medium tabular-nums">{count}</span>}
     </button>
   </div>
 }
