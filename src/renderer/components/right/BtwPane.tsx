@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { ArrowUp, MessageCircleQuestion, Trash2 } from 'lucide-react'
 import type { SessionOptions } from '@shared/chat'
 import { useBtw, type BtwItem } from '../../btwStore'
@@ -8,10 +8,11 @@ import { Markdown } from '../chat/Markdown'
 const EMPTY: BtwItem[] = []
 
 /** 右栏「顺便问一下」（/btw）：基于当前对话的上下文回答，不写入对话、不调用工具 */
-export function BtwPane({ sessionId, cwd, options, active }: { sessionId: string; cwd?: string; options: SessionOptions; active: boolean }) {
-  const thread = useBtw((s) => s.threads[sessionId] ?? EMPTY)
+export function BtwPane({ pageId, sessionId, cwd, options, active }: { pageId: string; sessionId: string; cwd?: string; options: SessionOptions; active: boolean }) {
+  const thread = useBtw((s) => s.threads[pageId] ?? EMPTY)
   const { ask, clear } = useBtw()
-  const [text, setText] = useState('')
+  const text = useBtw((s) => s.drafts[pageId] ?? '')
+  const setText = (text: string): void => useBtw.getState().setDraft(pageId, text)
   const input = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const pending = thread.some((x) => !x.answer && !x.error)
@@ -32,14 +33,14 @@ export function BtwPane({ sessionId, cwd, options, active }: { sessionId: string
     const q = text.trim()
     if (!q || !cwd || pending) return
     setText('')
-    void ask(sessionId, cwd, q, options)
+    void ask(pageId, sessionId, cwd, q, options)
   }
 
   return (
     <div className="flex h-full flex-col">
       {thread.length > 0 && (
         <div className="flex items-center justify-end gap-2 px-4 pb-1">
-          <IconButton label="清空" onClick={() => clear(sessionId)}>
+          <IconButton label="清空" onClick={() => clear(pageId)}>
             <Trash2 size={14} />
           </IconButton>
         </div>

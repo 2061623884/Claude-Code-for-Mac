@@ -12,6 +12,7 @@ const rootEntries: ProjectEntry[] = [
 ]
 
 beforeEach(() => {
+  useLayout.getState().activateSession('test', 'p')
   window.desk = {
     files: {
       list: vi.fn((_projectPath: string, directory: string) =>

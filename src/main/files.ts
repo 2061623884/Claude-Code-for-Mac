@@ -192,9 +192,12 @@ export async function readForPreview(path: string): Promise<FilePreview> {
   if (info.isDirectory()) return { kind: 'dir' }
   if (!info.isFile()) return { kind: 'missing' }
   const size = info.size
-  if (extname(path).toLowerCase() === '.pdf') {
-    if (size > 30 * 1024 * 1024) return { kind: 'too-large', size }
-    return { kind: 'pdf', size, base64: (await readFile(path)).toString('base64') }
+  const extension = extname(path).toLowerCase()
+  const documentKind = extension === '.pdf' ? 'pdf' : extension === '.docx' ? 'docx' : ['.xlsx', '.xls'].includes(extension) ? 'spreadsheet' : null
+  if (documentKind) {
+    const limit = (documentKind === 'pdf' ? 100 : 30) * 1024 * 1024
+    if (size > limit) return { kind: 'too-large', size, limit }
+    return { kind: documentKind, size, base64: (await readFile(path)).toString('base64') }
   }
   const mime = IMAGES[extname(path).toLowerCase()]
   if (mime) {

@@ -1,9 +1,13 @@
 import { create } from 'zustand'
+import { useLayout } from './layoutStore'
+import { errorText } from './ipcError'
 import type { DemoState, DetectedFolder, EffortLevel, MetaInfo, PermissionMode, Project, SessionSummary, Settings } from '@shared/types'
 
 export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings' }
 
 interface DeskState {
+  actionError: string | null
+  clearActionError(): void
   ready: boolean
   home: string
   demo: DemoState | null
@@ -46,6 +50,8 @@ interface DeskState {
 const desk = (): Window['desk'] => window.desk
 
 export const useDesk = create<DeskState>((set, get) => ({
+  actionError: null,
+  clearActionError: () => set({ actionError: null }),
   ready: false,
   home: '',
   demo: null,
@@ -127,6 +133,7 @@ export const useDesk = create<DeskState>((set, get) => ({
 
   async removeProject(id) {
     const projects = await desk().projects.remove(id)
+    useLayout.getState().removeProject(id)
     const sessions = { ...get().sessions }
     delete sessions[id]
     const selectedProjectId = get().selectedProjectId === id ? (projects[0]?.id ?? null) : get().selectedProjectId
@@ -155,8 +162,19 @@ export const useDesk = create<DeskState>((set, get) => ({
   },
 
   async setArchived(session, projectId, archived) {
-    await desk().sessions.setArchived(session.id, archived)
-    await get().refreshSessions(projectId)
+    const originalView = get().view
+    set({ actionError: null })
+    try {
+      await desk().sessions.setArchived(session.id, archived)
+    } catch (error) {
+      set({ actionError: `归档状态更新失败：${errorText(error)}` })
+      return
+    }
+    if (archived && get().view === originalView && originalView.kind === 'session' && originalView.sessionId === session.id) {
+      get().newChat(projectId)
+    }
+    try { await get().refreshSessions(projectId) }
+    catch (error) { set({ actionError: `会话列表刷新失败：${errorText(error)}` }) }
   },
 
   async updateSettings(patch) {
@@ -188,3 +206,9 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({ sessions: { ...get().sessions, [projectId]: [entry, ...list] } })
   }
 }))
+
+// 在导航状态改变的同一轮同步侧栏，避免新会话短暂显示旧页面。
+useDesk.subscribe((state, previous) => {
+  if (state.view === previous.view) return
+  useLayout.getState().activateSession(state.view.kind === 'session' ? state.view.sessionId : null, state.view.kind === 'session' ? state.view.projectId : undefined)
+})

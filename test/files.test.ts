@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile, truncate } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -114,4 +114,21 @@ describe('file previews', () => {
       expect(await readForPreview(join(root, 'missing.txt'))).toEqual({ kind: 'missing' })
     } finally { await rm(root, { recursive: true, force: true }) }
   })
+})
+
+it('recognizes Office binaries and reports document-specific limits before reading oversized files', async () => {
+  const { readForPreview } = await import('../src/main/files')
+  const root = await mkdtemp(join(tmpdir(), 'claude-office-'))
+  try {
+    for (const [name, kind] of [['test.DOCX', 'docx'], ['test.xlsx', 'spreadsheet'], ['test.xls', 'spreadsheet']] as const) {
+      const path = join(root, name)
+      await writeFile(path, Buffer.from([0x50, 0x4b, 0, 0]))
+      expect(await readForPreview(path)).toMatchObject({ kind, base64: 'UEsAAA==' })
+      await truncate(path, 30 * 1024 * 1024 + 1)
+      expect(await readForPreview(path)).toMatchObject({ kind: 'too-large', limit: 30 * 1024 * 1024 })
+    }
+    const pdf = join(root, 'large.pdf')
+    await writeFile(pdf, '%PDF'); await truncate(pdf, 100 * 1024 * 1024 + 1)
+    expect(await readForPreview(pdf)).toMatchObject({ kind: 'too-large', limit: 100 * 1024 * 1024 })
+  } finally { await rm(root, { recursive: true, force: true }) }
 })

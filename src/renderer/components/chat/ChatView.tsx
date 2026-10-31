@@ -191,8 +191,8 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 panel={panelOpen && <CommandPanel ctx={panelCtx} />}
                 onCommand={(name, args) => {
                   if (name === 'btw') {
-                    if (args && cwd) void useBtw.getState().ask(sessionId, cwd, args, chat.options)
-                    else useLayout.getState().openRight('btw')
+                    const pageId = useLayout.getState().newPage(cwd, 'chat')
+                    if (pageId && args && cwd) void useBtw.getState().ask(pageId, sessionId, cwd, args, chat.options)
                     return true
                   }
                   return openAppPanel(name, args)

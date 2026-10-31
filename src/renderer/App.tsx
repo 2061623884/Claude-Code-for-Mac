@@ -18,7 +18,7 @@ import { SearchDialog } from './components/dialogs/SearchDialog'
 import { SessionSummary } from './components/summary/SessionSummary'
 
 export function App() {
-  const { ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, refreshSessions, setSearchOpen } =
+  const { actionError, clearActionError, ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, refreshSessions, setSearchOpen } =
     useDesk()
 
   useEffect(() => {
@@ -64,6 +64,7 @@ export function App() {
         setSearchOpen(!useDesk.getState().searchOpen)
       } else if (key === 'b' && e.shiftKey) {
         e.preventDefault()
+        if (useDesk.getState().view.kind !== 'session') return
         const layout = useLayout.getState()
         layout.setRightOpen(!layout.rightOpen)
       } else if (key === 'b') {
@@ -103,7 +104,7 @@ export function App() {
         </div>
         {!sidebarCollapsed && <ResizeHandle side="left" width={leftWidth} defaultWidth={LEFT.default} onResize={setLeftWidth} />}
       </div>
-      <main inert={rightOpen && expanded && view.kind !== 'settings'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
+      <main inert={rightOpen && expanded && view.kind === 'session'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
         <div className="drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 pl-[84px]">
           {sidebarCollapsed && (
             <div className="no-drag animate-fade-in flex gap-1">
@@ -122,12 +123,13 @@ export function App() {
             </div>
           )}
         </div>
+        {actionError && <div role="alert" className="flex items-center justify-between bg-danger/10 px-4 py-2 text-sm text-danger"><span>{actionError}</span><button type="button" onClick={clearActionError}>关闭</button></div>}
         {view.kind === 'new' && <NewSessionPage />}
         {view.kind === 'settings' && <SettingsPage />}
         {view.kind === 'session' && <ChatView key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       </main>
-      {view.kind !== 'settings' && <RightPanel sessionId={view.kind === 'session' ? view.sessionId : undefined} projectId={view.kind === 'session' ? view.projectId : useDesk.getState().selectedProjectId ?? undefined} />}
-      {view.kind !== 'settings' && <div className="absolute right-3 top-[10px] z-40"><RightPanelToggle /></div>}
+      {view.kind === 'session' && <RightPanel key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
+      {view.kind === 'session' && <div className="absolute right-3 top-[10px] z-40"><RightPanelToggle /></div>}
       {pendingProjectPath && <AddProjectDialog path={pendingProjectPath} />}
       {importCandidates && <ImportHistoryDialog candidates={importCandidates} />}
       {searchOpen && <SearchDialog />}

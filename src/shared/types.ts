@@ -53,8 +53,9 @@ export interface CommandInfo {
 export type FilePreview =
   | { kind: 'text'; size: number; content: string }
   | { kind: 'image'; size: number; dataUrl: string }
-  | { kind: 'pdf'; size: number; base64: string }
-  | { kind: 'binary' | 'too-large'; size: number }
+  | { kind: 'pdf' | 'docx' | 'spreadsheet'; size: number; base64: string }
+  | { kind: 'binary'; size: number }
+  | { kind: 'too-large'; size: number; limit?: number }
   | { kind: 'missing' | 'dir' }
 
 export interface FileInfo {

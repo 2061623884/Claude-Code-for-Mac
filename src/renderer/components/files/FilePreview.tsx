@@ -8,6 +8,7 @@ import { IconButton } from '../sidebar/SessionRow'
 import { Markdown } from '../chat/Markdown'
 import { FileContext } from './FileLink'
 import { PdfPreview } from './PdfPreview'
+import { OfficePreview } from './OfficePreview'
 
 /** 右栏的文件预览：代码高亮带行号、Markdown 渲染、图片；文件变了自动刷新 */
 export function FilePreview({ path, line, nonce, cwd }: { path: string; line?: number; nonce: number; cwd?: string }) {
@@ -22,6 +23,7 @@ export function FilePreview({ path, line, nonce, cwd }: { path: string; line?: n
 
   useEffect(() => {
     let stale = false
+    setPreview(null); setError(null)
     window.desk.files.read(path).then(
       (p) => !stale && (setPreview(p), setError(null)),
       (err: Error) => !stale && setError(err.message)
@@ -98,6 +100,8 @@ export function FilePreview({ path, line, nonce, cwd }: { path: string; line?: n
           ) : (
             <CodeLines code={preview.content} path={path} line={line} nonce={nonce} />
           )
+        ) : preview.kind === 'docx' || preview.kind === 'spreadsheet' ? (
+          <OfficePreview base64={preview.base64} format={preview.kind} />
         ) : preview.kind === 'pdf' ? (
           <PdfPreview base64={preview.base64} />
         ) : preview.kind === 'image' ? (
@@ -109,7 +113,7 @@ export function FilePreview({ path, line, nonce, cwd }: { path: string; line?: n
             {preview.kind === 'missing' && '文件不存在或已被删除。'}
             {preview.kind === 'dir' && '这是一个文件夹。'}
             {preview.kind === 'binary' && `无法预览这类文件（${formatBytes(preview.size)}）。`}
-            {preview.kind === 'too-large' && `文件太大，不在这里预览（${formatBytes(preview.size)}）。`}
+            {preview.kind === 'too-large' && `文件太大（${formatBytes(preview.size)}${preview.limit ? `，预览上限 ${formatBytes(preview.limit)}` : ''}），请用默认应用打开。`}
             {(preview.kind === 'binary' || preview.kind === 'too-large') && (
               <button
                 type="button"

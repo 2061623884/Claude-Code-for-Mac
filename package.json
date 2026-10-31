@@ -1,7 +1,7 @@
 {
   "name": "claude-desk",
   "productName": "Claude Code",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "description": "Codex 风格的中文 Claude Code 桌面应用",
   "main": "out/main/index.js",
@@ -22,8 +22,11 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
+    "dompurify": "3.4.17",
+    "mammoth": "1.13.0",
     "node-pty": "1.1.0",
     "pdfjs-dist": "6.4.299",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "4.6.7"
   },
   "devDependencies": {

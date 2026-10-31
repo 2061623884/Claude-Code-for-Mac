@@ -1,66 +1,47 @@
-// 三栏布局：左右栏宽度、右栏开关和当前标签。宽度和开关记在本机（localStorage），重启后保持
 import { create } from 'zustand'
 import type { SummaryView } from '@shared/sessionSummary'
+import { useBtw } from './btwStore'
 
-/** 右栏标签：顺便问一下、项目文件，以及打开的文件（file:<绝对路径>） */
-export type RightTab = 'btw' | 'project' | `file:${string}` | `page:${string}`
-
+export type RightTab = `file:${string}` | `page:${string}`
 export interface SidePage {
   id: `page:${string}`
-  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary'
+  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary' | 'chat'
   sessionId?: string
   projectId?: string
   section?: SummaryView
   cwd?: string
 }
-
-export interface OpenFile {
-  path: string
-  line?: number
-  /** 每次打开递增，让预览重新滚到指定行 */
-  nonce: number
+export interface OpenFile { path: string; line?: number; nonce: number }
+interface SessionLayout {
+  projectId?: string
+  rightOpen: boolean
+  rightTab: RightTab | null
+  pages: SidePage[]
+  openFiles: OpenFile[]
+  expanded: boolean
 }
-
-const MAX_FILES = 6
-
+const empty = (): SessionLayout => ({ rightOpen: false, rightTab: null, pages: [], openFiles: [], expanded: false })
+const snapshot = (s: SessionLayout): SessionLayout => ({ projectId: s.projectId, rightOpen: s.rightOpen, rightTab: s.rightTab, pages: s.pages, openFiles: s.openFiles, expanded: s.expanded })
 export const LEFT = { min: 220, max: 420, default: 272 }
 export const RIGHT = { min: 320, max: 600, default: 380 }
-
-interface Saved {
-  leftWidth: number
-  rightWidth: number
-  rightOpen: boolean
-  rightTab: RightTab
-}
-
 const KEY = 'claude-desk.layout'
 const clamp = (n: number, r: { min: number; max: number }): number => Math.round(Math.min(Math.max(n, r.min), r.max))
-
-function load(): Saved {
-  const fallback: Saved = { leftWidth: LEFT.default, rightWidth: RIGHT.default, rightOpen: false, rightTab: 'page:home' }
+function widths() {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Saved>
-    return {
-      leftWidth: clamp(Number(saved.leftWidth) || LEFT.default, LEFT),
-      rightWidth: clamp(Number(saved.rightWidth) || RIGHT.default, RIGHT),
-      rightOpen: saved.rightOpen === true,
-      // 打开的文件不保存，重启后回到固定标签
-      rightTab: saved.rightTab === 'btw' ? 'btw' : 'page:home'
-    }
-  } catch {
-    return fallback
-  }
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}')
+    return { leftWidth: clamp(Number(saved.leftWidth) || LEFT.default, LEFT), rightWidth: clamp(Number(saved.rightWidth) || RIGHT.default, RIGHT) }
+  } catch { return { leftWidth: LEFT.default, rightWidth: RIGHT.default } }
 }
-
-interface LayoutStore extends Saved {
-  /** 正在拖动调宽：期间关掉宽度动画，保证跟手 */
+interface LayoutStore extends SessionLayout {
+  leftWidth: number
+  rightWidth: number
   resizing: boolean
-  /** 右栏里打开的文件标签，按打开顺序 */
-  openFiles: OpenFile[]
-  pages: SidePage[]
-  expanded: boolean
+  activeSessionId: string | null
+  sessions: Record<string, SessionLayout>
+  activateSession(sessionId: string | null, projectId?: string): void
+  removeProject(projectId: string): void
   setExpanded(expanded: boolean): void
-  newPage(cwd?: string, kind?: SidePage['kind']): void
+  newPage(cwd?: string, kind?: SidePage['kind']): SidePage['id'] | null
   changePage(id: SidePage['id'], kind: SidePage['kind'], cwd?: string): void
   closePage(id: SidePage['id']): void
   openSummary(sessionId: string, projectId: string, section: SummaryView): void
@@ -72,76 +53,96 @@ interface LayoutStore extends Saved {
   openRight(tab: RightTab): void
   setResizing(resizing: boolean): void
 }
-
+function release(page: SidePage): void {
+  useBtw.getState().remove(page.id)
+  void window.desk.workspace.closePage(page.id).catch((error) => console.error('关闭工作区页面失败', error))
+}
 export const useLayout = create<LayoutStore>((set, get) => {
-  const save = (patch: Partial<Saved>): void => {
+  const saveWidth = (patch: Partial<Pick<LayoutStore, 'leftWidth' | 'rightWidth'>>): void => {
     set(patch)
-    const { leftWidth, rightWidth, rightOpen, rightTab } = get()
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ leftWidth, rightWidth, rightOpen, rightTab }))
-    } catch {
-      // 存不了就只在本次运行中生效
-    }
+    const { leftWidth, rightWidth } = get()
+    try { localStorage.setItem(KEY, JSON.stringify({ leftWidth, rightWidth })) } catch { /* 本次运行仍生效 */ }
   }
   return {
-    ...load(),
-    resizing: false,
-    openFiles: [],
-    pages: [{ id: 'page:home', kind: 'start' }],
-    expanded: false,
-    setExpanded: (expanded) => set({ expanded }),
+    ...empty(), ...widths(), resizing: false, activeSessionId: null, sessions: {},
+    activateSession: (sessionId, projectId) => {
+      const state = get()
+      if (sessionId === state.activeSessionId) return
+      const sessions = { ...state.sessions }
+      if (state.activeSessionId) sessions[state.activeSessionId] = snapshot(state)
+      set({ ...empty(), ...(sessionId ? sessions[sessionId] : undefined), projectId, activeSessionId: sessionId, sessions, resizing: false })
+    },
+    removeProject: (projectId) => {
+      const state = get()
+      const sessions = { ...state.sessions }
+      if (state.activeSessionId) sessions[state.activeSessionId] = snapshot(state)
+      for (const [id, session] of Object.entries(sessions)) {
+        if (session.projectId !== projectId) continue
+        session.pages.forEach(release)
+        delete sessions[id]
+      }
+      set({ sessions, ...(state.projectId === projectId ? { ...empty(), activeSessionId: null, projectId: undefined } : {}) })
+    },
+    setExpanded: (expanded) => { if (get().activeSessionId) set({ expanded }) },
     newPage: (cwd, kind = 'start') => {
+      const { activeSessionId, projectId, pages } = get()
+      if (!activeSessionId) return null
       const id = `page:${crypto.randomUUID()}` as const
-      set({ pages: [...get().pages, { id, kind, cwd }] })
-      save({ rightOpen: true, rightTab: id })
+      set({ pages: [...pages, { id, kind, cwd, sessionId: activeSessionId, projectId }], rightOpen: true, rightTab: id })
+      return id
     },
     openSummary: (sessionId, projectId, section) => {
-      const existing = get().pages.find((p) => p.kind === 'summary' && p.sessionId === sessionId && p.section === section)
+      if (sessionId !== get().activeSessionId) return
+      const existing = get().pages.find((p) => p.kind === 'summary' && p.section === section)
       const id = existing?.id ?? `page:${crypto.randomUUID()}` as const
       if (!existing) set({ pages: [...get().pages, { id, kind: 'summary', sessionId, projectId, section }] })
-      save({ rightOpen: true, rightTab: id })
+      set({ rightOpen: true, rightTab: id })
     },
     changePage: (id, kind, cwd) => {
-      set({ pages: get().pages.map((p) => p.id === id ? { ...p, kind, cwd: cwd ?? p.cwd } : p) })
+      if (!get().activeSessionId) return
+      set({ pages: get().pages.map((p) => p.id === id && p.kind === 'start' ? { ...p, kind, cwd: cwd ?? p.cwd } : p) })
     },
     closePage: (id) => {
       const before = get().pages
       const index = before.findIndex((p) => p.id === id)
       if (index < 0) return
-      // 标签拥有资源生命周期；隐藏或卸载展示组件时保留主进程中的资源。
-      void window.desk.workspace.closePage(id).catch((error) => console.error('关闭工作区页面失败', error))
+      release(before[index])
       const pages = before.filter((p) => p.id !== id)
-      if (!pages.length) pages.push({ id: `page:${crypto.randomUUID()}`, kind: 'start' })
-      set({ pages })
-      if (get().rightTab === id) save({ rightTab: pages[Math.min(Math.max(index, 0), pages.length - 1)].id })
+      const rightTab = get().rightTab === id ? pages[Math.min(index, pages.length - 1)]?.id ?? (get().openFiles[0] ? `file:${get().openFiles[0].path}` as const : null) : get().rightTab
+      set({ pages, rightTab })
+      if (!rightTab && get().rightOpen) get().newPage()
     },
     openFile: (path, line) => {
-      const rest = get().openFiles.filter((f) => f.path !== path)
+      if (!get().activeSessionId) return
       const existing = get().openFiles.find((f) => f.path === path)
       const entry = { path, line, nonce: (existing?.nonce ?? 0) + 1 }
-      // 已经打开的留在原位，新的排到最后；超过上限时关掉最早打开的
-      const list = existing ? get().openFiles.map((f) => (f.path === path ? entry : f)) : [...rest, entry].slice(-MAX_FILES)
-      set({ openFiles: list })
-      save({ rightOpen: true, rightTab: `file:${path}` })
+      const openFiles = existing ? get().openFiles.map((f) => f.path === path ? entry : f) : [...get().openFiles, entry].slice(-6)
+      set({ openFiles, rightOpen: true, rightTab: `file:${path}` })
     },
     closeFile: (path) => {
-      const list = get().openFiles
-      const i = list.findIndex((f) => f.path === path)
-      const next = list.filter((f) => f.path !== path)
-      set({ openFiles: next })
+      const index = get().openFiles.findIndex((f) => f.path === path)
+      const openFiles = get().openFiles.filter((f) => f.path !== path)
+      set({ openFiles })
       if (get().rightTab === `file:${path}`) {
-        const neighbour = next[Math.min(i, next.length - 1)]
-        save({ rightTab: neighbour ? `file:${neighbour.path}` : get().pages.find((p) => p.kind === 'files')?.id ?? get().pages[0].id })
+        const neighbour = openFiles[Math.min(index, openFiles.length - 1)]
+        set({ rightTab: neighbour ? `file:${neighbour.path}` : get().pages[0]?.id ?? null })
+        if (!get().rightTab && get().rightOpen) get().newPage()
       }
     },
-    setLeftWidth: (width) => save({ leftWidth: clamp(width, LEFT) }),
-    setRightWidth: (width) => save({ rightWidth: clamp(width, RIGHT) }),
-    setRightOpen: (rightOpen) => save({ rightOpen }),
-    openRight: (rightTab) => save({ rightOpen: true, rightTab }),
+    setLeftWidth: (width) => saveWidth({ leftWidth: clamp(width, LEFT) }),
+    setRightWidth: (width) => saveWidth({ rightWidth: clamp(width, RIGHT) }),
+    setRightOpen: (rightOpen) => {
+      if (!get().activeSessionId) return
+      if (rightOpen && !get().rightTab) get().newPage()
+      set({ rightOpen })
+    },
+    openRight: (rightTab) => {
+      if (!get().activeSessionId || !(get().pages.some((p) => p.id === rightTab) || get().openFiles.some((f) => `file:${f.path}` === rightTab))) return
+      set({ rightOpen: true, rightTab })
+    },
     setResizing: (resizing) => set({ resizing })
   }
 })
-
-export function sidebarPageCount(state: Pick<LayoutStore, 'pages' | 'openFiles' | 'rightTab'>, hasSession: boolean): number {
-  return state.pages.length + state.openFiles.length + (hasSession ? 1 : 0) + (state.rightTab === 'project' ? 1 : 0)
+export function sidebarPageCount(state: Pick<LayoutStore, 'pages' | 'openFiles'>): number {
+  return state.pages.length + state.openFiles.length
 }

@@ -1,4 +1,4 @@
-import { Compass, FolderOpen, Globe, Terminal } from 'lucide-react'
+import { Compass, FolderOpen, Globe, Terminal, MessageCircleQuestion } from 'lucide-react'
 import type { SidePage } from '../../layoutStore'
 
 export function StartPane({ onSelect, hasProject }: { onSelect(kind: SidePage['kind']): void; hasProject: boolean }) {
@@ -10,7 +10,8 @@ export function StartPane({ onSelect, hasProject }: { onSelect(kind: SidePage['k
           {[
             { kind: 'files' as const, label: '工作区文件', description: '浏览会话工作区的文件', icon: <FolderOpen size={22} className="text-amber-400" />, shortcut: '⌘ P' },
             { kind: 'terminal' as const, label: '新建终端', description: '在会话工作区运行命令', icon: <Terminal size={22} className="text-blue-400" />, shortcut: '⌃ `' },
-            { kind: 'browser' as const, label: '浏览器', description: '浏览网页', icon: <Globe size={22} className="text-blue-400" />, shortcut: '⌘ T' }
+            { kind: 'browser' as const, label: '浏览器', description: '浏览网页', icon: <Globe size={22} className="text-blue-400" />, shortcut: '⌘ T' },
+            { kind: 'chat' as const, label: '侧边聊天', description: '基于当前会话，开始独立问答', icon: <MessageCircleQuestion size={22} className="text-blue-400" />, shortcut: '' }
           ].map((item) => (
             <button key={item.kind} type="button" disabled={!hasProject && item.kind !== 'browser'} onClick={() => onSelect(item.kind)}
               className="group flex w-full items-center gap-4 rounded-2xl border border-line-strong px-5 py-4 text-left transition-colors hover:bg-hover disabled:opacity-40">
