@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import { emptySessionSummary, type SessionSummaryData } from '@shared/sessionSummary'
-import type { ApprovalRequest, ChatActivity, ChatEvent, ChatState, Decision, QueueAction, SessionQueue, SessionOptions, UiMessage } from '@shared/chat'
+import { applyChatEvent, mergeChatSnapshot, staleChatEvent, type ChatProjection } from './chatSync'
+import { emptySessionSummary } from '@shared/sessionSummary'
+import type { ChatEvent, ChatSnapshot, Decision, QueueAction, SessionOptions } from '@shared/chat'
 import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
 import { useSessionMarks } from './sessionMarks'
@@ -11,22 +12,9 @@ import { useShallow } from 'zustand/react/shallow'
 
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
-export interface ChatEntry {
-  optionsSaved?: boolean
-  queue?: SessionQueue
-  activity?: ChatActivity
-  /** 本地接收顺序，用于保留加载快照期间到达的正文。 */
-  messageVersions?: Record<string, number>
-  summary?: SessionSummaryData
+export interface ChatEntry extends ChatProjection {
   projectId: string
-  messages: UiMessage[]
-  state: ChatState
-  approvals: ApprovalRequest[]
   loaded: boolean
-  options: SessionOptions
-  /** 最近一次出错的说明（如未登录、额度用尽） */
-  error: string | null
-  lastResult?: Extract<ChatEvent, { kind: 'result' }>
 }
 
 interface ChatStore {
@@ -44,7 +32,7 @@ interface ChatStore {
   handle(sessionId: string, event: ChatEvent): void
 }
 
-let messageRevision = 0
+let eventRevision = 0
 const completed = new Set<string>()
 
 const desk = (): Window['desk'] => window.desk
@@ -71,6 +59,21 @@ export const useChat = create<ChatStore>((set, get) => {
     set({ chats: { ...get().chats, [sessionId]: { ...current, ...fn(current) } } })
   }
 
+  // 新请求替代旧请求，防止较早的加载覆盖后发的重载。
+  const snapshotRequests = new Map<string, object>()
+  const readSnapshot = async (id: string, read: () => Promise<ChatSnapshot>, clearError = false): Promise<void> => {
+    const request = {}
+    snapshotRequests.set(id, request)
+    const requestedAt = eventRevision
+    try {
+      const snapshot = await read()
+      if (snapshotRequests.get(id) !== request) return
+      patch(id, current => ({ ...mergeChatSnapshot(current, snapshot, requestedAt, clearError), loaded: true }))
+    } finally {
+      if (snapshotRequests.get(id) === request) snapshotRequests.delete(id)
+    }
+  }
+
   // 同一会话的设置按请求顺序提交；一次失败不阻塞后续修改。
   const optionChanges = new Map<string, Promise<void>>()
   const enqueueOptions = (id: string, apply: () => Promise<void>): Promise<void> => {
@@ -90,29 +93,13 @@ export const useChat = create<ChatStore>((set, get) => {
         return
       }
       set({ chats: { ...get().chats, [sessionId]: { ...(existing ?? blank(projectId)), projectId } } })
-      const requestedAt = messageRevision
-      const snap = await desk().chat.open(sessionId, projectPath(projectId))
-      patch(sessionId, (current) => {
-        const newerActivity = (current.activity?.revision ?? 0) > (snap.activity?.revision ?? 0)
-        const updates = current.messages.filter((m) => (current.messageVersions?.[m.id] ?? 0) > requestedAt)
-        const updated = new Map(updates.map((m) => [m.id, m]))
-        const known = new Set(snap.messages.map((m) => m.id))
-        return {
-          ...snap,
-          messages: [...snap.messages.map((m) => updated.get(m.id) ?? m), ...updates.filter((m) => !known.has(m.id))],
-          state: newerActivity ? current.state : snap.state,
-          activity: newerActivity ? current.activity : snap.activity,
-          summary: (current.summary?.revision ?? 0) > (snap.summary?.revision ?? 0) ? current.summary : snap.summary,
-          loaded: true
-        }
-      })
+      await readSnapshot(sessionId, () => desk().chat.open(sessionId, projectPath(projectId)))
     },
 
     async reload(sessionId) {
       const c = get().chats[sessionId]
       if (!c) return
-      const snap = await desk().chat.reload(sessionId, projectPath(c.projectId))
-      patch(sessionId, () => ({ ...snap, loaded: true, error: null }))
+      await readSnapshot(sessionId, () => desk().chat.reload(sessionId, projectPath(c.projectId)), true)
     },
 
     async start(text, title) {
@@ -135,10 +122,9 @@ export const useChat = create<ChatStore>((set, get) => {
       // 第一条消息没有可以分叉的位置，直接开新对话
       const id =
         msg.forkFrom === null ? await desk().chat.start(path, text, c.options) : await desk().chat.fork(path, sessionId, msg.forkFrom, text, c.options)
-      const snap = await desk().chat.open(id, path)
-      // 快照之前到达的事件（比如启动失败的提示）不能被覆盖掉
       const pending = get().chats[id]
-      set({ chats: { ...get().chats, [id]: { ...blank(c.projectId, c.options), ...snap, error: pending?.error ?? null, loaded: true } } })
+      set({ chats: { ...get().chats, [id]: { ...blank(c.projectId, c.options), ...pending, projectId: c.projectId } } })
+      await readSnapshot(id, () => desk().chat.open(id, path))
       useDesk.getState().addPendingSession(c.projectId, id, text)
       useDesk.getState().setView({ kind: 'session', sessionId: id, projectId: c.projectId })
     },
@@ -209,53 +195,17 @@ export const useChat = create<ChatStore>((set, get) => {
         // 新会话的事件可能比 start() 的返回值先到，先占个位
         set({ chats: { ...get().chats, [sessionId]: blank('') } })
       }
-      switch (event.kind) {
-        case 'options': patch(sessionId, () => ({ options: event.options, optionsSaved: true })); break
-        case 'queue': patch(sessionId, () => ({ queue: event.queue })); break
-        case 'activity':
-          patch(sessionId, (c) => (c.activity?.revision ?? 0) <= event.activity.revision ? { activity: event.activity } : {})
-          break
-        case 'summary':
-          patch(sessionId, () => ({ summary: event.summary }))
-          break
-        case 'upsert':
-          patch(sessionId, (c) => {
-            const messages = [...c.messages]
-            const messageVersions = { ...c.messageVersions }
-            for (const m of event.messages) {
-              messageVersions[m.id] = ++messageRevision
-              const i = messages.findIndex((x) => x.id === m.id)
-              if (i >= 0) messages[i] = m
-              else messages.push(m)
-            }
-            return { messages, messageVersions }
-          })
-          break
-        case 'state':
-          patch(sessionId, () => ({ state: event.state }))
-          break
-        case 'approval':
-          patch(sessionId, (c) => ({ approvals: [...c.approvals, event.request] }))
-          break
-        case 'approvalDone':
-          patch(sessionId, (c) => ({ approvals: c.approvals.filter((a) => a.requestId !== event.requestId) }))
-          break
-        case 'result': {
-          const current = get().chats[sessionId]
-          const lastMessage = current?.messages.at(-1)
-          const completionKey = `${sessionId}:${event.resultId ?? `${lastMessage?.id ?? ''}:${current?.activity?.revision ?? 0}`}`
-          if (!completed.has(completionKey)) {
-            completed.add(completionKey)
-            useSessionMarks.getState().complete(sessionId)
-          }
-          patch(sessionId, () => ({ error: event.error, lastResult: event }))
-          const projectId = get().chats[sessionId]?.projectId
-          if (projectId) void useDesk.getState().refreshSessions(projectId)
-          break
+      const current = get().chats[sessionId]
+      if (staleChatEvent(current, event)) return
+      patch(sessionId, c => applyChatEvent(c, event, ++eventRevision))
+      if (event.kind === 'result') {
+        const lastMessage = current.messages.at(-1)
+        const completionKey = `${sessionId}:${event.resultId ?? `${lastMessage?.id ?? ''}:${current.activity?.revision ?? 0}`}`
+        if (!completed.has(completionKey)) {
+          completed.add(completionKey)
+          useSessionMarks.getState().complete(sessionId)
         }
-        case 'notice':
-          patch(sessionId, () => ({ error: event.text }))
-          break
+        if (current.projectId) void useDesk.getState().refreshSessions(current.projectId)
       }
     }
   }

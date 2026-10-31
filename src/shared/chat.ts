@@ -95,8 +95,8 @@ export type Decision =
   | { type: 'planApprove'; mode: PermissionMode }
   | { type: 'planRevise'; feedback: string }
 
-export type ChatEvent =
-  | { kind: 'options'; options: SessionOptions }
+export type ChatEvent = (
+  | { kind: 'options'; options: SessionOptions; optionsSaved?: boolean; optionsSaveError?: string | null }
   | { kind: 'queue'; queue: SessionQueue }
   | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
@@ -106,6 +106,7 @@ export type ChatEvent =
   | { kind: 'approvalDone'; requestId: string }
   | { kind: 'result'; resultId?: string; durationMs: number; error: string | null; diagnostic?: { subtype: string; errors: string[]; terminalReason?: string; userMessageIds: string[]; userStopped: boolean } }
   | { kind: 'notice'; text: string }
+) & { revision?: number }
 
 /** 当前上下文窗口的占用情况 */
 export interface ContextUsage {
@@ -122,7 +123,10 @@ export interface ContextUsage {
 }
 
 export interface ChatSnapshot {
+  /** 与实时事件共享的会话版本，用于拒绝过期快照。 */
+  revision?: number
   optionsSaved?: boolean
+  optionsSaveError?: string | null
   options?: SessionOptions
   queue?: SessionQueue
   activity?: ChatActivity

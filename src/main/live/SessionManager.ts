@@ -8,6 +8,8 @@ import { peekContext } from '../context'
 import { loadSdk, withIdleQuery } from '../sdk'
 import { Transcript } from '../transcript'
 import { LiveSession } from './LiveSession'
+import { SessionRuntimes } from './SessionRuntimes'
+import { SessionPreferencesState } from './SessionPreferencesState'
 import type { ActivityRepository } from '../activityRepository'
 import type { HumanSubmissionRepository } from '../humanSubmissionRepository'
 
@@ -22,7 +24,7 @@ interface CommandObserver {
 type Emit = (sessionId: string, event: ChatEvent) => void
 
 export class SessionManager {
-  private live = new Map<string, LiveSession>()
+  private live = new SessionRuntimes()
   private commandConfigurations = new WeakMap<LiveSession, string>()
   private transcripts = new Map<string, Transcript>()
   private transcriptLoads = new Map<string, Promise<Transcript>>()
@@ -30,11 +32,21 @@ export class SessionManager {
   private seen = new Map<string, number>()
   private sweeper = setInterval(() => this.closeIdle(), 60_000)
 
-  private preferences = new Map<string, SessionPreferences>()
+  private preferences: SessionPreferencesState
+  private revisions = new Map<string, number>()
+  private dispatchEpochs = new Map<string, number>()
   private locks = new Map<string, Promise<unknown>>()
   private shuttingDown = false
 
-  constructor(private emit: Emit, private activityStore?: ActivityRepository, private commandObserver?: CommandObserver, private submissionStore?: HumanSubmissionRepository, private preferencesStore?: SessionPreferencesRepository) {}
+  constructor(private emit: Emit, private activityStore?: ActivityRepository, private commandObserver?: CommandObserver, private submissionStore?: HumanSubmissionRepository, preferencesStore?: SessionPreferencesRepository) {
+    this.preferences = new SessionPreferencesState(preferencesStore, (id, event) => this.publish(id, event))
+  }
+
+  private publish(id: string, event: ChatEvent): void {
+    const revision = (this.revisions.get(id) ?? 0) + 1
+    this.revisions.set(id, revision)
+    this.emit(id, { ...event, revision })
+  }
 
   commandsFor(cwd: string, configuration?: string): Promise<CommandInfo[]> | undefined {
     const session = [...this.live.values()].find((candidate) => candidate.cwd === cwd && (configuration === undefined || this.commandConfigurations.get(candidate) === configuration))
@@ -48,7 +60,8 @@ export class SessionManager {
     return {
       ...(prefs.options ? { options: structuredClone(prefs.options) } : {}),
       queue: structuredClone(prefs.queue),
-      optionsSaved: Boolean(prefs.options),
+      ...this.preferences.persistence(sessionId),
+      revision: this.revisions.get(sessionId) ?? 0,
       activity: session?.activity.snapshot(),
       summary: transcript.activity.snapshot(),
       messages: structuredClone(transcript.messages),
@@ -107,17 +120,20 @@ export class SessionManager {
           for (const item of p.queue.items) if (['submitting', 'submitted', 'received'].includes(item.status)) { item.status = 'unknown'; item.error = '前次执行已结束，交付记录待核对；不会自动重发' }
         })
       }
+      const live = await this.ensureLive(sessionId, projectPath, options)
       await this.applyOptions(sessionId, options)
-      const live = session ?? this.spawn(sessionId, projectPath, true, options, await this.transcript(sessionId, projectPath))
       live.send(text)
     })
   }
 
   async queueAction(sessionId: string, projectPath: string, action: QueueAction): Promise<void> {
+    // 暂停不排在正在等待 SDK 的派发之后。
+    if (action.type === 'pause') { this.pauseQueue(sessionId); return }
+    const requestedEpoch = this.dispatchEpochs.get(sessionId) ?? 0
     return this.lock(sessionId, async () => {
       const prefs = this.prefs(sessionId)
-      if (action.type === 'pause') { this.updatePrefs(sessionId, p => { p.queue.paused = true }); return }
       if (action.type === 'resume') {
+        if (requestedEpoch !== (this.dispatchEpochs.get(sessionId) ?? 0)) return
         this.updatePrefs(sessionId, p => { p.queue.paused = false; for (const item of p.queue.items) if (item.status === 'failed') item.status = 'queued' })
         await this.dispatch(sessionId, projectPath); return
       }
@@ -184,11 +200,7 @@ export class SessionManager {
     history: BtwTurn[],
     options: SessionOptions
   ): Promise<string | null> {
-    let session = this.live.get(sessionId)
-    if (!session) {
-      const transcript = await this.transcript(sessionId, projectPath)
-      session = this.live.get(sessionId) ?? this.spawn(sessionId, projectPath, true, this.prefs(sessionId).options ?? options, transcript)
-    }
+    const session = await this.ensureLive(sessionId, projectPath, options)
     return session.sideQuestion(question, history)
   }
 
@@ -200,7 +212,7 @@ export class SessionManager {
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    this.updatePrefs(sessionId, p => { p.queue.paused = true })
+    this.pauseQueue(sessionId)
     await this.live.get(sessionId)?.interrupt()
   }
 
@@ -210,8 +222,10 @@ export class SessionManager {
 
   async respond(sessionId: string, requestId: string, decision: Decision): Promise<void> {
     return this.lock(sessionId, async () => {
-      await this.live.get(sessionId)?.respond(requestId, decision)
-      if (decision.type === 'planApprove') this.updatePrefs(sessionId, p => { p.options = { ...this.options(sessionId), mode: decision.mode } })
+      const live = this.live.get(sessionId)
+      if (!live?.approvals.some(request => request.requestId === requestId)) return
+      await live.respond(requestId, decision)
+      if (decision.type === 'planApprove') this.updatePrefs(sessionId, p => { p.options = { ...this.options(sessionId), mode: decision.mode } }, 'applied')
     })
   }
 
@@ -240,8 +254,7 @@ export class SessionManager {
   closeAll(): void {
     this.shuttingDown = true
     clearInterval(this.sweeper)
-    for (const s of this.live.values()) s.close()
-    this.live.clear()
+    this.live.closeAll()
   }
 
   private async transcript(sessionId: string, projectPath: string): Promise<Transcript> {
@@ -285,7 +298,7 @@ export class SessionManager {
       if (event.kind === 'summary') this.activityStore?.save(sessionId, transcript.activity.export())
       if (event.kind === 'result') {
         const ids = event.diagnostic?.userMessageIds ?? []
-        this.updatePrefs(sessionId, p => {
+        this.preferences.observe(sessionId, p => {
           p.queue.items = p.queue.items.filter(i => !ids.includes(i.id))
           if (!ids.length) for (const item of p.queue.items) {
             if (['submitting', 'submitted', 'received'].includes(item.status)) { item.status = 'unknown'; item.error = '执行已结束，但引擎未提供消息关联信息，请核对会话'; p.queue.paused = true }
@@ -293,17 +306,17 @@ export class SessionManager {
           if (event.error) p.queue.paused = true
         })
       }
-      if (event.kind === 'state' && event.state === 'error') this.updatePrefs(sessionId, p => { p.queue.paused = true })
-      this.emit(sessionId, event)
+      if (event.kind === 'state' && event.state === 'error') this.preferences.observe(sessionId, p => { p.queue.paused = true })
+      this.publish(sessionId, event)
       if (event.kind === 'state' && event.state === 'idle' && !this.shuttingDown) {
-        void this.lock(sessionId, () => this.dispatch(sessionId, cwd)).catch(error => this.emit(sessionId, { kind: 'notice', text: String(error) }))
+        void this.lock(sessionId, () => this.dispatch(sessionId, cwd)).catch(error => this.publish(sessionId, { kind: 'notice', text: String(error) }))
       }
     }
     const configuration = this.commandObserver?.configuration()
     const session = new LiveSession({
       sessionId, cwd, resume, fork, options, transcript, emit, onCommands: this.commandObserver?.publisher(cwd),
       onConsumed: (ids) => {
-        this.updatePrefs(sessionId, p => { for (const item of p.queue.items) if (ids.includes(item.id)) item.status = 'received' })
+        this.preferences.observe(sessionId, p => { for (const item of p.queue.items) if (ids.includes(item.id)) item.status = 'received' })
       },
       onSubmit: (submission) => {
         if (!this.submissionStore) return
@@ -312,9 +325,8 @@ export class SessionManager {
       },
       onClosed: (closed) => {
         // 迟到的旧实例退出事件不能删除已经替换它的新实例。
-        if (this.live.get(sessionId) !== closed) return
-        this.live.delete(sessionId)
-        this.updatePrefs(sessionId, p => {
+        if (!this.live.remove(sessionId, closed)) return
+        this.preferences.observe(sessionId, p => {
           if (p.queue.items.length) p.queue.paused = true
           for (const item of p.queue.items) if (['submitting', 'submitted', 'received'].includes(item.status)) item.status = 'unknown'
         })
@@ -322,39 +334,33 @@ export class SessionManager {
       }
     })
     if (configuration !== undefined) this.commandConfigurations.set(session, configuration)
-    this.live.set(sessionId, session)
+    this.live.add(sessionId, session)
     void session.start()
     return session
   }
 
-  private prefs(id: string): SessionPreferences {
-    let prefs = this.preferences.get(id)
-    if (!prefs) {
-      const saved = this.preferencesStore?.load(id)
-      prefs = saved ? structuredClone(saved) : { queue: { items: [], paused: false } }
-      if (saved) {
-        for (const item of prefs.queue.items) delete item.editing
-        prefs.queue.paused = prefs.queue.items.length > 0
-        for (const item of prefs.queue.items) if (['submitting', 'submitted', 'received'].includes(item.status)) item.status = 'unknown'
-      }
-      this.preferences.set(id, prefs)
-    }
-    return prefs
-  }
+  private prefs(id: string): SessionPreferences { return this.preferences.get(id) }
 
   private options(id: string): SessionOptions {
     const defaults = store.read().settings
     return this.prefs(id).options ?? { model: defaults.defaultModel ?? null, mode: defaults.defaultPermissionMode ?? 'default', effort: defaults.defaultEffort ?? null }
   }
 
-  private updatePrefs(id: string, update: (prefs: SessionPreferences) => void): void {
-    const next = structuredClone(this.prefs(id))
-    update(next)
-    if (!next.queue.items.length) next.queue.paused = false
-    this.preferencesStore?.save(id, next)
-    this.preferences.set(id, next)
-    if (next.options) this.emit(id, { kind: 'options', options: structuredClone(next.options) })
-    this.emit(id, { kind: 'queue', queue: structuredClone(next.queue) })
+  private updatePrefs(id: string, update: (prefs: SessionPreferences) => void, commit: 'durable' | 'applied' = 'durable'): void {
+    this.preferences.update(id, update, commit)
+  }
+
+  private pauseQueue(id: string): void {
+    this.dispatchEpochs.set(id, (this.dispatchEpochs.get(id) ?? 0) + 1)
+    this.preferences.observe(id, p => { p.queue.paused = true })
+  }
+
+  private ensureLive(id: string, cwd: string, fallback: SessionOptions): Promise<LiveSession> {
+    return this.live.getOrCreate(id, () => this.transcript(id, cwd), transcript => {
+      const options = this.prefs(id).options ?? fallback
+      if (!this.prefs(id).options) this.updatePrefs(id, p => { p.options = options })
+      return this.spawn(id, cwd, true, options, transcript)
+    })
   }
 
   private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
@@ -373,7 +379,7 @@ export class SessionManager {
         if (key === 'effort') await live.setEffort(patch.effort!)
         if (key === 'mode') await live.setMode(patch.mode!)
       }
-      this.updatePrefs(id, p => { p.options = { ...this.options(id), [key]: patch[key] } })
+      this.updatePrefs(id, p => { p.options = { ...this.options(id), [key]: patch[key] } }, live ? 'applied' : 'durable')
     }
   }
 
@@ -387,23 +393,25 @@ export class SessionManager {
 
   private async submitQueued(id: string, cwd: string, item: QueuedMessage, insert: boolean): Promise<void> {
     let handedOff = false
+    const epoch = this.dispatchEpochs.get(id) ?? 0
+    const cancelled = (): boolean => this.shuttingDown || epoch !== (this.dispatchEpochs.get(id) ?? 0)
     try {
       for (const path of item.attachments ?? []) await access(path)
+      if (cancelled()) return
+      const live = await this.ensureLive(id, cwd, item.options)
+      if (cancelled()) return
       if (!insert) await this.applyOptions(id, item.options)
-      let live = this.live.get(id)
-      if (!live) {
-        const transcript = await this.transcript(id, cwd)
-        if (this.shuttingDown) throw new Error('应用已关闭，队列保持暂停')
-        live = this.live.get(id) ?? this.spawn(id, cwd, true, this.options(id), transcript)
-      }
-      if (this.shuttingDown) throw new Error('应用已关闭，队列保持暂停')
+      if (cancelled()) return
+      if (insert && (live.state !== 'running' || live.activity.snapshot().phase === 'stopping')) throw new Error('当前会话不可插入，请使用继续队列')
+      if (!insert && (this.prefs(id).queue.paused || live.state !== 'idle')) return
       this.updatePrefs(id, p => { const target = p.queue.items.find(i => i.id === item.id)!; target.status = 'submitting'; if (insert) target.options = { ...this.options(id) }; delete target.error })
       // 进入发送调用后，异常也不能证明消息未交付；保守标记未知，避免重发。
       handedOff = true
       live.send(item.text, item.id)
-      this.updatePrefs(id, p => { const target = p.queue.items.find(i => i.id === item.id); if (target?.status === 'submitting') target.status = 'submitted' })
+      this.preferences.observe(id, p => { const target = p.queue.items.find(i => i.id === item.id); if (target?.status === 'submitting') target.status = 'submitted' })
     } catch (error) {
-      this.updatePrefs(id, p => {
+      if (!handedOff && cancelled()) return
+      this.preferences.observe(id, p => {
         p.queue.paused = true
         const target = p.queue.items.find(i => i.id === item.id)
         if (target) { target.status = handedOff ? 'unknown' : 'failed'; target.error = String(error) }
@@ -426,13 +434,13 @@ export class SessionManager {
   }
 
   private closeSession(id: string): void {
+    this.dispatchEpochs.set(id, (this.dispatchEpochs.get(id) ?? 0) + 1)
     const session = this.live.get(id)
-    if (session) this.updatePrefs(id, p => {
+    if (session) this.preferences.observe(id, p => {
       if (p.queue.items.length) p.queue.paused = true
       for (const item of p.queue.items) if (['submitting', 'submitted', 'received'].includes(item.status)) item.status = 'unknown'
     })
-    this.live.delete(id)
-    session?.close()
+    this.live.close(id)
     this.seen.delete(id) // 进程刚写完文件，下次检查时重新记基准
   }
 }

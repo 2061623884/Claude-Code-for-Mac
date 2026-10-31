@@ -207,7 +207,8 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   onDecide={(d) => void respond(sessionId, approval.requestId, d).catch(() => {})}
                 />
               )}
-              {chat.optionsSaved === false && <div className="text-[11px] text-fg3">此旧会话没有已保存配置；当前选择将用于下次执行。</div>}
+              {chat.optionsSaveError && <div role="alert" className="text-[12px] text-danger">{chat.optionsSaveError}</div>}
+              {chat.optionsSaved === false && !chat.optionsSaveError && <div className="text-[11px] text-fg3">此旧会话没有已保存配置；当前选择将用于下次执行。</div>}
               <MessageQueue key={`queue-${sessionId}`} queue={chat.queue} canInsert={chat.state === 'running' && chat.activity?.phase !== 'stopping' && !approval} onAction={action => queueAction(sessionId, action)} editingId={editing?.id} onEdit={async item => {
                 await queueAction(sessionId, { type: 'beginEdit', id: item.id })
                 useComposerDrafts.getState().beginEdit(sessionId, item)
