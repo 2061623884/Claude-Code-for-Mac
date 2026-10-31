@@ -102,7 +102,7 @@ export function App() {
         </div>
         {!sidebarCollapsed && <ResizeHandle side="left" width={leftWidth} defaultWidth={LEFT.default} onResize={setLeftWidth} />}
       </div>
-      <main className={rightOpen && expanded && view.kind !== 'settings' ? 'hidden' : 'flex min-w-0 flex-1 flex-col bg-bg'}>
+      <main inert={rightOpen && expanded && view.kind !== 'settings'} className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
         <div className="drag flex h-[52px] shrink-0 items-center gap-1 pl-[84px]">
           {sidebarCollapsed && (
             <div className="no-drag animate-fade-in flex gap-1">

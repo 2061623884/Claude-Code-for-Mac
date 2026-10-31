@@ -26,13 +26,21 @@ export function BrowserPane({ id, active }: { id: string; active: boolean }) {
   }, [id])
   useEffect(() => {
     if (!ready || !viewport.current) return
+    const clip = viewport.current.closest<HTMLElement>('[data-sidebar-viewport]')
     const update = (): void => {
       const rect = viewport.current!.getBoundingClientRect()
-      void window.desk.browser.bounds(id, active && Boolean(state.url) && !state.error && !error
-        ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null).catch(() => {})
+      const frame = clip?.getBoundingClientRect() ?? rect
+      const x = Math.max(rect.left, frame.left)
+      const y = Math.max(rect.top, frame.top)
+      const width = Math.max(0, Math.min(rect.right, frame.right, window.innerWidth) - x)
+      const height = Math.max(0, Math.min(rect.bottom, frame.bottom, window.innerHeight) - y)
+      // 原生视图不受 DOM 的 overflow/inert 影响，必须跟随侧栏逐帧裁切。
+      void window.desk.browser.bounds(id, active && width > 0 && height > 0 && Boolean(state.url) && !state.error && !error
+        ? { x, y, width, height } : null).catch(() => {})
     }
     const observer = new ResizeObserver(update)
     observer.observe(viewport.current)
+    if (clip) observer.observe(clip)
     // 左右栏布局变化会移动视口，不一定改变它的尺寸。
     observer.observe(document.body)
     window.addEventListener('resize', update)

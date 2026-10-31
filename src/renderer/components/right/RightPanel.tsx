@@ -65,7 +65,12 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
   ]
 
   return (
-    <div inert={!rightOpen} style={{ width: rightOpen ? rightWidth : 0 }} className={`relative shrink-0 ${rightOpen ? '' : 'overflow-hidden opacity-0'}`}>
+    <div
+      inert={!rightOpen}
+      style={{ width: rightOpen ? rightWidth : 0 }}
+      className={`relative shrink-0 ${layout.resizing ? '' : 'transition-[width] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none'}`}
+    >
+      <div data-sidebar-viewport className="h-full overflow-hidden">
       <aside style={{ width: rightWidth }} aria-label="工作区侧栏" className="flex h-full flex-col border-l border-line bg-bg">
         <div className="drag flex h-[52px] shrink-0 items-center gap-1 px-2">
           <div role="tablist" aria-label="侧栏页面" className="no-drag flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none]">
@@ -103,13 +108,14 @@ export function RightPanel({ sessionId, projectId }: { sessionId?: string; proje
                   {page.kind === 'start' && <StartPane hasProject={Boolean(page.cwd ?? cwd)} onSelect={(kind) => choose(page, kind)} />}
                   {page.kind === 'files' && <ProjectFilesPane cwd={page.cwd ?? cwd} refreshKey={0} />}
                   {page.kind === 'terminal' && <TerminalPane id={page.id} cwd={page.cwd ?? cwd} active={active} />}
-                  {page.kind === 'browser' && <BrowserPane id={page.id} active={active && !modalOpen} />}
+                  {page.kind === 'browser' && <BrowserPane id={page.id} active={page.id === rightTab && !modalOpen} />}
                 </div>
               )
             })}
           </div>
         </FileContext.Provider>
       </aside>
+      </div>
       {rightOpen && !expanded && <ResizeHandle side="right" width={rightWidth} defaultWidth={RIGHT.default} onResize={layout.setRightWidth} />}
     </div>
   )
