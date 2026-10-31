@@ -28,20 +28,34 @@ export function claudeExecutable(): string | undefined {
   )
 }
 
-/** 启动一个不发消息的会话，只做查询（不耗额度、不写会话文件），查完让子进程正常退出 */
+const idleQueries = new Set<AbortController>()
+export function closeIdleQueries(): void { for (const abort of idleQueries) abort.abort() }
+
+/** 只做控制查询；不发送模型消息。查询完成即清理，不等待消息流排空。 */
 export async function withIdleQuery<T>(options: Options, fn: (q: Query) => Promise<T>): Promise<T> {
-  const sdk = await loadSdk()
+  const abort = new AbortController()
+  idleQueries.add(abort)
+  const cancel = () => abort.abort()
+  options.abortController?.signal.addEventListener('abort', cancel, { once: true })
+  if (options.abortController?.signal.aborted) cancel()
   const input = new PushQueue<SDKUserMessage>()
-  const q = sdk.query({
-    prompt: input,
-    options: { persistSession: false, pathToClaudeCodeExecutable: claudeExecutable(), ...options }
+  let q: Query | undefined, timer: ReturnType<typeof setTimeout> | undefined
+  const cancelled = new Promise<never>((_, reject) => {
+    const fail = () => reject(new Error('会话信息查询已取消'))
+    if (abort.signal.aborted) fail(); else abort.signal.addEventListener('abort', fail, { once: true })
+    timer = setTimeout(() => { reject(new Error('会话信息查询超时')); abort.abort() }, 15000)
   })
   try {
-    return await fn(q)
+    const sdk = await Promise.race([loadSdk(), cancelled])
+    if (abort.signal.aborted) throw new Error('会话信息查询已取消')
+    q = sdk.query({ prompt: input, options: { ...options, persistSession: false, pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable ?? claudeExecutable(), abortController: abort } })
+    return await Promise.race([fn(q), cancelled])
   } finally {
+    clearTimeout(timer)
     input.end()
-    for await (const _ of q) {
-      // 排空消息，让子进程正常退出
+    try { q?.close() } finally {
+      abort.abort(); idleQueries.delete(abort)
+      options.abortController?.signal.removeEventListener('abort', cancel)
     }
   }
 }

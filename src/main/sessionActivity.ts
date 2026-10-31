@@ -34,6 +34,9 @@ export class SessionActivity {
   private projects = new Map<string, SummaryItem>()
   private tasks = new Map<string, SummaryItem>()
   private agents = new Map<string, SummaryItem & { runId?: string; taskId?: string }>()
+  private processLive = false
+  private receivedBackgroundSnapshot = false
+  private liveTasks = new Map<string, { runId?: string; background: boolean }>()
   private dirty = true
   private revision = 0
   private historyIncomplete = false
@@ -75,6 +78,7 @@ export class SessionActivity {
     if (message.type === 'system') {
       if (message.subtype === 'init') this.observeDirectory(str(message.cwd), true)
       if (str(message.subtype).startsWith('task_')) this.agentEvent(message)
+      if (message.subtype === 'background_tasks_changed') this.backgroundTasks(message)
       return
     }
     if (message.type === 'assistant') {
@@ -123,7 +127,7 @@ export class SessionActivity {
       fact.change = { id: path, title: basename(path), path, description: '会话工具修改', ...delta }
     }
     this.tools.set(id, fact)
-    if (name === 'Agent' || name === 'Task') this.agents.set(id, { id, title: short(input.description) || str(input.subagent_type) || '子 Agent', description: str(input.subagent_type) || '类型未知', status: 'running' })
+    if (name === 'Agent' || name === 'Task') this.agents.set(id, { id, title: short(input.description) || str(input.subagent_type) || '子 Agent', description: str(input.subagent_type) || '类型未知', status: 'running', execution: { type: 'local_agent', toolUseId: id } })
     this.changed()
   }
   private result(tool: ToolFact, output: Json, resultText: string, failed: boolean): void {
@@ -148,10 +152,18 @@ export class SessionActivity {
     }
     if (!failed) this.taskResult(tool, output, resultText)
     const agent = this.agents.get(tool.id)
-    if (agent && !terminal(agent.status)) {
+    if (agent) {
       const background = tool.input.run_in_background === true || output.isAsync === true || Boolean(output.task_id)
-      agent.status = failed ? 'failed' : background ? 'running' : 'completed'
+      // SDK lifecycle events are authoritative once a run has been registered.
+      if (!terminal(agent.status) && !agent.execution?.taskId) agent.status = failed ? 'failed' : background ? 'running' : 'completed'
       if (str(output.agentId) || str(output.task_id)) agent.taskId = str(output.task_id) || str(output.agentId)
+      agent.execution = { ...agent.execution, type: 'local_agent', toolUseId: tool.id, agentId: str(output.agentId) || agent.execution?.agentId, outputFile: str(output.output_file) || agent.execution?.outputFile }
+      const registered = [...this.agents.values()].find(item => item.id !== agent.id && item.execution?.taskId && (item.execution.taskId === str(output.task_id) || item.execution.taskId === str(output.agentId)))
+      if (registered) {
+        agent.status = registered.status
+        agent.execution = { ...registered.execution!, ...agent.execution, taskId: registered.execution!.taskId, runId: registered.execution!.runId, outputFile: registered.execution!.outputFile || agent.execution.outputFile }
+        this.agents.delete(registered.id)
+      }
     }
     this.changed()
   }
@@ -189,27 +201,67 @@ export class SessionActivity {
       this.projects.set(id, { id, title: str(output.name), description: short(output.description) || 'Claude Projects 项目' })
     }
   }
+  beginProcess(): void { this.markInactive(); this.processLive = true; this.receivedBackgroundSnapshot = false }
+  get hasLiveTasks(): boolean { return this.processLive && this.liveTasks.size > 0 }
+  taskRecord(id: string): SummaryItem | undefined { return this.agents.get(id) ?? this.tasks.get(id) }
+  canStop(item: SummaryItem): boolean {
+    const ref = item.execution
+    const live = ref?.taskId ? this.liveTasks.get(ref.taskId) : undefined
+    return Boolean(this.processLive && item.status === 'running' && live && live.runId === ref?.runId)
+  }
+  private backgroundTasks(event: Json): void {
+    if (!this.processLive) return
+    this.receivedBackgroundSnapshot = true
+    const incoming = list(event.tasks).map(obj)
+    const ids = new Set(incoming.map(t => str(t.task_id)))
+    for (const [id, task] of this.liveTasks) if (task.background && !ids.has(id)) {
+      this.liveTasks.delete(id)
+      for (const item of [...this.agents.values(), ...this.tasks.values()]) if (item.execution?.taskId === id && item.status === 'running') item.status = 'unknown'
+    }
+    for (const task of incoming) this.agentEvent({ ...task, subtype: 'task_started', is_backgrounded: true, snapshot: true })
+    this.changed()
+  }
   private agentEvent(event: Json): void {
     const taskId = str(event.task_id)
-    const id = str(event.tool_use_id) || [...this.agents.values()].find((a) => a.taskId === taskId)?.id || `task:${taskId}`
-    const existing = this.agents.get(id)
-    // Shell、监控、MCP 后台任务不是子代理。
-    if (!existing && event.task_type !== 'local_agent' && !event.subagent_type) return
-    const runId = str(event.run_id)
-    if (existing?.runId && runId && runId < existing.runId) return
-    if (terminal(existing?.status) && (!runId || existing?.runId === runId) && event.subtype !== 'task_notification') return
-    const agent = existing ?? { id, title: short(event.description) || '子 Agent', description: str(event.subagent_type) || '类型未知' }
-    agent.taskId = taskId; agent.runId = runId || agent.runId
-    if (event.description) agent.title = short(event.description)
-    if (event.summary) agent.description = short(event.summary)
-    agent.status = event.subtype === 'task_notification' ? status(event.status) : event.subtype === 'task_updated' ? status(obj(event.patch).status ?? agent.status) : 'running'
-    this.agents.set(id, agent); this.changed()
+    if (!taskId) return
+    const records = [...this.agents.values(), ...this.tasks.values()]
+    const existing = records.find(a => a.execution?.taskId === taskId || ('taskId' in a && a.taskId === taskId))
+      ?? (str(event.tool_use_id) ? this.agents.get(str(event.tool_use_id)) : undefined)
+    const patch = obj(event.patch)
+    const type = str(event.task_type) || (event.subagent_type ? 'local_agent' : existing?.execution?.type || 'unknown')
+    const isAgent = type === 'local_agent'
+    const id = existing?.id ?? (isAgent ? str(event.tool_use_id) || `task:${taskId}` : `execution:${taskId}`)
+    const runId = str(event.run_id) || existing?.execution?.runId
+    const previousRun = existing?.execution?.runId
+    if (previousRun && !str(event.run_id)) return
+    if (previousRun && runId && runId < previousRun) return
+    if (terminal(existing?.status) && previousRun === runId && event.subtype !== 'task_notification') return
+    const item: SummaryItem = existing ?? { id, title: short(event.description) || (isAgent ? '子 Agent' : '后台任务'), description: str(event.subagent_type) || ({ local_bash: '后台命令', local_agent: '子 Agent', local_workflow: '后台工作流', mcp_task: '连接器后台任务' } as Record<string, string>)[type] || '后台任务' }
+    if (event.description || patch.description) item.title = short(event.description || patch.description)
+    if (event.summary) item.description = short(event.summary)
+    item.execution = { ...item.execution, type, taskId, runId, toolUseId: str(event.tool_use_id) || item.execution?.toolUseId, outputFile: str(event.output_file) || item.execution?.outputFile }
+    const next = event.subtype === 'task_notification' ? status(event.status) : event.subtype === 'task_updated' ? status(patch.status ?? item.status) : 'running'
+    item.status = next
+    if (this.processLive) {
+      if (terminal(next) || next !== 'running') this.liveTasks.delete(taskId)
+      else {
+        const previous = this.liveTasks.get(taskId)
+        const background = (patch.is_backgrounded ?? event.is_backgrounded ?? previous?.background) !== false
+        if (!background || !this.receivedBackgroundSnapshot || event.snapshot === true || previous?.runId === runId && previous !== undefined) this.liveTasks.set(taskId, { runId, background })
+        else item.status = 'unknown'
+      }
+    }
+    if (isAgent) { this.tasks.delete(id); this.agents.set(id, item) }
+    else { this.agents.delete(id); this.tasks.set(id, item) }
+    this.changed()
   }
   finishHistory(incomplete: boolean): void {
     this.historyIncomplete ||= incomplete
     this.markInactive()
   }
   markInactive(): void {
+    this.processLive = false; this.liveTasks.clear()
+    for (const task of this.tasks.values()) if (task.execution && task.status === 'running') task.status = 'unknown'
     for (const tool of this.tools.values()) if (tool.status === 'running') tool.status = 'unknown'
     for (const agent of this.agents.values()) if (agent.status === 'running') agent.status = 'unknown'
     this.changed()
@@ -221,6 +273,9 @@ export class SessionActivity {
     if (!this.dirty) return null
     this.dirty = false
     return this.snapshot()
+  }
+  private presentTask(item: SummaryItem): SummaryItem {
+    return item.execution ? { ...item, execution: { ...item.execution, canStop: this.canStop(item) } } : item
   }
   snapshot(): SessionSummaryData {
     const sources = new Map<string, SummaryItem>([...this.references].map(([id, value]) => [id, { ...value, details: [value.description] }]))
@@ -242,6 +297,6 @@ export class SessionActivity {
       const links = [...new Map(calls.flatMap((t) => [...(t.source?.links ?? []), ...(t.source?.url ? [{ title: t.source.description, url: t.source.url }] : [])]).map((link) => [link.url, link])).values()]
       sources.set(id, { ...calls[0].source!, links, description: `调用 ${calls.length} 次 · 成功 ${succeeded}${failed ? ` · 失败 ${failed}` : ''}`, details })
     }
-    return structuredClone({ revision: this.revision, historyIncomplete: this.historyIncomplete, sections: { changes: [...changes.values()], sources: [...sources.values()], projects: [...this.projects.values()], tasks: [...this.tasks.values()], agents: [...this.agents.values()] } })
+    return structuredClone({ revision: this.revision, historyIncomplete: this.historyIncomplete, sections: { changes: [...changes.values()], sources: [...sources.values()], projects: [...this.projects.values()], tasks: [...this.tasks.values()].map(item => this.presentTask(item)), agents: [...this.agents.values()].map(item => this.presentTask(item)) } })
   }
 }

@@ -14,6 +14,9 @@ function subscribe<T extends unknown[]>(channel: string, listener: (...args: T) 
 }
 
 const api: DeskApi = {
+  artifacts: { list: call('artifacts:list'), collect: call('artifacts:collect'), pick: call('artifacts:pick'), remove: call('artifacts:remove'), relocate: call('artifacts:relocate'), export: call('artifacts:export'), onChanged: listener => subscribe('artifacts:changed', listener) },
+  tasks: { output: call('tasks:output'), stop: call('tasks:stop') },
+  organization: { get: call('organization:get'), change: call('organization:change'), onChanged: (listener) => subscribe('organization:changed', listener) },
   workspace: { closePage: call('workspace:closePage'), onShortcut: (listener) => subscribe('workspace:shortcut', listener) },
   terminal: {
     open: call('terminal:open'), write: call('terminal:write'), resize: call('terminal:resize'), close: call('terminal:close'),

@@ -1,3 +1,6 @@
+import { ArtifactLibrary } from './components/artifacts/ArtifactLibrary'
+import { useSessionAttention } from './hooks/useSessionAttention'
+import { SessionNotice } from './components/ui/SessionNotice'
 import { useEffect, useRef } from 'react'
 import { PanelLeft, SquarePen } from 'lucide-react'
 import { useDesk } from './store'
@@ -18,6 +21,7 @@ import { SearchDialog } from './components/dialogs/SearchDialog'
 import { SessionSummary } from './components/summary/SessionSummary'
 
 export function App() {
+  useSessionAttention()
   const { actionError, clearActionError, ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, refreshSessions, setSearchOpen } =
     useDesk()
 
@@ -126,6 +130,7 @@ export function App() {
         {actionError && <div role="alert" className="flex items-center justify-between bg-danger/10 px-4 py-2 text-sm text-danger"><span>{actionError}</span><button type="button" onClick={clearActionError}>关闭</button></div>}
         {view.kind === 'new' && <NewSessionPage />}
         {view.kind === 'settings' && <SettingsPage />}
+        {view.kind === 'artifacts' && <ArtifactLibrary />}
         {view.kind === 'session' && <ChatView key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       </main>
       {view.kind === 'session' && <RightPanel key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
@@ -133,6 +138,7 @@ export function App() {
       {pendingProjectPath && <AddProjectDialog path={pendingProjectPath} />}
       {importCandidates && <ImportHistoryDialog candidates={importCandidates} />}
       {searchOpen && <SearchDialog />}
+      <SessionNotice />
     </div>
   )
 }

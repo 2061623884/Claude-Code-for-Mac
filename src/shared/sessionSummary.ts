@@ -8,7 +8,17 @@ export type ActivityStatus = 'running' | 'pending' | 'completed' | 'failed' | 's
 export const ACTIVITY_LABELS: Record<ActivityStatus, string> = {
   running: '进行中', pending: '待办', completed: '已完成', failed: '失败', stopped: '已停止', unknown: '状态未知'
 }
+export interface TaskReference {
+  taskId?: string
+  runId?: string
+  toolUseId?: string
+  agentId?: string
+  outputFile?: string
+  type: string
+  canStop?: boolean
+}
 export interface SummaryItem {
+  execution?: TaskReference
   id: string
   title: string
   description: string

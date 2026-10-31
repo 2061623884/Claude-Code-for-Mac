@@ -50,7 +50,8 @@ describe('session activity evidence', () => {
     for (const parent of [null, 'agent']) {
       activity.apply(call(`create-${parent}`, 'TaskCreate', { subject: `Task ${parent}` }, parent)); activity.apply(result(`create-${parent}`, { task: { id: '1' } }))
     }
-    expect(activity.snapshot().sections.tasks).toHaveLength(2)
+    expect(activity.snapshot().sections.tasks.filter(item => !item.execution)).toHaveLength(2)
+    expect(activity.snapshot().sections.tasks.find(item => item.execution)?.execution?.type).toBe('local_bash')
   })
   it('restores persisted facts without double-counting and marks stale live states unknown', () => {
     const activity = new SessionActivity('/project')
@@ -79,4 +80,48 @@ it('does not resolve main-thread references against a subagent directory', () =>
   activity.reference('@notes.md')
   expect(activity.snapshot().sections.sources[0].path).toBe('/project/notes.md')
   expect(activity.snapshot().sections.projects[1]).toMatchObject({ path: '/worktree', description: '子 Agent 工作目录' })
+})
+
+it('only exposes stop capability for current SDK tasks, never restored history or ordinary todos', () => {
+  const activity = new SessionActivity('/project'); activity.beginProcess()
+  activity.apply({ type: 'system', subtype: 'task_started', task_id: 'agent', run_id: '1', task_type: 'local_agent', description: 'Agent' })
+  activity.apply({ type: 'system', subtype: 'task_started', task_id: 'shell', run_id: '1', task_type: 'local_bash', description: 'Build' })
+  expect(activity.snapshot().sections.agents[0].execution?.canStop).toBe(true)
+  expect(activity.snapshot().sections.tasks[0].execution?.canStop).toBe(true)
+  const restored = new SessionActivity('/project', activity.export()); restored.finishHistory(false)
+  expect(restored.snapshot().sections.agents[0].execution?.canStop).toBe(false)
+  expect(restored.hasLiveTasks).toBe(false)
+  activity.apply({ type: 'system', subtype: 'task_notification', task_id: 'agent', run_id: '1', status: 'stopped' })
+  expect(activity.snapshot().sections.agents[0].execution?.canStop).toBe(false)
+  expect(activity.hasLiveTasks).toBe(true)
+})
+it('uses background membership snapshots without reviving removed tasks on late progress', () => {
+  const activity = new SessionActivity('/project'); activity.beginProcess()
+  const task = { task_id: 'a', run_id: '2', task_type: 'local_agent', description: 'Task' }
+  activity.apply({ type: 'system', subtype: 'background_tasks_changed', tasks: [task] })
+  expect(activity.hasLiveTasks).toBe(true)
+  activity.apply({ type: 'system', subtype: 'task_notification', ...task, run_id: '1', status: 'completed' })
+  expect(activity.snapshot().sections.agents[0].execution?.canStop).toBe(true)
+  activity.apply({ type: 'system', subtype: 'background_tasks_changed', tasks: [] })
+  activity.apply({ type: 'system', subtype: 'task_progress', ...task })
+  expect(activity.hasLiveTasks).toBe(false)
+  expect(activity.snapshot().sections.agents[0].execution?.canStop).toBe(false)
+})
+it('joins task membership to its tool record without losing output metadata after completion', () => {
+  const activity = new SessionActivity('/project'); activity.beginProcess()
+  activity.apply(call('agent-tool', 'Agent', { description: 'Worker', run_in_background: true }))
+  activity.apply({ type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'agent-id', run_id: '1', task_type: 'local_agent', description: 'Worker' }] })
+  activity.apply({ type: 'system', subtype: 'task_notification', task_id: 'agent-id', run_id: '1', status: 'completed', output_file: '/tmp/agent.output' })
+  activity.apply(result('agent-tool', { agentId: 'agent-id', isAsync: true }))
+  const agents = activity.snapshot().sections.agents
+  expect(agents).toHaveLength(1)
+  expect(agents[0]).toMatchObject({ id: 'agent-tool', status: 'completed', execution: { agentId: 'agent-id', outputFile: '/tmp/agent.output', canStop: false } })
+})
+it('does not apply unidentified terminal events to a newer identified run', () => {
+  const activity = new SessionActivity('/project'); activity.beginProcess()
+  activity.apply({ type: 'system', subtype: 'task_started', task_id: 'a', run_id: '2', task_type: 'local_agent' })
+  activity.apply({ type: 'system', subtype: 'task_notification', task_id: 'a', status: 'completed' })
+  expect(activity.snapshot().sections.agents[0]).toMatchObject({ status: 'running', execution: { runId: '2', canStop: true } })
+  activity.apply({ type: 'system', subtype: 'task_notification', task_id: 'a', run_id: '2', status: 'completed' })
+  expect(activity.snapshot().sections.agents[0].execution?.canStop).toBe(false)
 })

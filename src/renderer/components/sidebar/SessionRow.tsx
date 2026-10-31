@@ -8,13 +8,16 @@ interface SessionRowProps {
   session: SessionSummary
   active: boolean
   status?: ChatState
+  unread?: boolean
+  subtitle?: string
+  extra?: React.ReactNode
   indent?: boolean
   onOpen(): void
   onRename(title: string): void
   onArchive(archived: boolean): void
 }
 
-export function SessionRow({ session, active, status, indent = true, onOpen, onRename, onArchive }: SessionRowProps) {
+export function SessionRow({ session, active, status, unread, subtitle, extra, indent = true, onOpen, onRename, onArchive }: SessionRowProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(session.title)
 
@@ -48,17 +51,19 @@ export function SessionRow({ session, active, status, indent = true, onOpen, onR
       role="button"
       tabIndex={0}
       onClick={onOpen}
-      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
+      onKeyDown={(e) => e.target === e.currentTarget && e.key === 'Enter' && onOpen()}
       title={session.title}
       className={`group flex h-8 items-center gap-2 rounded-lg pr-2 ${indent ? 'pl-8' : 'pl-2.5'} ${
         active ? 'bg-active' : 'hover:bg-hover'
       }`}
     >
-      <span className={`min-w-0 flex-1 truncate ${active ? 'text-fg' : 'text-fg/85'}`}>{session.title}</span>
+      <span className={`flex min-w-0 flex-1 items-baseline gap-1.5 ${active ? 'text-fg' : 'text-fg/85'}`}><span className="min-w-0 truncate">{session.title}</span>{subtitle && <span title={subtitle} className="max-w-[72px] shrink-0 truncate text-[10px] text-fg3">{subtitle}</span>}</span>
       {status === 'running' && <span title="运行中" className="size-2 shrink-0 animate-pulse rounded-full bg-fg3 group-hover:hidden" />}
-      {status === 'awaiting' && <span title="等待你确认" className="size-2 shrink-0 rounded-full bg-accent group-hover:hidden" />}
+      {unread && <span aria-label="完成后未读" title="完成后未读" className="size-1.5 shrink-0 rounded-full bg-accent" />}
+      {status === 'awaiting' && <span aria-label="待确认" className="shrink-0 rounded bg-accent/10 px-1 text-[10px] font-medium text-accent">待确认</span>}
       <span className="shrink-0 text-[11.5px] text-fg3 group-hover:hidden">{relativeTimeZh(session.lastModified)}</span>
-      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+        {extra}
         {!session.archived && (
           <IconButton
             label="重命名"

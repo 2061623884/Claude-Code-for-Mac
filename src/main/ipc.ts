@@ -1,6 +1,11 @@
+import { ArtifactRepository } from './artifacts'
+import { copyFile, realpath } from 'node:fs/promises'
+import { basename } from 'node:path'
+import { organization, changeOrganization, completeSession } from './sessionOrganization'
+import type { OrganizationAction } from '../shared/sessionOrganization'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell, dialog } from 'electron'
 import type { BtwTurn, ChatEvent, Decision, SessionOptions } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
 import { SessionManager } from './live/SessionManager'
@@ -24,7 +29,25 @@ export function applyTheme(theme: Settings['theme']): void {
   nativeTheme.themeSource = theme
 }
 
+export const artifacts = new ArtifactRepository(() => join(app.getPath('userData'), 'artifacts.json'), () => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('artifacts:changed') })
+const collectingArtifacts = new Set<string>(), pendingArtifacts = new Set<string>()
+function collectArtifacts(sessionId: string): void {
+  pendingArtifacts.add(sessionId)
+  if (collectingArtifacts.has(sessionId)) return
+  collectingArtifacts.add(sessionId)
+  void (async () => {
+    while (pendingArtifacts.delete(sessionId)) {
+      const snapshot = chats.cachedSnapshot(sessionId)
+      if (snapshot) await artifacts.collect(sessionId, snapshot.cwd, snapshot.summary, snapshot.messages)
+    }
+  })().catch(error => console.error('产物归集失败', error)).finally(() => collectingArtifacts.delete(sessionId))
+}
+function publishOrganization(): void {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('organization:changed', organization())
+}
 function broadcast(sessionId: string, event: ChatEvent): void {
+  if (event.kind === 'summary' || event.kind === 'result') collectArtifacts(sessionId)
+  if (event.kind === 'result' && event.eventId && event.completed !== false && !event.error) { completeSession(sessionId, event.eventId); publishOrganization() }
   if (process.env.CLAUDE_DESK_DEBUG) console.log('[emit]', sessionId.slice(0, 8), event.kind)
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send('chat:event', sessionId, event)
 }
@@ -43,6 +66,30 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     ipcMain.handle(channel, (_e, ...args) => fn(...args))
   }
 
+  handle('artifacts:list', () => artifacts.snapshot())
+  handle('artifacts:collect', async (id, path) => { const sid = str(id, 'id'), cwd = str(path, 'path'); const snapshot = await chats.open(sid, cwd); await artifacts.collect(sid, cwd, snapshot.summary!, snapshot.messages) })
+  ipcMain.handle('artifacts:pick', async (e, id, path) => {
+    const sid = str(id, 'id'), cwd = str(path, 'path')
+    await chats.open(sid, cwd)
+    const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender)!, { title: '加入当前会话产物', properties: ['openFile', 'multiSelections'] })
+    if (!result.canceled) for (const file of result.filePaths) await artifacts.add(file, { sessionId: sid, cwd, evidence: 'manual' })
+  })
+  handle('artifacts:remove', id => artifacts.remove(str(id, 'id')))
+  ipcMain.handle('artifacts:relocate', async (e, id) => {
+    const key = str(id, 'id'); artifacts.get(key)
+    const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender)!, { title: '重新定位产物', properties: ['openFile'] })
+    if (!result.canceled && result.filePaths[0]) await artifacts.relocate(key, result.filePaths[0])
+  })
+  ipcMain.handle('artifacts:export', async (e, id) => {
+    const item = artifacts.get(str(id, 'id'))
+    const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender)!, { title: '另存产物副本', defaultPath: basename(item.path) })
+    if (result.canceled || !result.filePath) return
+    const target = await realpath(result.filePath).catch(() => result.filePath!)
+    if (target === item.path) throw new Error('请选择不同路径，不能覆盖产物原文件')
+    await copyFile(item.path, result.filePath)
+  })
+  handle('organization:get' , organization)
+  handle('organization:change', (action) => { const next = changeOrganization(action as OrganizationAction); publishOrganization(); return next })
   handle('app:state', () => ({ seededFromHistory: store.read().seededFromHistory, demo, home: homedir() }))
   ipcMain.handle('app:focus', (e) => {
     if (focusWindow) { focusWindow(); return }
@@ -122,6 +169,8 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   })
 
   const opts = (value: unknown): SessionOptions => value as SessionOptions
+  handle('tasks:output', (id, path, record, offset) => chats.taskOutput(str(id, 'id'), str(path, 'path'), str(record, 'record'), typeof offset === 'number' && Number.isInteger(offset) && offset >= 0 ? offset : 0))
+  handle('tasks:stop', (id, record, run) => chats.stopTask(str(id, 'id'), str(record, 'record'), typeof run === 'string' ? run : undefined))
   handle('chat:open', (id, path) => chats.open(str(id, 'id'), str(path, 'path')))
   handle('chat:start', (path, text, o) => chats.start(str(path, 'path'), str(text, 'text'), opts(o)))
   handle('chat:fork', (path, from, at, text, o) =>

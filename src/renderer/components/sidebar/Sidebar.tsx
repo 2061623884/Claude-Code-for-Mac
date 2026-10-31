@@ -1,3 +1,6 @@
+import { OrganizedGroups, OrganizedSessionRow, dropSession } from './OrganizedSessions'
+import { useOrganization } from '../../organizationStore'
+import { sectionFor } from '@shared/sessionOrganization'
 import { useState } from 'react'
 import {
   ChevronDown,
@@ -6,6 +9,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Files,
   PanelLeft,
   Settings,
   Search,
@@ -27,6 +31,7 @@ export function Sidebar({ width }: { width: number }) {
   const [removing, setRemoving] = useState<Project | null>(null)
   const removeProject = useDesk((s) => s.removeProject)
 
+  const org = useOrganization(s => s.value)
   const archived = projects.flatMap((p) => (sessions[p.id] ?? []).filter((s) => s.archived).map((s) => ({ s, p })))
 
   return (
@@ -47,16 +52,16 @@ export function Sidebar({ width }: { width: number }) {
           onClick={() => newChat()}
         />
         <NavItem icon={<Search size={16} />} label="搜索" hint="⌘K" active={false} onClick={() => setSearchOpen(true)} />
+        <NavItem icon={<Files size={16} />} label="产物" active={view.kind === 'artifacts'} onClick={() => setView({ kind: 'artifacts' })} />
       </nav>
 
-      <div className="mt-5 flex items-center justify-between px-4 pb-1">
-        <span className="text-[12px] font-medium text-fg3">项目</span>
-        <IconButton label="添加项目" onClick={pickProject}>
-          <FolderPlus size={14} />
-        </IconButton>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <OrganizedGroups />
+        <div className="mt-5 flex items-center justify-between px-2 pb-1">
+          <span className="text-[12px] font-medium text-fg3">项目</span>
+          <IconButton label="添加项目" onClick={pickProject}><FolderPlus size={14} /></IconButton>
+        </div>
+
         {projects.length === 0 ? (
           <button
             type="button"
@@ -72,7 +77,7 @@ export function Sidebar({ width }: { width: number }) {
             <ProjectGroup
               key={p.id}
               project={p}
-              sessions={(sessions[p.id] ?? []).filter((s) => !s.archived)}
+              sessions={(sessions[p.id] ?? []).filter((s) => !s.archived && !org.pinned.includes(s.id) && !sectionFor(org, s.id))}
               menuOpen={demo?.openMenu === 'project' && i === 0}
               onRemove={() => setRemoving(p)}
             />
@@ -174,7 +179,7 @@ function ProjectGroup({
   const visible = showAll ? sessions : sessions.slice(0, VISIBLE_SESSIONS)
 
   return (
-    <div className="mt-0.5">
+    <div className="mt-0.5" onDragOver={e => e.preventDefault()} onDrop={e => dropSession(e, null)}>
       <div
         role="button"
         tabIndex={0}
@@ -224,17 +229,9 @@ function ProjectGroup({
 
       {!project.collapsed && (
         <div className="mt-0.5 flex flex-col gap-px">
-          {sessions.length === 0 && <div className="py-1.5 pl-8 text-[12.5px] text-fg3">还没有对话</div>}
+          {sessions.length === 0 && <div className="py-1.5 pl-8 text-[12.5px] text-fg3">暂无未分区会话</div>}
           {visible.map((s) => (
-            <SessionRow
-              key={s.id}
-              session={s}
-              active={view.kind === 'session' && view.sessionId === s.id}
-              status={chats[s.id]?.state}
-              onOpen={() => setView({ kind: 'session', sessionId: s.id, projectId: project.id })}
-              onRename={(title) => void renameSession(s, project.id, title)}
-              onArchive={(a) => void setArchived(s, project.id, a)}
-            />
+            <OrganizedSessionRow key={s.id} session={s} project={project} />
           ))}
           {sessions.length > VISIBLE_SESSIONS && (
             <button
@@ -252,15 +249,5 @@ function ProjectGroup({
 }
 
 function ArchivedRow({ session, project }: { session: SessionSummary; project: Project }) {
-  const { view, setView, renameSession, setArchived } = useDesk()
-  return (
-    <SessionRow
-      session={session}
-      indent={false}
-      active={view.kind === 'session' && view.sessionId === session.id}
-      onOpen={() => setView({ kind: 'session', sessionId: session.id, projectId: project.id })}
-      onRename={(title) => void renameSession(session, project.id, title)}
-      onArchive={(a) => void setArchived(session, project.id, a)}
-    />
-  )
+  return <OrganizedSessionRow session={session} project={project} showProject />
 }
