@@ -25,6 +25,7 @@ export class SessionManager {
     const transcript = await this.transcript(sessionId, projectPath)
     const session = this.live.get(sessionId)
     return {
+      activity: session?.activity.snapshot(),
       summary: transcript.activity.snapshot(),
       messages: structuredClone(transcript.messages),
       state: session?.state ?? 'idle',

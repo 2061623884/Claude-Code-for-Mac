@@ -58,7 +58,10 @@ export class Transcript {
   constructor(cwd?: string, savedActivity?: ActivityState) { this.activity = new SessionActivity(cwd, savedActivity) }
   readonly messages: UiMessage[] = []
   private byId = new Map<string, UiMessage>()
-  private streamIndex = new Map<string, number>()
+  private streams = new Map<string | null, UiMessage>()
+  private streamed = new Set<string>()
+  private finalized = new Map<string, Set<number>>()
+  private finalPositions = new Map<string, number[]>()
   private partialJson = new Map<ToolBlock, string>()
   private tools = new Map<string, ToolBlock>()
   private changed = new Set<UiMessage>()
@@ -110,17 +113,17 @@ export class Transcript {
   }
 
   private ensure(id: string, role: UiMessage['role'], parent: string | null): UiMessage {
-    let msg = this.byId.get(id)
+    const scopedId = parent ? JSON.stringify([parent, id]) : id
+    let msg = this.byId.get(scopedId)
     if (!msg) {
-      msg = { id, role, blocks: [], parentToolUseId: parent, time: this.time }
-      this.byId.set(id, msg)
+      msg = { id: scopedId, role, blocks: [], parentToolUseId: parent, time: this.time }
+      this.byId.set(scopedId, msg)
       this.messages.push(msg)
     }
     this.changed.add(msg)
     return msg
   }
 
-  private current: UiMessage | null = null
   /** 正在处理的消息的时间 */
   private time = Date.now()
   /** 最近一个主链条目的 uuid */
@@ -143,27 +146,32 @@ export class Transcript {
   private applyStream(e: Json, parent: string | null): void {
     if (e.type === 'message_start') {
       if (!parent) this.pendingCommand = null
-      this.current = this.ensure(String((e.message as Json).id), 'assistant', parent)
-      this.current.usage = toUsage((e.message as Json).usage, this.current.usage)
+      const msg = this.ensure(String((e.message as Json).id), 'assistant', parent)
+      msg.usage = toUsage((e.message as Json).usage, msg.usage)
+      this.streams.set(parent, msg)
+      this.streamed.add(msg.id)
       return
     }
-    const msg = this.current
+    const msg = this.streams.get(parent)
     if (!msg) return
+    if (e.type === 'message_stop') { this.streams.delete(parent); return }
     this.changed.add(msg)
     // 流式结束前的 message_delta 带着最终的输出 token 数
     if (e.type === 'message_delta') msg.usage = toUsage(e.usage, msg.usage)
     const index = Number(e.index)
+    if (!Number.isInteger(index) || index < 0) return
     if (e.type === 'content_block_start') {
       const block = toBlock(e.content_block as Json)
       if (!block) return
-      if (block.kind === 'tool') this.tools.set(block.id, block)
+      if (msg.blocks[index]) return // 重放 start 不清空已经收到的增量
+      if (block.kind === 'tool') this.tools.set(JSON.stringify([parent, block.id]), block)
       msg.blocks[index] = block
-      this.streamIndex.set(msg.id, index)
     } else if (e.type === 'content_block_delta') {
+      if (this.finalized.get(msg.id)?.has(index)) return
       const block = msg.blocks[index]
       const d = e.delta as Json
-      if (block?.kind === 'text' && d.type === 'text_delta') block.text += String(d.text)
-      else if (block?.kind === 'thinking' && d.type === 'thinking_delta') block.text += String(d.thinking)
+      if (block?.kind === 'text' && d.type === 'text_delta') block.text += typeof d.text === 'string' ? d.text : ''
+      else if (block?.kind === 'thinking' && d.type === 'thinking_delta') block.text += typeof d.thinking === 'string' ? d.thinking : ''
       else if (block?.kind === 'tool' && d.type === 'input_json_delta') {
         const json = (this.partialJson.get(block) ?? '') + String(d.partial_json)
         this.partialJson.set(block, json)
@@ -187,19 +195,43 @@ export class Transcript {
     msg.usage = toUsage(message.usage, msg.usage)
     if (typeof uuid === 'string') msg.uuid = uuid
     const content = Array.isArray(message.content) ? (message.content as Json[]) : []
-    const streamed = this.streamIndex.get(msg.id)
-    content.forEach((raw) => {
+    const finalKey = typeof uuid === 'string' ? JSON.stringify([parent, uuid]) : null
+    const positions = finalKey ? this.finalPositions.get(finalKey) : undefined
+    const finalized = this.finalized.get(msg.id) ?? new Set<number>()
+    const nextPositions: number[] = []
+    content.forEach((raw, offset) => {
       const block = toBlock(raw)
       if (!block) return
-      // 流式过程中每个块结束时会补一条只含该块的完整消息，放回流式时的位置
-      const index = streamed !== undefined && content.length === 1 ? streamed : msg.blocks.length
+      let index = positions?.[offset]
+      if (index === undefined && content.length > 1) index = offset
+      if (index === undefined && block.kind === 'tool') {
+        const match = msg.blocks.findIndex((existing) => existing?.kind === 'tool' && existing.id === block.id)
+        if (match >= 0) index = match
+      }
+      if (index === undefined && this.streamed.has(msg.id)) {
+        // SDK 逐块发送 assistant 完整消息，按同类尚未确认的流式槽位回填。
+        const match = msg.blocks.findIndex((existing, i) => existing?.kind === block.kind && !finalized.has(i))
+        if (match >= 0) index = match
+      }
+      if (index === undefined) {
+        const match = !finalKey || this.streamed.has(msg.id) ? msg.blocks.findIndex((existing) => JSON.stringify(existing) === JSON.stringify(block)) : -1
+        index = match >= 0 ? match : msg.blocks.length
+      }
+      const previous = msg.blocks[index]
+      // 空的最终摘要不能抹掉此前公开返回的正文。
+      if ((block.kind === 'thinking' || block.kind === 'text') && !block.text && previous?.kind === block.kind) block.text = previous.text
       if (block.kind === 'tool') {
-        const existing = this.tools.get(block.id)
+        const key = JSON.stringify([parent, block.id])
+        const existing = this.tools.get(key)
         if (existing?.result) block.result = existing.result
-        this.tools.set(block.id, block)
+        this.tools.set(key, block)
       }
       msg.blocks[index] = block
+      finalized.add(index)
+      nextPositions[offset] = index
     })
+    this.finalized.set(msg.id, finalized)
+    if (finalKey) this.finalPositions.set(finalKey, nextPositions)
   }
 
   private applyUser(message: Json, parent: string | null): void {
@@ -209,7 +241,7 @@ export class Transcript {
     const texts: string[] = []
     for (const c of content as Json[]) {
       if (c.type === 'tool_result') {
-        const tool = this.tools.get(String(c.tool_use_id))
+        const tool = this.tools.get(JSON.stringify([parent, String(c.tool_use_id)]))
         if (!tool) continue
         tool.result = { text: resultText(c.content), isError: c.is_error === true }
         for (const msg of this.messages) if (msg.blocks.includes(tool)) this.changed.add(msg)

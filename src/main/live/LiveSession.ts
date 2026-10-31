@@ -6,6 +6,7 @@ import { toContextUsage } from '../context'
 import { claudeExecutable, loadSdk } from '../sdk'
 import * as store from '../store'
 import type { Transcript } from '../transcript'
+import { TurnActivity } from './TurnActivity'
 import { PushQueue } from './PushQueue'
 
 interface Pending {
@@ -41,6 +42,7 @@ const debug = (...args: unknown[]): void => {
 }
 
 export class LiveSession {
+  readonly activity = new TurnActivity()
   state: ChatState = 'idle'
   lastActive = Date.now()
   private pending = new Map<string, Pending>()
@@ -118,6 +120,7 @@ export class LiveSession {
   send(text: string): void {
     if (this.closed) throw new Error('会话已结束，请重试')
     this.lastActive = Date.now()
+    if (this.state !== 'running' && this.state !== 'awaiting') this.activity.start()
     this.init.transcript.addUser(text)
     this.flush()
     this.input.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null })
@@ -125,7 +128,13 @@ export class LiveSession {
   }
 
   async interrupt(): Promise<void> {
-    await (await this.query()).interrupt()
+    this.activity.stop()
+    this.flush()
+    try { await (await this.query()).interrupt() }
+    catch (error) {
+      if (!this.closed && this.state === 'running') { this.activity.resume(); this.flush() }
+      throw error
+    }
   }
 
   async setMode(mode: SessionOptions['mode']): Promise<void> {
@@ -164,6 +173,7 @@ export class LiveSession {
     }
     this.pending.clear()
     this.input.end()
+    this.activity.finish()
     this.init.transcript.activity.markInactive()
     this.flush()
     try {
@@ -245,6 +255,7 @@ export class LiveSession {
 
   private handle(m: SDKMessage): void {
     this.lastActive = Date.now()
+    this.activity.apply(m)
     this.init.transcript.apply(m)
     this.scheduleFlush()
     if (m.type === 'result') {
@@ -263,6 +274,7 @@ export class LiveSession {
   }
 
   private setState(state: ChatState): void {
+    if (state === 'idle' || state === 'error') { this.activity.finish(); this.flush() }
     if (state === this.state) return
     this.state = state
     this.init.emit({ kind: 'state', state })
@@ -275,6 +287,8 @@ export class LiveSession {
   private flush(): void {
     if (this.flushTimer) clearTimeout(this.flushTimer)
     this.flushTimer = null
+    const activity = this.activity.takeChanged()
+    if (activity) this.init.emit({ kind: 'activity', activity })
     const summary = this.init.transcript.activity.takeChanged()
     if (summary) this.init.emit({ kind: 'summary', summary })
     const messages = this.init.transcript.takeChanged()

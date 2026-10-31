@@ -143,7 +143,7 @@ app.on('browser-window-created', (_event, win) => {
       await wait(`document.body.innerText.includes('测试回答：保留的草稿')`)
       await click('新建侧栏页面'); await card('基于当前会话')
       await wait(`!!document.querySelector('button[aria-label="向我提问"]')`)
-      if (await js(`document.querySelector('aside').innerText.includes('测试回答：保留的草稿')`)) throw new Error('Second chat inherited first history')
+      if (await js(`document.querySelector('aside[aria-label="工作区侧栏"]').innerText.includes('测试回答：保留的草稿')`)) throw new Error('Second chat inherited first history')
       await click('新建侧栏页面'); await card('新建终端')
       await js(`window.__terminalData='';window.desk.terminal.onData((id,data)=>{window.__terminalId=id;window.__terminalData+=data});true`)
       await wait(`!!document.querySelector('.xterm-helper-textarea')`)

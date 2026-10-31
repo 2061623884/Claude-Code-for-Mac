@@ -3,6 +3,7 @@ import { ArrowUp, MessageCircleQuestion, Trash2 } from 'lucide-react'
 import type { SessionOptions } from '@shared/chat'
 import { useBtw, type BtwItem } from '../../btwStore'
 import { IconButton } from '../sidebar/SessionRow'
+import { ActivityIndicator } from '../ui/ActivityIndicator'
 import { Markdown } from '../chat/Markdown'
 
 const EMPTY: BtwItem[] = []
@@ -79,11 +80,7 @@ export function BtwPane({ pageId, sessionId, cwd, options, active }: { pageId: s
               ) : item.error ? (
                 <div className="rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger select-text">{item.error}</div>
               ) : (
-                <span className="flex gap-1 py-2">
-                  <span className="size-1.5 animate-pulse rounded-full bg-fg3" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-fg3 [animation-delay:150ms]" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-fg3 [animation-delay:300ms]" />
-                </span>
+                <ActivityIndicator label="正在回答…" active={active} />
               )}
             </div>
           </div>

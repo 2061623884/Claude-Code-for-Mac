@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { emptySessionSummary, type SessionSummaryData } from '@shared/sessionSummary'
-import type { ApprovalRequest, ChatEvent, ChatState, Decision, SessionOptions, UiMessage } from '@shared/chat'
+import type { ApprovalRequest, ChatActivity, ChatEvent, ChatState, Decision, SessionOptions, UiMessage } from '@shared/chat'
 import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
 import { useDesk } from './store'
@@ -8,6 +8,9 @@ import { useDesk } from './store'
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
 export interface ChatEntry {
+  activity?: ChatActivity
+  /** 本地接收顺序，用于保留加载快照期间到达的正文。 */
+  messageVersions?: Record<string, number>
   summary?: SessionSummaryData
   projectId: string
   messages: UiMessage[]
@@ -32,6 +35,8 @@ interface ChatStore {
   respond(sessionId: string, requestId: string, decision: Decision): Promise<void>
   handle(sessionId: string, event: ChatEvent): void
 }
+
+let messageRevision = 0
 
 const desk = (): Window['desk'] => window.desk
 
@@ -64,8 +69,22 @@ export const useChat = create<ChatStore>((set, get) => {
       const existing = get().chats[sessionId]
       if (existing?.loaded) return
       set({ chats: { ...get().chats, [sessionId]: existing ?? blank(projectId) } })
+      const requestedAt = messageRevision
       const snap = await desk().chat.open(sessionId, projectPath(projectId))
-      patch(sessionId, (current) => ({ ...snap, summary: (current.summary?.revision ?? 0) > (snap.summary?.revision ?? 0) ? current.summary : snap.summary, loaded: true }))
+      patch(sessionId, (current) => {
+        const newerActivity = (current.activity?.revision ?? 0) > (snap.activity?.revision ?? 0)
+        const updates = current.messages.filter((m) => (current.messageVersions?.[m.id] ?? 0) > requestedAt)
+        const updated = new Map(updates.map((m) => [m.id, m]))
+        const known = new Set(snap.messages.map((m) => m.id))
+        return {
+          ...snap,
+          messages: [...snap.messages.map((m) => updated.get(m.id) ?? m), ...updates.filter((m) => !known.has(m.id))],
+          state: newerActivity ? current.state : snap.state,
+          activity: newerActivity ? current.activity : snap.activity,
+          summary: (current.summary?.revision ?? 0) > (snap.summary?.revision ?? 0) ? current.summary : snap.summary,
+          loaded: true
+        }
+      })
     },
 
     async reload(sessionId) {
@@ -140,18 +159,23 @@ export const useChat = create<ChatStore>((set, get) => {
         set({ chats: { ...get().chats, [sessionId]: { ...blank(''), loaded: true } } })
       }
       switch (event.kind) {
+        case 'activity':
+          patch(sessionId, (c) => (c.activity?.revision ?? 0) <= event.activity.revision ? { activity: event.activity } : {})
+          break
         case 'summary':
           patch(sessionId, () => ({ summary: event.summary }))
           break
         case 'upsert':
           patch(sessionId, (c) => {
             const messages = [...c.messages]
+            const messageVersions = { ...c.messageVersions }
             for (const m of event.messages) {
+              messageVersions[m.id] = ++messageRevision
               const i = messages.findIndex((x) => x.id === m.id)
               if (i >= 0) messages[i] = m
               else messages.push(m)
             }
-            return { messages }
+            return { messages, messageVersions }
           })
           break
         case 'state':

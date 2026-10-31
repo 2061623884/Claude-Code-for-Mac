@@ -104,3 +104,32 @@ it('emits and persists live summary changes, including SDK directory hooks', asy
   expect(save).toHaveBeenCalledWith(id, expect.objectContaining({ version: 1, tools: [expect.objectContaining({ id: 'read' })] }))
   expect((await manager.open(id, '/tmp')).summary?.sections.projects.map((p) => p.path)).toEqual(['/tmp', '/other', '/other/subdir'])
 })
+
+it('requests summarized thinking for new, resumed and forked queries without changing model or effort', async () => {
+  manager.start('/tmp', 'new', options)
+  await manager.send('resumed', '/tmp', 'continue', options)
+  await manager.fork('source', '/tmp', 'at', 'fork', options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(3))
+  for (const [request] of sdk.query.mock.calls) {
+    expect(request.options.extraArgs).toEqual({ 'thinking-display': 'summarized' })
+    expect(request.options.includePartialMessages).toBe(true)
+    expect(request.options.thinking).toBeUndefined()
+    expect(request.options.effort).toBeUndefined()
+  }
+  expect(sdk.query.mock.calls[1][0].options.resume).toBe('resumed')
+  expect(sdk.query.mock.calls[2][0].options).toMatchObject({ resume: 'source', resumeSessionAt: 'at', forkSession: true })
+})
+it('publishes current activity in events and snapshots and clears it after interruption', async () => {
+  const id = manager.start('/tmp', 'think', options)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(1))
+  const query = sdk.query.mock.results[0].value
+  query.push({ type: 'stream_event', event: { type: 'message_start', message: { id: 'm' } } })
+  query.push({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } } })
+  await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, expect.objectContaining({ kind: 'activity', activity: expect.objectContaining({ phase: 'thinking' }) })))
+  expect((await manager.open(id, '/tmp')).activity?.phase).toBe('thinking')
+  await manager.interrupt(id)
+  expect((await manager.open(id, '/tmp')).activity?.phase).toBe('stopping')
+  query.push({ type: 'result', subtype: 'error_during_execution', duration_ms: 10 })
+  await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, { kind: 'state', state: 'idle' }))
+  expect((await manager.open(id, '/tmp')).activity?.phase).toBe('idle')
+})

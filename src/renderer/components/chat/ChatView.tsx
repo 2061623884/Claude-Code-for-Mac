@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronRight, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import type { ComposerAttachment } from '@shared/attachments'
 import type { ContextUsage, UiBlock, UiMessage } from '@shared/chat'
 import type { CommandInfo } from '@shared/types'
@@ -22,6 +22,7 @@ import { ToolCard } from './ToolCard'
 import { TurnFiles } from './TurnFiles'
 import { AssistantActions } from './MessageActions'
 import { UserMessage } from './UserMessage'
+import { ThinkingSummary } from './ThinkingSummary'
 import { UsagePill } from './UsageStats'
 
 // SDK 里没有 /btw，由应用自己实现，补进命令菜单
@@ -145,6 +146,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                         onEdit={running || approval || m.forkFrom === undefined ? undefined : (text) => edit(sessionId, m.id, text)}
                       />
                     ))}
+                  <ThinkingSummary messages={turn} state={i === turns.length - 1 ? chat.state : 'idle'} activity={i === turns.length - 1 ? chat.activity : undefined} />
                   {/* 每轮结束后列出这一轮改过的文件，点开在右栏看对比 */}
                   {!(running && i === turns.length - 1) && (
                     <>
@@ -154,7 +156,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   )}
                 </Fragment>
               ))}
-              {chat.state === 'running' && <Thinking />}
+              {!turns.length && <ThinkingSummary messages={[]} state={chat.state} activity={chat.activity} />}
               {chat.error && (
                 <div className="my-3 rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-[13px] text-danger select-text">
                   {chat.error}
@@ -255,7 +257,7 @@ function Message({
       {message.blocks.map((b, i) => {
         if (!b) return null
         if (b.kind === 'text') return b.text ? <Markdown key={i} text={b.text} /> : null
-        if (b.kind === 'thinking') return b.text ? <ThinkingBlock key={i} text={b.text} /> : null
+        if (b.kind === 'thinking') return null // 本轮摘要统一展示在消息末尾
         if (b.kind === 'command') return <CommandRecord key={i} block={b} onOpen={() => usePanel.getState().open({ kind: 'output', block: b })} />
         return <ToolCard key={b.id} block={b} running={running} cwd={cwd} />
       })}
@@ -265,30 +267,4 @@ function Message({
 
 function blockText(blocks: UiBlock[]): string {
   return blocks.map((b) => (b?.kind === 'text' ? b.text : '')).join('\n')
-}
-
-function ThinkingBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="my-2">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 text-[12.5px] text-fg3 hover:text-fg2">
-        <ChevronRight size={13} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
-        思考过程
-      </button>
-      {open && <div className="mt-1 border-l-2 border-line pl-3 text-[13px] whitespace-pre-wrap text-fg2 select-text">{text}</div>}
-    </div>
-  )
-}
-
-function Thinking() {
-  return (
-    <div className="my-3 flex items-center gap-2 text-[13px] text-fg3">
-      <span className="flex gap-1">
-        <span className="size-1.5 animate-pulse rounded-full bg-fg3" />
-        <span className="size-1.5 animate-pulse rounded-full bg-fg3 [animation-delay:150ms]" />
-        <span className="size-1.5 animate-pulse rounded-full bg-fg3 [animation-delay:300ms]" />
-      </span>
-      Claude 正在工作…
-    </div>
-  )
 }

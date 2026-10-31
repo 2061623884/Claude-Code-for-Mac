@@ -43,6 +43,14 @@ export interface UiMessage {
   forkFrom?: string | null
 }
 
+/** 仅用于当前运行状态，不写入历史摘要。revision 在主进程生命周期内递增。 */
+export interface ChatActivity {
+  revision: number
+  phase: 'idle' | 'working' | 'thinking' | 'responding' | 'tool' | 'stopping'
+  toolName?: string
+  toolId?: string
+}
+
 export type ChatState = 'idle' | 'running' | 'awaiting' | 'error'
 
 export interface SessionOptions {
@@ -69,6 +77,7 @@ export type Decision =
   | { type: 'planRevise'; feedback: string }
 
 export type ChatEvent =
+  | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
   | { kind: 'upsert'; messages: UiMessage[] }
   | { kind: 'state'; state: ChatState }
@@ -87,6 +96,7 @@ export interface ContextUsage {
 }
 
 export interface ChatSnapshot {
+  activity?: ChatActivity
   summary?: SessionSummaryData
   messages: UiMessage[]
   state: ChatState
