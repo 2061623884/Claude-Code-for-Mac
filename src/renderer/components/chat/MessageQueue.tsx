@@ -19,7 +19,7 @@ export function MessageQueue({ queue, canInsert, onAction, onEdit, editingId }: 
     catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(false) }
   }
-  return <section aria-label="消息队列" className="rounded-[24px] border border-line bg-card px-3 pt-1.5 pb-5 text-[13px]" style={{ marginBottom: -20 }}>
+  return <section aria-label="消息队列" className="rounded-[24px] border border-line bg-card px-3 pt-1.5 pb-5 text-[13px]">
     {(queue.paused || queue.items.length > 1) && <div className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-fg3">
       <span>{queue.paused ? '队列已暂停' : `${queue.items.length} 条排队消息`}</span>
       <div className="flex gap-3"><button disabled={busy} onClick={() => void act({ type: queue.paused ? 'resume' : 'pause' })}>{queue.paused ? '继续队列' : '暂停'}</button><button disabled={busy} onClick={() => void act({ type: 'clear' })}>清空待发</button></div>

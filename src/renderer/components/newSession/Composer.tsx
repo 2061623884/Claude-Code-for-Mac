@@ -23,10 +23,15 @@ import type { CommandInfo, EffortLevel, PermissionMode } from '@shared/types'
 import { EFFORT_LEVELS, findTrigger, formatBytes, PERMISSION_MODES, shortenPath } from '@shared/format'
 import { useDesk } from '../../store'
 import { Menu } from '../ui/Menu'
+import type { ChatActivity, ChatState } from '@shared/chat'
+import { ComposerCrab } from './ComposerCrab'
 import { ComposerEditor, type EditorHandle } from './ComposerEditor'
 import { useSuggestions, type Suggestion } from './useSuggestions'
 
 interface ComposerProps {
+  sessionState?: ChatState
+  activity?: ChatActivity
+  sessionId?: string
   header?: ReactNode
   clearOnSubmit?: boolean
   submitLabel?: string
@@ -59,6 +64,9 @@ interface ComposerProps {
 }
 
 export function Composer({
+  sessionState,
+  activity,
+  sessionId,
   header,
   clearOnSubmit = true,
   submitLabel,
@@ -270,7 +278,8 @@ export function Composer({
   }
 
   return (
-    <div className="relative">
+    <div className="relative pt-[52px] composer-with-crab">
+      <ComposerCrab key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} />
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
       <div className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">

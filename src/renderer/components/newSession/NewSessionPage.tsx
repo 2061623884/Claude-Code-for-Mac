@@ -8,7 +8,6 @@ import { openAppPanel, usePanel } from '../../panelStore'
 import { CommandPanel } from '../commands/CommandPanel'
 import { Button } from '../ui/Dialog'
 import { Composer, EffortChip, ModelChip, PermissionChip, ProjectChip } from './Composer'
-import { Crab } from './Crab'
 
 export function NewSessionPage() {
   const { projects, selectedProjectId, home, pickProject, draftModel, draftEffort, draftMode, setDraft } = useDesk()
@@ -49,9 +48,9 @@ export function NewSessionPage() {
           '请先选择一个项目'
         )}
       </p>
-      <div className="relative mt-11">
-        <Crab className="absolute bottom-full" />
+      <div className="relative mt-2">
         <Composer
+          sessionState={error ? 'error' : sending ? 'running' : 'idle'}
           value={text}
           onChange={setText}
           attachments={attachments}

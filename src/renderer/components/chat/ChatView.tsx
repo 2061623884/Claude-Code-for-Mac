@@ -215,6 +215,9 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 setSendError(null)
               }} />
               <Composer
+                sessionId={sessionId}
+                sessionState={chat.state}
+                activity={chat.activity}
                 key={`${sessionId}:${editing?.id ?? 'draft'}`}
                 clearOnSubmit={!editing}
                 submitLabel={editing ? '保存到队列' : undefined}
