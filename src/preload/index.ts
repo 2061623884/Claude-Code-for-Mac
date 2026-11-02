@@ -14,6 +14,7 @@ function subscribe<T extends unknown[]>(channel: string, listener: (...args: T) 
 }
 
 const api: DeskApi = {
+  usage: { overview: call('usage:overview'), stats: call('usage:stats'), saveProfile: call('usage:profile') },
   workspace: { closePage: call('workspace:closePage'), onShortcut: (listener) => subscribe('workspace:shortcut', listener) },
   terminal: {
     open: call('terminal:open'), write: call('terminal:write'), resize: call('terminal:resize'), close: call('terminal:close'),

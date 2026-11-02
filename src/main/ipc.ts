@@ -6,7 +6,11 @@ import type { DemoState, Settings } from '../shared/types'
 import { SessionManager } from './live/SessionManager'
 import * as files from './files'
 import * as meta from './meta'
-import { planUsage } from './usage'
+import { planUsage, toPlanUsage } from './usage'
+import { withIdleQuery } from './sdk'
+import { UsageWorkerClient } from './usageWorkerClient'
+import { UsageProfiles, usageAccount } from './usageProfile'
+import type { UsageOverview } from '../shared/usageAnalytics'
 import { runLocalCommand } from './localCommand'
 import * as projects from './projects'
 import * as sessions from './sessions'
@@ -26,7 +30,30 @@ export function applyTheme(theme: Settings['theme']): void {
   nativeTheme.themeSource = theme
 }
 
+let usageIndex: UsageWorkerClient | undefined
+function statistics(): UsageWorkerClient {
+  return usageIndex ??= new UsageWorkerClient(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), join(app.getPath('userData'), 'usage-index.json'))
+}
+function profiles(): UsageProfiles { return new UsageProfiles(join(app.getPath('userData'), 'usage-profiles')) }
+let overviewRequest: Promise<UsageOverview> | null = null
+let activeAccountKey: string | null = null
+function overview(): Promise<UsageOverview> {
+  if (overviewRequest) return overviewRequest
+  overviewRequest = withIdleQuery({ cwd: homedir() }, async q => {
+    const account = usageAccount(await q.accountInfo())
+    activeAccountKey = account.key
+    const profile = await profiles().get(account)
+    try {
+      const usage = toPlanUsage(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }))
+      return { account, usage, profile, updatedAt: Date.now() }
+    } catch (error: any) {
+      return { account, usage: null, usageError: String(error.message ?? error), profile, updatedAt: Date.now() }
+    }
+  }).catch(error => { activeAccountKey = null; throw error }).finally(() => { overviewRequest = null })
+  return overviewRequest
+}
 function broadcast(sessionId: string, event: ChatEvent): void {
+  if (event.kind === 'result') void statistics().recordDuration(event.durationMs).catch(error => console.error('Usage statistics:', error))
   if (process.env.CLAUDE_DESK_DEBUG) console.log('[emit]', sessionId.slice(0, 8), event.kind)
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send('chat:event', sessionId, event)
 }
@@ -85,6 +112,12 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     return commandCatalog.get(cwd, force === true)
   })
   handle('meta:usage', () => planUsage())
+  handle('usage:overview', () => overview())
+  handle('usage:stats', refresh => refresh === true ? statistics().refresh() : statistics().get())
+  handle('usage:profile', (key, profile) => {
+    if (key !== activeAccountKey) throw new Error('账户信息已变化，请刷新后重试')
+    return profiles().save(str(key, 'accountKey'), profile)
+  })
   handle('meta:config', (path, setting) =>
     runLocalCommand(str(path, 'path'), typeof setting === 'string' && setting ? `/config ${setting}` : '/config')
   )

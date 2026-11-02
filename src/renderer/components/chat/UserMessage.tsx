@@ -75,7 +75,7 @@ export function UserMessage({ message, text, onEdit }: { message: UiMessage; tex
   return (
     <div className="group/user my-4 flex flex-col items-end">
       <div className="max-w-[85%] rounded-2xl bg-chip px-4 py-2.5 whitespace-pre-wrap break-words select-text">
-        <LinkifiedText text={text} />
+        <LinkifiedText text={text} attachments />
       </div>
       <UserActions
         message={message}

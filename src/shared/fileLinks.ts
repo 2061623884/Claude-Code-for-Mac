@@ -54,7 +54,17 @@ const BARE = /(^|[\s(（"'“‘「《[])(@[^\s"'`<>)\]（）“”‘’「」�
 /** 找出一段普通文字里的路径（末尾的句号、逗号等标点不算在内） */
 export function findBarePaths(text: string): PathMatch[] {
   const out: PathMatch[] = []
+  // Explicitly quoted references preserve filenames containing spaces and punctuation.
+  for (const m of text.matchAll(/(^|[\s(（])@("(?:[^"\\]|\\.)*")/g)) {
+    try {
+      const path: unknown = JSON.parse(m[2])
+      if (typeof path !== 'string' || !path || path.includes('\n')) continue
+      const start = m.index! + m[1].length
+      out.push({ start, end: start + 1 + m[2].length, ref: { path } })
+    } catch { /* Leave malformed references as text. */ }
+  }
   for (const m of text.matchAll(BARE)) {
+    if (out.some((part) => m.index! >= part.start && m.index! < part.end)) continue
     let token = m[2]!
     const start = m.index! + m[1]!.length
     token = token.replace(/[.,;:!?)]+$/, (tail) => (LINE_SUFFIX.test(token) && /^:\d/.test(tail) ? tail : ''))
@@ -64,7 +74,7 @@ export function findBarePaths(text: string): PathMatch[] {
     if (!ref || (!token.startsWith('@') && !body.slice(1).includes('/'))) continue
     out.push({ start, end: start + token.length, ref })
   }
-  return out
+  return out.sort((a, b) => a.start - b.start)
 }
 
 /** 把路径解析成绝对路径：~ 换成主目录，相对路径按项目目录解析，去掉 . 和 .. */

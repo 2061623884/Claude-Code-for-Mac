@@ -9,15 +9,15 @@ type Window = { utilization: number | null; resets_at: string | null } | null | 
 export function toPlanUsage(r: SDKControlGetUsageResponse): PlanUsage {
   const rl = r.rate_limits
   const windows: UsageWindow[] = []
-  const add = (label: string, w: Window): void => {
-    if (w && w.utilization !== null) windows.push({ label, percent: w.utilization, resetsAt: w.resets_at })
+  const add = (kind: UsageWindow['kind'], label: string, w: Window): void => {
+    if (w && typeof w.utilization === 'number' && Number.isFinite(w.utilization)) windows.push({ kind, label, percent: w.utilization, resetsAt: w.resets_at })
   }
   if (rl) {
-    add('5 小时内', rl.five_hour)
-    add('本周（所有模型）', rl.seven_day)
-    add('本周（Opus）', rl.seven_day_opus)
-    add('本周（Sonnet）', rl.seven_day_sonnet)
-    for (const m of rl.model_scoped ?? []) add(`本周（${m.display_name}）`, m)
+    add('five_hour', '5 小时内', rl.five_hour)
+    add('seven_day', '本周（所有模型）', rl.seven_day)
+    add('model_week', '本周（Opus）', rl.seven_day_opus)
+    add('model_week', '本周（Sonnet）', rl.seven_day_sonnet)
+    for (const m of rl.model_scoped ?? []) add('model_week', `本周（${m.display_name}）`, m)
   }
   return { subscriptionType: r.subscription_type, available: r.rate_limits_available, windows }
 }

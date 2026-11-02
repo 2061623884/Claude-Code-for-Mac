@@ -1,3 +1,4 @@
+import { UsageNav } from '../usage/UsageNav'
 import { useState } from 'react'
 import {
   ChevronDown,
@@ -101,6 +102,7 @@ export function Sidebar({ width }: { width: number }) {
       </div>
 
       <div className="border-t border-line p-2">
+        <UsageNav />
         <NavItem
           icon={<Settings size={16} />}
           label="设置"

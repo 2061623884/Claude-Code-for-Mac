@@ -23,7 +23,7 @@ export function referenceFor(path: string, cwd?: string): string {
   const root = cwd ? normalizeAbsolutePath(cwd) : ''
   const prefix = root === '/' ? '/' : root + '/'
   const relative = root && target.startsWith(prefix) ? target.slice(prefix.length) : target
-  return '@' + relative
+  return '@' + (/[\s"'`<>()[\]（）“”‘’「」《》，。；：！？、]/.test(relative) ? JSON.stringify(relative) : relative)
 }
 
 export function buildPrompt(text: string, attachments: ComposerAttachment[], cwd?: string): string {

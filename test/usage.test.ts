@@ -21,9 +21,9 @@ describe('toPlanUsage', () => {
       subscriptionType: 'pro',
       available: true,
       windows: [
-        { label: '5 小时内', percent: 85, resetsAt: '2026-10-30T16:30:00Z' },
-        { label: '本周（所有模型）', percent: 14, resetsAt: '2026-11-02T17:00:00Z' },
-        { label: '本周（Fable）', percent: 3, resetsAt: null }
+        { kind: 'five_hour', label: '5 小时内', percent: 85, resetsAt: '2026-10-30T16:30:00Z' },
+        { kind: 'seven_day', label: '本周（所有模型）', percent: 14, resetsAt: '2026-11-02T17:00:00Z' },
+        { kind: 'model_week', label: '本周（Fable）', percent: 3, resetsAt: null }
       ]
     })
   })

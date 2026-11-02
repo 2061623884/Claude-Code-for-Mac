@@ -7,6 +7,7 @@ import { fileName, findBarePaths, resolvePath, type PathRef } from '@shared/file
 import { useLayout } from '../../layoutStore'
 import { usePathKind } from '../../pathKinds'
 import { useDesk } from '../../store'
+import { AttachmentCard } from './AttachmentCard'
 
 /** 解析相对路径用的项目目录 */
 export const FileContext = createContext<{ cwd?: string }>({})
@@ -18,12 +19,13 @@ export function openPath(path: string, kind: 'file' | 'dir', line?: number, exte
   else useLayout.getState().openFile(path, line)
 }
 
-export function FileLink({ pathRef, fallback }: { pathRef: PathRef; fallback: ReactNode }) {
+export function FileLink({ pathRef, fallback, attachment = false }: { pathRef: PathRef; fallback: ReactNode; attachment?: boolean }) {
   const { cwd } = useContext(FileContext)
   const home = useDesk((s) => s.home)
   const abs = resolvePath(pathRef.path, cwd, home)
   const kind = usePathKind(abs)
   if (!abs || !kind) return <>{fallback}</>
+  if (attachment) return <AttachmentCard path={abs} kind={kind} line={pathRef.line} />
   return <FileChip path={abs} kind={kind} line={pathRef.line} />
 }
 
@@ -83,13 +85,13 @@ function Tooltip({ rect, text }: { rect: DOMRect; text: string }) {
 }
 
 /** 普通文字（如用户消息）：其中的绝对路径和 @ 引用渲染成文件链接 */
-export function LinkifiedText({ text }: { text: string }) {
+export function LinkifiedText({ text, attachments = false }: { text: string; attachments?: boolean }) {
   const parts: ReactNode[] = []
   let i = 0
   for (const m of findBarePaths(text)) {
     if (m.start > i) parts.push(text.slice(i, m.start))
     const raw = text.slice(m.start, m.end)
-    parts.push(<FileLink key={m.start} pathRef={m.ref} fallback={raw} />)
+    parts.push(<FileLink key={m.start} pathRef={m.ref} fallback={raw} attachment={attachments} />)
     i = m.end
   }
   if (i < text.length) parts.push(text.slice(i))

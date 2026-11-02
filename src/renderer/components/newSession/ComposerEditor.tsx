@@ -34,8 +34,8 @@ import {
   type Spread
 } from 'lexical'
 import { referenceFor } from '@shared/attachments'
-import { parsePathRef, resolvePath } from '@shared/fileLinks'
-import { FileLink } from '../files/FileLink'
+import { findBarePaths, parsePathRef, resolvePath } from '@shared/fileLinks'
+import { AttachmentCard } from '../files/AttachmentCard'
 
 /** 命令和 @ 补全的识别里，文件节点当作一个空白字符：光标紧跟在文件后面时不会被误认成正在输入 @ */
 export const FILE_PLACEHOLDER = ' '
@@ -87,7 +87,7 @@ export class FileNode extends DecoratorNode<ReactNode> {
   }
 
   decorate(): ReactNode {
-    return <FileLink pathRef={{ path: this.__path }} fallback={<span className="text-fg2">{this.__ref}</span>} />
+    return <AttachmentCard path={this.__path} />
   }
 }
 
@@ -96,13 +96,22 @@ function $isFileNode(node: LexicalNode | null | undefined): node is FileNode {
 }
 
 /** 用纯文本重建内容（外部改写 value 时，比如发送后清空） */
-function $setPlainText(text: string): void {
+function $setPlainText(text: string, cwd?: string, home?: string): void {
   const root = $getRoot()
   root.clear()
   const p = $createParagraphNode()
   text.split('\n').forEach((line, i) => {
     if (i > 0) p.append($createLineBreakNode())
-    if (line) p.append($createTextNode(line))
+    let offset = 0
+    for (const match of findBarePaths(line)) {
+      if (!line.slice(match.start).startsWith('@')) continue
+      const path = resolvePath(match.ref.path, cwd, home)
+      if (!path) continue
+      if (match.start > offset) p.append($createTextNode(line.slice(offset, match.start)))
+      p.append(new FileNode(path, line.slice(match.start, match.end)))
+      offset = match.end
+    }
+    if (offset < line.length) p.append($createTextNode(line.slice(offset)))
   })
   root.append(p)
   p.selectEnd()
@@ -162,7 +171,7 @@ export function ComposerEditor(props: EditorProps) {
         namespace: 'composer',
         nodes: [FileNode],
         onError: (err) => console.error('[composer]', err),
-        editorState: () => $setPlainText(props.value)
+        editorState: () => $setPlainText(props.value, props.cwd, props.home)
       }}
     >
       <Editor {...props} />
@@ -205,7 +214,7 @@ function Editor({ value, onChange, onKey, placeholder, rows, autoFocus, cwd, hom
   useEffect(() => {
     if (value === emitted.current) return
     emitted.current = value
-    editor.update(() => $setPlainText(value))
+    editor.update(() => $setPlainText(value, latest.current.cwd, latest.current.home))
   }, [editor, value])
 
   useEffect(() => {

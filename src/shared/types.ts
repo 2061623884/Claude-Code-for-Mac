@@ -1,3 +1,4 @@
+import type { UsageAnalytics, UsageOverview, UsageProfile } from './usageAnalytics'
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, QueueAction, McpStatus, SessionOptions } from './chat'
@@ -76,6 +77,7 @@ export interface MetaInfo {
 
 /** 套餐用量的一个限额窗口（如 5 小时内、本周） */
 export interface UsageWindow {
+  kind: 'five_hour' | 'seven_day' | 'model_week'
   label: string
   /** 已用百分比，0–100 */
   percent: number
@@ -109,6 +111,11 @@ export interface AppState {
 }
 
 export interface DeskApi {
+  usage: {
+    overview(): Promise<UsageOverview>
+    stats(refresh?: boolean): Promise<UsageAnalytics>
+    saveProfile(accountKey: string, profile: UsageProfile): Promise<UsageProfile>
+  }
   workspace: {
     /** 明确关闭页面时销毁资源；组件卸载不等于关闭页面。 */
     closePage(id: string): Promise<void>

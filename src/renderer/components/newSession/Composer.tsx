@@ -9,21 +9,20 @@ import {
   FolderPlus,
   Plus,
   Shield,
-  Square,
-  X
+  Square
 } from 'lucide-react'
 import {
   buildPrompt,
   mergeAttachments,
-  referenceFor,
   type ComposerAttachment,
   type ComposerSubmission
 } from '@shared/attachments'
 import type { CommandInfo, EffortLevel, PermissionMode } from '@shared/types'
-import { EFFORT_LEVELS, findTrigger, formatBytes, PERMISSION_MODES, shortenPath } from '@shared/format'
+import { EFFORT_LEVELS, findTrigger, PERMISSION_MODES, shortenPath } from '@shared/format'
 import { useDesk } from '../../store'
 import { Menu } from '../ui/Menu'
 import type { ChatActivity, ChatState } from '@shared/chat'
+import { AttachmentCard } from '../files/AttachmentCard'
 import { ComposerCrab } from './ComposerCrab'
 import { ComposerEditor, type EditorHandle } from './ComposerEditor'
 import { useSuggestions, type Suggestion } from './useSuggestions'
@@ -287,7 +286,6 @@ export function Composer({
         {attachments.length > 0 && (
           <AttachmentRail
             attachments={attachments}
-            cwd={cwd}
             onRemove={(path) => {
               const next = attachmentsRef.current.filter((file) => file.path !== path)
               attachmentsRef.current = next
@@ -391,11 +389,9 @@ export function Composer({
 
 function AttachmentRail({
   attachments,
-  cwd,
   onRemove
 }: {
   attachments: ComposerAttachment[]
-  cwd?: string
   onRemove(path: string): void
 }) {
   return (
@@ -405,31 +401,8 @@ function AttachmentRail({
       className="flex gap-2 overflow-x-auto px-3 pb-1 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {attachments.map((file) => (
-        <div
-          key={file.path}
-          role="listitem"
-          title={file.path}
-          className="group/file flex h-12 min-w-[190px] max-w-[250px] items-center gap-2.5 rounded-lg border border-line bg-chip/60 px-2.5"
-        >
-          <span className="flex size-8 shrink-0 flex-col items-center justify-center rounded-md bg-card font-mono text-[9px] font-semibold uppercase text-fg2 shadow-sm">
-            {file.extension.slice(0, 4) || 'FILE'}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-medium text-fg">{file.name}</span>
-            <span className="mt-0.5 block truncate text-[10.5px] text-fg3">
-              {referenceFor(file.path, cwd).slice(1)} · {formatBytes(file.bytes)}
-            </span>
-          </span>
-          <button
-            type="button"
-            title={`移除 ${file.name}`}
-            aria-label={`移除 ${file.name}`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onRemove(file.path)}
-            className="flex size-5 shrink-0 items-center justify-center rounded-full text-fg3 opacity-0 transition-opacity hover:bg-hover hover:text-fg group-hover/file:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
-          >
-            <X size={12} />
-          </button>
+        <div key={file.path} role="listitem" className="shrink-0">
+          <AttachmentCard path={file.path} bytes={file.bytes} onRemove={() => onRemove(file.path)} />
         </div>
       ))}
     </div>

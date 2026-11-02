@@ -4,7 +4,7 @@ import { projectRemoved } from './projectLifecycle'
 import { errorText } from './ipcError'
 import type { DemoState, DetectedFolder, EffortLevel, MetaInfo, PermissionMode, Project, SessionSummary, Settings } from '@shared/types'
 
-export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings' }
+export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings' } | { kind: 'usage' }
 
 interface DeskState {
   actionError: string | null

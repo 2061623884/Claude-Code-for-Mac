@@ -8,6 +8,8 @@ import { notifyIfAway } from './notify'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { IconButton } from './components/sidebar/SessionRow'
 import { NewSessionPage } from './components/newSession/NewSessionPage'
+import { UsagePage } from './components/usage/UsagePage'
+import { startUsagePolling } from './usageStore'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { ChatView } from './components/chat/ChatView'
 import { RightPanel, RightPanelToggle } from './components/right/RightPanel'
@@ -33,6 +35,8 @@ export function App() {
       }),
     []
   )
+
+  useEffect(() => ready ? startUsagePolling() : undefined, [ready])
 
   // 开发截图用：自动打开会话或自动发送消息（等会话列表加载后执行一次）
   const demoDone = useRef(false)
@@ -126,6 +130,7 @@ export function App() {
         {actionError && <div role="alert" className="flex items-center justify-between bg-danger/10 px-4 py-2 text-sm text-danger"><span>{actionError}</span><button type="button" onClick={clearActionError}>关闭</button></div>}
         {view.kind === 'new' && <NewSessionPage />}
         {view.kind === 'settings' && <SettingsPage />}
+        {view.kind === 'usage' && <UsagePage />}
         {view.kind === 'session' && <ChatView key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       </main>
       {view.kind === 'session' && <RightPanel key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
