@@ -21,6 +21,7 @@ ipcMain.handle=(name,handler)=>{
   'chat:context':()=>null,'chat:checkExternal':()=>false,
   'meta:get':()=>({models:[],subscriptionType:null,claudeVersion:'fixture'}),
   'meta:usage':()=>({subscriptionType:null,available:false,windows:[]}),
+  'usage:overview':()=>({account:{key:'fixture',email:null,organization:null,subscriptionType:null},profile:{name:'窗口验证',avatar:null},usage:{available:false,windows:[]},updatedAt:Date.now()}),
   'meta:commands':(_event,cwd,force)=>{ipcCalls++;return catalog.get(cwd,force)}
  }
  originalHandle(name,stubs[name]||handler)

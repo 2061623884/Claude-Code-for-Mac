@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { CornerDownRight, GripVertical, ListEnd, Pencil, Trash2 } from 'lucide-react'
+import { CornerDownRight, GripVertical, Pause, Play, Pencil, Trash2 } from 'lucide-react'
 import { EFFORT_LEVELS, PERMISSION_MODES } from '@shared/format'
 import type { QueueAction, QueuedMessage, SessionQueue } from '@shared/chat'
 const labels = { queued: '待发', submitting: '提交中', submitted: '已提交，等待接收', received: '已接收', unknown: '提交结果未知', failed: '提交失败' }
@@ -19,12 +19,22 @@ export function MessageQueue({ queue, canInsert, onAction, onEdit, editingId }: 
     catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(false) }
   }
-  return <section aria-label="消息队列" className="rounded-[24px] border border-line bg-card px-3 pt-1.5 pb-5 text-[13px]">
-    {(queue.paused || queue.items.length > 1) && <div className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-fg3">
-      <span>{queue.paused ? '队列已暂停' : `${queue.items.length} 条排队消息`}</span>
-      <div className="flex gap-3"><button disabled={busy} onClick={() => void act({ type: queue.paused ? 'resume' : 'pause' })}>{queue.paused ? '继续队列' : '暂停'}</button><button disabled={busy} onClick={() => void act({ type: 'clear' })}>清空待发</button></div>
-    </div>}
-    <div ref={scrollBox} className="max-h-60 overflow-y-auto divide-y divide-line">
+  return <section aria-label="消息队列" className="rounded-t-[16px] border border-b-0 border-line bg-card px-2.5 pt-1 pb-1 text-[12px] shadow-pop">
+    <div className="flex items-center justify-between gap-2 pl-1 text-[11px] text-fg3">
+      <span>消息队列</span>
+      <div className="flex items-center gap-0.5">
+        <button type="button" className={buttonClass} disabled={busy} aria-label={queue.paused ? '继续队列' : '暂停队列'} title={queue.paused ? '继续队列' : '暂停队列'} aria-pressed={queue.paused} onClick={() => void act({ type: queue.paused ? 'resume' : 'pause' })}>
+          {queue.paused ? <Play size={16} strokeWidth={1.8} /> : <Pause size={16} strokeWidth={1.8} />}
+        </button>
+        <button type="button" className={buttonClass} disabled={busy} aria-label="清空待发" title="清空待发" onClick={() => void act({ type: 'clear' })}>
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 28H7c-2 0-3-1-3-3L4.3 7c0-2 1-3 3-3L19 3.8l6 6.1v4M19 4v5c0 1 .5 1.2 1.5 1.2H25M9 12h9M9 17h7M9 22h5" />
+            <path d="m18 20 7-7c1.2-1.2 2.5-.8 3.5.2l1.3 1.5c1 1.2.8 2.4-.3 3.5l-7 7c-1.1 1.1-2.5 1.3-3.5.3l-1.2-1.3c-1.1-1.1-1-2.5.2-4.2Zm2-2 5.5 5.5M16 27l-1 .6M18 29l-.4.7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div ref={scrollBox} className="max-h-40 overflow-y-auto divide-y divide-line">
       {queue.items.map(item => {
         const editable = item.status === 'queued' || item.status === 'failed'
         const movable = editable && !item.editing
@@ -69,8 +79,7 @@ export function MessageQueue({ queue, canInsert, onAction, onEdit, editingId }: 
                 const target = neighbors[index + (event.key === 'ArrowUp' ? -1 : 1)]
                 if (target) void act({ type: 'move', id: item.id, targetId: target.id, position: event.key === 'ArrowUp' ? 'before' : 'after' })
               }}><GripVertical size={15} strokeWidth={1.8} /></button>
-            <button type="button" className={`${buttonClass} px-1`} disabled={busy} aria-label={queue.paused ? '继续队列' : '暂停队列'} title={queue.paused ? '继续队列' : '暂停队列'} onClick={() => void act({ type: queue.paused ? 'resume' : 'pause' })}><ListEnd size={17} strokeWidth={1.6} /></button>
-            <div className="min-w-0 flex-1 truncate pr-2 text-[14px] font-medium" title={`${item.text}\n${details}`}>{item.text}</div>
+            <div className="min-w-0 flex-1 truncate pr-1 text-[12px] font-medium" title={`${item.text}\n${details}`}>{item.text}</div>
             {editable && !item.editing && <div className="flex shrink-0 items-center gap-0.5">
               <button type="button" className={buttonClass} disabled={busy || !canInsert} aria-label="立即插入" title="引导当前任务：立即插入，使用当前会话配置，不强制停止工具" onClick={() => void act({ type: 'insert', id: item.id })}><CornerDownRight size={17} strokeWidth={1.6} /><span>引导</span></button>
               <button type="button" className={buttonClass} disabled={busy} aria-label="删除" title="删除待发消息" onClick={() => void act({ type: 'delete', id: item.id })}><Trash2 size={16} strokeWidth={1.6} /></button>

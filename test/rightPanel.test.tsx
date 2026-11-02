@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { RightPanel } from '../src/renderer/components/right/RightPanel'
+import { RightPanel, RightPanelToggle } from '../src/renderer/components/right/RightPanel'
 import { useLayout } from '../src/renderer/layoutStore'
 import { useDesk } from '../src/renderer/store'
 import { Dialog } from '../src/renderer/components/ui/Dialog'
@@ -12,7 +12,7 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 
   useDesk.setState({ view: { kind: 'session', sessionId: 'test', projectId: 'p' }, projects: [{ id: 'p', path: '/project', name: 'project', addedAt: 0, collapsed: false }] })
-  useLayout.setState({ pages: [{ id: 'page:home', kind: 'start' }], openFiles: [], rightTab: 'page:home', rightOpen: true, expanded: false })
+  useLayout.setState({ activeSessionId: 'test', sessions: {}, pages: [{ id: 'page:home', kind: 'start' }], openFiles: [], rightTab: 'page:home', rightOpen: true, expanded: false })
   window.desk = { workspace: { closePage: vi.fn().mockResolvedValue(undefined), onShortcut: () => () => {} }, files: { list: vi.fn().mockResolvedValue([{ name: 'README.md', path: '/project/README.md', kind: 'file' }]) } } as unknown as Window['desk']
 })
 afterEach(cleanup)
@@ -52,4 +52,47 @@ it('hides the native browser for generic dialogs outside the desk store', () => 
   expect(screen.getByTestId('browser-pane').getAttribute('data-active')).toBe('false')
   modal.unmount()
   expect(screen.getByTestId('browser-pane').getAttribute('data-active')).toBe('true')
+})
+
+it('counts files and pages together, refuses seventh without evicting anything, and permits existing tabs', () => {
+  const layout = useLayout.getState()
+  for (let i = 0; i < 5; i++) layout.openFile(`/file-${i}`)
+  const files = useLayout.getState().openFiles
+  const pages = useLayout.getState().pages
+  expect(layout.newPage('/project', 'terminal')).toBeNull()
+  layout.openFile('/seventh')
+  layout.openSummary('test', 'p', 'all')
+  expect(useLayout.getState().pages).toEqual(pages)
+  expect(useLayout.getState().openFiles).toEqual(files)
+  layout.openFile('/file-0', 42)
+  expect(useLayout.getState().rightTab).toBe('file:/file-0')
+  expect(useLayout.getState().openFiles[0].line).toBe(42)
+  layout.closeFile('/file-1')
+  expect(layout.newPage('/project', 'terminal')).not.toBeNull()
+  expect(useLayout.getState().openFiles.some(f => f.path === '/file-0')).toBe(true)
+})
+it('hides plus at six and restores it after closing a page; keyboard cannot bypass cap', () => {
+  for (let i = 0; i < 5; i++) useLayout.getState().newPage()
+  render(<RightPanel sessionId="test" projectId="p" />)
+  expect(screen.queryByRole('button', { name: '新建侧栏页面' })).toBeNull()
+  // An existing start page can change kind without consuming another slot.
+  fireEvent.keyDown(window, { key: 't', metaKey: true })
+  expect(useLayout.getState().pages).toHaveLength(6)
+  fireEvent.keyDown(window, { key: 't', metaKey: true })
+  expect(useLayout.getState().pages).toHaveLength(6)
+  fireEvent.click(screen.getByRole('button', { name: '关闭浏览器' }))
+  expect(screen.getByRole('button', { name: '新建侧栏页面' })).toBeTruthy()
+})
+it('uses a distinct color for each Roman page count', () => {
+  useLayout.setState({ rightOpen: false })
+  render(<RightPanelToggle />)
+  const labels = ['I', 'II', 'III', 'IV', 'V', 'VI']
+  const colors = new Set<string>()
+  for (let i = 0; i < 6; i++) {
+    if (i) act(() => { useLayout.getState().newPage(); useLayout.setState({ rightOpen: false }) })
+    const badge = screen.getByLabelText(`已打开 ${i + 1} 个侧栏页面`)
+    expect(badge.textContent).toBe(labels[i])
+    colors.add(badge.style.getPropertyValue('--page-count-color'))
+  }
+  expect(colors.size).toBe(6)
 })

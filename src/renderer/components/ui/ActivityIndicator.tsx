@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { useDesk } from '../../store'
 import frame0 from '../../assets/spark/frame-01.png'
 import frame1 from '../../assets/spark/frame-02.png'
 import frame2 from '../../assets/spark/frame-03.png'
@@ -33,7 +34,8 @@ export function ActivitySpark({ active = true }: { active?: boolean }) {
     observer.observe(svg.current)
     return () => observer.disconnect()
   }, [])
-  const animate = active && allowed && intersects
+  const reduceMotion = useDesk(s => s.settings?.reduceMotion ?? false)
+  const animate = active && allowed && intersects && !reduceMotion
   return <svg ref={svg} data-activity-spark data-animated={animate} aria-hidden="true" width="20" height="20" viewBox="0 0 120 120" className="shrink-0 text-accent">
     <defs>
       <filter id={filterId} colorInterpolationFilters="sRGB" x="0" y="0" width="100%" height="100%">

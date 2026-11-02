@@ -1,16 +1,20 @@
+import { CRAB_GESTURES } from './crabGestures'
 import { useEffect, useState } from 'react'
 import type { ChatActivity, ChatState } from '@shared/chat'
 import { Crab } from './Crab'
 import { crabActivity } from './crabActivity'
+import { useDesk } from '../../store'
+import { SPINNER_VERBS_ZH, type SpinnerVerb } from './spinnerVerbsZh'
 import { SPINNER_VERBS } from './spinnerVerbs'
 
-export function nextVerb(previous?: string): string {
+export function nextVerb(previous?: string): SpinnerVerb {
   const pool = SPINNER_VERBS.filter(word => word !== previous)
   return pool[Math.floor(Math.random() * pool.length)]!
 }
 
 export function ComposerCrab({ state = 'idle', activity, hasDraft }: { state?: ChatState; activity?: ChatActivity; hasDraft: boolean }) {
-  const display = crabActivity(state, activity)
+  const language = useDesk((s): 'zh' | 'en' => s.settings?.executionLanguage === 'en' ? 'en' : 'zh')
+  const display = crabActivity(state, activity, language)
   const [sleeping, setSleeping] = useState(false)
   const [rotation, setRotation] = useState(() => ({ word: nextVerb(), changes: 0 }))
   const canSleep = state === 'idle' && !hasDraft
@@ -29,11 +33,13 @@ export function ComposerCrab({ state = 'idle', activity, hasDraft }: { state?: C
     return () => clearInterval(timer)
   }, [display.rotating])
   const pose = state === 'idle' ? hasDraft ? 'look' : sleeping ? 'sleep' : 'idle' : display.pose
+  const gesture = display.rotating ? CRAB_GESTURES[rotation.word] : undefined
+  const visualPose = gesture === 'thinking' ? 'thinking' : gesture ? 'working' : pose
   const shimmer = rotation.changes > 0 && rotation.changes % 4 === 0
   return <div className="composer-crab" data-composer-crab>
-    <Crab pose={pose} />
-    <div className="composer-crab-label" aria-hidden="true">
-      {display.rotating && <span className="composer-crab-decoration"><span key={rotation.changes} className={`composer-crab-verb${shimmer ? ' composer-crab-shimmer' : ''}`}>{rotation.word}…</span></span>}
+    <Crab pose={visualPose} gesture={gesture} />
+    <div className="composer-crab-label" aria-hidden="true" lang={language === 'zh' ? 'zh-CN' : 'en'}>
+      {display.rotating && <span className="composer-crab-decoration"><span key={rotation.changes} className={`composer-crab-verb${shimmer ? ' composer-crab-shimmer' : ''}`}>{language === 'zh' ? SPINNER_VERBS_ZH[rotation.word] : rotation.word}…</span></span>}
       {!display.rotating && <span className="composer-crab-state">{display.label}</span>}
     </div>
     <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{display.label}</span>

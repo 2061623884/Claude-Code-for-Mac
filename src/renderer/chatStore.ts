@@ -6,6 +6,7 @@ import type { EffortLevel } from '@shared/types'
 import { EFFORT_LEVELS } from '@shared/format'
 import { useSessionMarks } from './sessionMarks'
 import { useDesk } from './store'
+import { defaultSessionOptions, draftSessionOptions } from './sessionOptions'
 import { onProjectRemoved } from './projectLifecycle'
 import { errorText } from './ipcError'
 import { useShallow } from 'zustand/react/shallow'
@@ -21,7 +22,7 @@ interface ChatStore {
   chats: Record<string, ChatEntry>
   load(sessionId: string, projectId: string): Promise<void>
   reload(sessionId: string): Promise<void>
-  start(text: string, title?: string): Promise<void>
+  start(text: string, title?: string, onCreated?: (sessionId: string) => void): Promise<void>
   send(sessionId: string, text: string, attachments?: string[]): Promise<void>
   queueAction(sessionId: string, action: QueueAction): Promise<void>
   /** 编辑历史上的一条用户消息：从它之前分叉出新会话并发出新内容，原会话不变 */
@@ -37,18 +38,13 @@ const completed = new Set<string>()
 
 const desk = (): Window['desk'] => window.desk
 
-function defaultOptions(): SessionOptions {
-  const s = useDesk.getState().settings
-  return { model: s?.defaultModel ?? null, mode: s?.defaultPermissionMode ?? 'default', effort: s?.defaultEffort ?? null }
-}
-
 function projectPath(projectId: string): string {
   const p = useDesk.getState().projects.find((x) => x.id === projectId)
   if (!p) throw new Error('项目不存在')
   return p.path
 }
 
-function blank(projectId: string, options = defaultOptions()): ChatEntry {
+function blank(projectId: string, options = defaultSessionOptions(useDesk.getState().settings)): ChatEntry {
   return { summary: emptySessionSummary(), projectId, messages: [], state: 'idle', approvals: [], loaded: false, options, error: null }
 }
 
@@ -102,15 +98,18 @@ export const useChat = create<ChatStore>((set, get) => {
       await readSnapshot(sessionId, () => desk().chat.reload(sessionId, projectPath(c.projectId)), true)
     },
 
-    async start(text, title) {
+    async start(text, title, onCreated) {
       const desk$ = useDesk.getState()
       const projectId = desk$.selectedProjectId
       if (!projectId) return
-      const options: SessionOptions = { model: desk$.draftModel, mode: desk$.draftMode, effort: desk$.draftEffort }
+      const options = draftSessionOptions(desk$)
       const sessionId = await desk().chat.start(projectPath(projectId), text, options)
       const pending = get().chats[sessionId] // 事件可能先于返回值到达
-      set({ chats: { ...get().chats, [sessionId]: { ...blank(projectId, options), ...pending, projectId, options, loaded: true } } })
+      // 状态/正文事件建立的占位记录不代表后端确认过配置。
+      const confirmedOptions = pending?.sync?.fields.options ? pending.options : options
+      set({ chats: { ...get().chats, [sessionId]: { ...blank(projectId, options), ...pending, options: confirmedOptions, projectId, loaded: true } } })
       useDesk.getState().addPendingSession(projectId, sessionId, title?.trim() || text)
+      onCreated?.(sessionId)
       useDesk.getState().setView({ kind: 'session', sessionId, projectId })
     },
 
@@ -158,18 +157,15 @@ export const useChat = create<ChatStore>((set, get) => {
       return enqueueOptions(sessionId, async () => {
         patch(sessionId, () => ({ error: null }))
         try {
-          // 每个字段确认后再提交，部分失败时保留已经生效的字段。
+          // IPC 只确认命令完成；实际配置统一由主进程的版本化 options 事件更新。
           if (mode !== undefined) {
             await desk().chat.setMode(sessionId, mode)
-            patch(sessionId, (c) => ({ options: { ...c.options, mode } }))
           }
           if (model !== undefined) {
             await desk().chat.setModel(sessionId, model)
-            patch(sessionId, (c) => ({ options: { ...c.options, model } }))
           }
           if (effort !== undefined) {
             await desk().chat.setEffort(sessionId, effort)
-            patch(sessionId, (c) => ({ options: { ...c.options, effort } }))
           }
         } catch (error) {
           patch(sessionId, () => ({ error: `会话设置更新失败：${errorText(error)}` }))
@@ -182,7 +178,6 @@ export const useChat = create<ChatStore>((set, get) => {
       return enqueueOptions(sessionId, async () => {
         try {
           await desk().chat.respond(sessionId, requestId, decision)
-          if (decision.type === 'planApprove') patch(sessionId, (c) => ({ options: { ...c.options, mode: decision.mode } }))
         } catch (error) {
           patch(sessionId, () => ({ error: `权限确认失败：${errorText(error)}` }))
           throw error

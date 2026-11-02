@@ -275,3 +275,79 @@ button {
   .composer-add-button, .composer-add-button svg { transition: none; }
   .composer-add-button:hover:not(:disabled) svg, .composer-add-button:focus-visible svg { transform: none; }
 }
+
+.sidebar-page-count { color: var(--page-count-color, currentColor); }
+@media (prefers-color-scheme: dark) {
+  .sidebar-page-count { color: var(--page-count-color-dark, currentColor); }
+}
+
+/* Desktop preference also covers animations outside the activity indicator. */
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Queue rises from the composer edge, with room on either side. */
+.composer-queue-panel { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); width: calc(100% - clamp(160px, 40%, 280px)); max-width: 480px; z-index: 20; }
+.composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { max-width: 70px; overflow: hidden; }
+@container (max-width: 420px) {
+  .composer-queue-panel { width: calc(100% - 120px); }
+  .composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { visibility: hidden; }
+}
+
+/* First-send handoff uses measured viewport coordinates; never blocks the live UI. */
+.first-send-overlay { position: fixed; inset: 0; z-index: 35; pointer-events: none; overflow: hidden; }
+.first-send-overlay * { pointer-events: none !important; }
+.first-send-shell { overflow: hidden; transform-origin: top left; }
+.first-send-carrier { transform-origin: center; perspective: 320px; perspective-origin: 40% 65%; }
+.first-send-rotor { width: 100%; height: 100%; transform-origin: 40% 65%; transform-style: preserve-3d; }
+.first-send-flying-crab { display: block; transform-origin: 50% 100%; }
+.first-send-flying-crab * { animation: none !important; }
+.first-send-trails { position: absolute; width: 96px; height: 66px; left: -9px; top: -7px; fill: none; stroke: #000; stroke-width: 1.2; stroke-linecap: round; transform-origin: center; }
+[data-first-send-target]:not([data-first-send-bubble-done]) [data-user-bubble] { visibility: hidden; }
+[data-first-send-target] [data-composer-surface] { opacity: 0; transform-origin: center; }
+[data-first-send-target] [data-composer-crab] { visibility: hidden; }
+
+@media (prefers-color-scheme: dark) { .first-send-trails { stroke: #c7c7c7; } }
+
+/* Summary and workspace controls share a fine-line, illustrated toolbar style. */
+.session-toolbar-button {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  transition: background-color 150ms, color 150ms;
+}
+.session-toolbar-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Decorative gestures follow the word; actual state remains in the accessible status. */
+.crab[data-crab-gesture] .crab-prop { animation: crab-prop-in .25s ease-out; }
+.crab-stir { transform-box: fill-box; transform-origin: center; animation: crab-stir 2.4s ease-in-out infinite; }
+.crab-steam { animation: crab-steam 3s ease-out infinite; }
+.crab-block { animation: crab-block 3s ease-in-out infinite; }
+.crab-thread { animation: crab-stir 3.2s ease-in-out infinite; transform-origin: 21px 5px; }
+.crab-sprout { animation: crab-sprout 4s ease-in-out infinite; transform-origin: 21px 6px; }
+.crab-glass { animation: crab-search 3.5s ease-in-out infinite; }
+.crab-star { animation: crab-star 3s ease-in-out infinite; transform-origin: 21px -1px; }
+.crab[data-crab-gesture="playing"] .crab-body { animation: crab-play 3s ease-in-out infinite; }
+.crab[data-crab-gesture="thinking"] .crab-body { animation: crab-thought 4s ease-in-out infinite; }
+@keyframes crab-prop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes crab-stir { 0%,25%,100% { transform: rotate(-12deg); } 55%,75% { transform: rotate(12deg); } }
+@keyframes crab-steam { 0%,100% { opacity:0; transform:translateY(0); } 40% { opacity:1; } 80% { opacity:0; transform:translateY(-3px); } }
+@keyframes crab-block { 0%,20%,100% { transform:translate(0,-1px); } 50%,80% { transform:translate(0,2px); } }
+@keyframes crab-sprout { 0%,20%,100% { transform:scaleY(.8); } 50%,80% { transform:scaleY(1); } }
+@keyframes crab-search { 0%,25%,100% { transform:translateX(0); } 50%,75% { transform:translateX(-2px); } }
+@keyframes crab-star { 0%,20%,100% { opacity:.25; transform:scale(.6); } 50%,75% { opacity:1; transform:scale(1); } }
+@keyframes crab-play { 0%,20%,100% { transform:translateY(0); } 40% { transform:translateY(-1px) rotate(-3deg); } 60% { transform:translateY(0) rotate(3deg); } }
+@keyframes crab-thought { 0%,20%,100% { transform:rotate(0); } 50%,75% { transform:rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) { .crab[data-crab-gesture] * { animation:none !important; } }
+html[data-reduce-motion="true"] .crab[data-crab-gesture] * { animation:none !important; }

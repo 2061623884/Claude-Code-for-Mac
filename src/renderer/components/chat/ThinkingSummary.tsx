@@ -24,11 +24,13 @@ export function activityLabel(state: ChatState, activity?: ChatActivity): string
 export function ThinkingSummary({ messages, state = 'idle', activity, showActivity = true }: { messages: UiMessage[]; state?: ChatState; activity?: ChatActivity; showActivity?: boolean }) {
   const text = thinkingText(messages)
   const [expanded, setExpanded] = useState(false)
+  const [preview, setPreview] = useState(state === 'running' || state === 'awaiting')
   const body = useRef<HTMLDivElement>(null)
   const follow = useRef(true)
   const id = useId()
   const busy = state === 'running' || state === 'awaiting'
-  const visible = Boolean(text) && (busy || expanded)
+  const visible = Boolean(text) && (busy || expanded || preview)
+  useLayoutEffect(() => { if (busy) setPreview(true) }, [busy])
   useLayoutEffect(() => {
     if (body.current && (!expanded || follow.current)) body.current.scrollTop = body.current.scrollHeight
   }, [text, expanded, visible])
@@ -36,8 +38,8 @@ export function ThinkingSummary({ messages, state = 'idle', activity, showActivi
   return <section aria-label="思考摘要" className="my-3 text-fg2" data-thinking-summary>
     {busy && showActivity && <ActivityIndicator label={activityLabel(state, activity)} active={state === 'running' && activity?.phase !== 'stopping'} />}
     {text && <>
-      <button type="button" aria-label={expanded ? '收起思考摘要' : '展开思考摘要'} aria-expanded={expanded} aria-controls={id} onClick={() => { setExpanded(!expanded); follow.current = true }} className={`flex items-center gap-1.5 py-1 text-[12.5px] text-fg2 hover:text-fg ${busy ? 'ml-7' : ''}`}>
-        {!busy && <ActivitySpark active={false} />}
+      <button type="button" aria-label={expanded ? '收起思考摘要' : '展开思考摘要'} aria-expanded={expanded} aria-controls={id} onClick={() => { setExpanded(!expanded); setPreview(false); follow.current = true }} className="flex items-center gap-1.5 py-1 text-[12.5px] text-fg2 hover:text-fg">
+        <ActivitySpark active={false} />
         <ChevronRight size={13} className={`transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
         <span>思考摘要</span><span className="text-fg3">{expanded ? '收起' : '展开'}</span>
       </button>

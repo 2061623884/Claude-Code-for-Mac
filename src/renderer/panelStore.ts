@@ -1,4 +1,5 @@
 // 输入框上方的命令浮层（/usage、/model、/config…）：同一时间只开一个，看完关掉，不写入对话
+import { useDesk } from './store'
 import { create } from 'zustand'
 import { APP_COMMANDS, type AppPanelName } from '@shared/commandCatalog'
 import type { CommandBlock } from '@shared/chat'
@@ -29,6 +30,11 @@ export const usePanel = create<PanelStore>((set) => ({
 
 /** 输入框的命令拦截：应用自己的面板命令就打开浮层并返回 true，否则返回 false（交给 Claude Code） */
 export function openAppPanel(name: string, args: string): boolean {
+  if (!args && (name === 'config' || name === 'mcp')) {
+    usePanel.getState().close()
+    useDesk.getState().setView({ kind: 'settings', tab: name === 'config' ? 'claude' : 'mcp' })
+    return true
+  }
   const panel = appPanelFor(name, args)
   if (panel) usePanel.getState().open({ kind: 'app', name: panel })
   return panel !== null

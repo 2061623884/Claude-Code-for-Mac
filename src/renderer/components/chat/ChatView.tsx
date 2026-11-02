@@ -3,6 +3,8 @@ import { RefreshCw } from 'lucide-react'
 import type { ComposerAttachment } from '@shared/attachments'
 import type { UiBlock, UiMessage } from '@shared/chat'
 import type { CommandInfo } from '@shared/types'
+import { groupTechnicalNotices } from '@shared/internalNotice'
+import { InternalNotice, TechnicalRecords } from './InternalNotice'
 import { turnsOf } from '@shared/fileChanges'
 import { sumUsage, totalTokens } from '@shared/usageStats'
 import { useBtw } from '../../btwStore'
@@ -96,11 +98,13 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
   useCommandAutoOpen(chat?.messages, chat?.loaded)
   const panelOpen = usePanel((s) => s.panel !== null)
 
+  const autoScroll = useDesk(s => s.settings?.autoScroll ?? true)
+
   // 停在底部时，新内容到来自动滚动；用户往上翻时不打扰
   useLayoutEffect(() => {
     const el = scroller.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [chat?.messages, chat?.approvals.length, chat?.state])
+    if (el && stick.current && autoScroll) el.scrollTop = el.scrollHeight
+  }, [chat?.messages, chat?.approvals.length, chat?.state, autoScroll])
 
   if (!chat) return <div className="flex-1" />
 
@@ -175,9 +179,10 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                     .filter((m) => m.role === 'user' && !m.parentToolUseId && !hidden.has(m.id))
                     .map(renderMessage)}
                   <ThinkingSummary showActivity={false} messages={turn} state={(anchorExists ? turn.some(m => m.id === chat.activity?.messageId) : i === turns.length - 1) ? chat.state : 'idle'} activity={(anchorExists ? turn.some(m => m.id === chat.activity?.messageId) : i === turns.length - 1) ? chat.activity : undefined} />
-                  {turn
-                    .filter((m) => m.role !== 'user' && !m.parentToolUseId && !hidden.has(m.id))
-                    .map(renderMessage)}
+                  {groupTechnicalNotices(turn.filter((m) => m.role !== 'user' && !m.parentToolUseId && !hidden.has(m.id)))
+                    .map(entry => entry.kind === 'technical'
+                      ? <TechnicalRecords key={entry.messages[0]!.id} messages={entry.messages} />
+                      : renderMessage(entry.message))}
                   {/* 每轮结束后列出这一轮改过的文件，点开在右栏看对比 */}
                   {!(running && (anchorExists ? turn.some(m => m.id === chat.activity?.messageId) : i === turns.length - 1)) && (
                     <>
@@ -209,12 +214,13 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
               )}
               {chat.optionsSaveError && <div role="alert" className="text-[12px] text-danger">{chat.optionsSaveError}</div>}
               {chat.optionsSaved === false && !chat.optionsSaveError && <div className="text-[11px] text-fg3">此旧会话没有已保存配置；当前选择将用于下次执行。</div>}
-              <MessageQueue key={`queue-${sessionId}`} queue={chat.queue} canInsert={chat.state === 'running' && chat.activity?.phase !== 'stopping' && !approval} onAction={action => queueAction(sessionId, action)} editingId={editing?.id} onEdit={async item => {
+
+              <Composer
+                queuePanel={<MessageQueue key={`queue-${sessionId}`} queue={chat.queue} canInsert={chat.state === 'running' && chat.activity?.phase !== 'stopping' && !approval} onAction={action => queueAction(sessionId, action)} editingId={editing?.id} onEdit={async item => {
                 await queueAction(sessionId, { type: 'beginEdit', id: item.id })
                 useComposerDrafts.getState().beginEdit(sessionId, item)
                 setSendError(null)
-              }} />
-              <Composer
+              }} />}
                 sessionId={sessionId}
                 sessionState={chat.state}
                 activity={chat.activity}
@@ -308,7 +314,7 @@ function Message({
   onEdit?(text: string): Promise<void>
 }) {
   if (message.role === 'notice') {
-    if (message.source === 'internal') return <details className="my-3 text-[12px] text-fg3"><summary className="cursor-pointer">内部记录</summary><div className="mt-2 whitespace-pre-wrap break-words select-text">{blockText(message.blocks)}</div></details>
+    if (message.source === 'internal') return <InternalNotice message={message} />
     if (message.source) {
       const label = message.source === 'unknown' ? (message.startsTurn ? '历史消息 · 来源未确认，按旧记录分组' : '消息 · 来源未确认') : message.originKind === 'task-notification' ? '任务通知' : message.originKind === 'peer' ? 'Agent 消息' : message.originKind === 'channel' ? '通道消息' : '外部消息'
       return <div className="my-3 text-[12px] text-fg3"><div>{label}</div><div className="mt-1 whitespace-pre-wrap break-words select-text">{blockText(message.blocks)}</div></div>

@@ -166,7 +166,7 @@ export function parseCommandOutput(name: string, output: string): CommandView {
 
 /** /config 各项的中文说明 */
 export const CONFIG_LABELS: Record<string, string> = {
-  agentPushNotifEnabled: '子代理完成时推送通知',
+  agentPushNotifEnabled: '由 Claude 判断是否推送通知',
   artifacts: 'Artifacts 页面',
   autoCompact: '自动压缩对话',
   autoConnectIde: '自动连接 IDE',
@@ -191,7 +191,7 @@ export const CONFIG_LABELS: Record<string, string> = {
   recap: '回到会话时显示回顾',
   reduceMotion: '减少动效',
   remoteControl: '远程控制',
-  switchModelsOnFlag: '额度用尽时切换模型',
+  switchModelsOnFlag: '安全检查标记消息时切换模型',
   theme: '终端主题',
   thinking: '思考模式',
   timeFormat: '时间格式',

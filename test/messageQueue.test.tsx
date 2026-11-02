@@ -36,3 +36,20 @@ it('uses the six-dot handle to move a message relative to the drop target', asyn
   await waitFor(() => expect(onAction).toHaveBeenCalledWith({ type: 'move', id: 'first', targetId: 'second', position: 'after' }))
   expect(dataTransfer.setData).toHaveBeenCalledWith('application/x-claude-queue-message', 'first')
 })
+
+it('always shows the queue title and header controls, including for one paused message', async () => {
+  const onAction = vi.fn().mockResolvedValue(undefined)
+  const queue = { paused: false, items: [{ id: 'single', text: '任务', status: 'queued' as const, options: { model: null, effort: null, mode: 'default' as const } }] }
+  const view = render(<MessageQueue queue={queue} canInsert onAction={onAction} onEdit={vi.fn()} />)
+  expect(screen.getByText('消息队列')).toBeTruthy()
+  expect(screen.queryByText(/条排队消息/)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '暂停队列' }))
+  await waitFor(() => expect(onAction).toHaveBeenCalledWith({ type: 'pause' }))
+  view.rerender(<MessageQueue queue={{ ...queue, paused: true }} canInsert onAction={onAction} onEdit={vi.fn()} />)
+  await waitFor(() => expect(screen.getByRole('button', { name: '继续队列' })).toHaveProperty('disabled', false))
+  fireEvent.click(screen.getByRole('button', { name: '继续队列' }))
+  await waitFor(() => expect(onAction).toHaveBeenCalledWith({ type: 'resume' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '清空待发' })).toHaveProperty('disabled', false))
+  fireEvent.click(screen.getByRole('button', { name: '清空待发' }))
+  await waitFor(() => expect(onAction).toHaveBeenCalledWith({ type: 'clear' }))
+})

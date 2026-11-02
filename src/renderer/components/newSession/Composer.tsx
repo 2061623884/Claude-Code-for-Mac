@@ -31,6 +31,7 @@ interface ComposerProps {
   sessionState?: ChatState
   activity?: ChatActivity
   sessionId?: string
+  queuePanel?: ReactNode
   header?: ReactNode
   clearOnSubmit?: boolean
   submitLabel?: string
@@ -67,6 +68,7 @@ export function Composer({
   activity,
   sessionId,
   header,
+  queuePanel,
   clearOnSubmit = true,
   submitLabel,
   history = [],
@@ -281,7 +283,8 @@ export function Composer({
       <ComposerCrab key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} />
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
-      <div className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
+      <div data-composer-surface className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
+        {queuePanel && <div className="composer-queue-panel">{queuePanel}</div>}
         {header}
         {attachments.length > 0 && (
           <AttachmentRail
@@ -579,7 +582,8 @@ export function EffortChip({
 export function PermissionChip({ value, onChange, placement = 'bottom' }: { value: PermissionMode; onChange(v: PermissionMode): void; placement?: Placement }) {
   const { settings, demo } = useDesk()
   const modes = PERMISSION_MODES.filter((m) => m.value !== 'bypassPermissions' || settings?.allowBypass)
-  const current = modes.find((m) => m.value === value) ?? modes[0]
+  // 当前生效模式不受“是否允许选择”影响，关闭开关不会撤销已有会话权限。
+  const current = PERMISSION_MODES.find((m) => m.value === value)
   return (
     <Menu
       placement={placement}
@@ -587,7 +591,7 @@ export function PermissionChip({ value, onChange, placement = 'bottom' }: { valu
       defaultOpen={demo?.openMenu === 'permission'}
       trigger={({ toggle }) => (
         <Chip icon={<Shield size={13} />} onClick={toggle} title="权限模式">
-          {current.label}
+          {current?.label ?? value}
         </Chip>
       )}
       items={modes.map((m) => ({

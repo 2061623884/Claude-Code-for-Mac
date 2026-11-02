@@ -8,3 +8,6 @@ backup/
 .env
 .env.*
 !.env.example
+
+# 本地开发更新记录，不提交到 GitHub
+/.local/

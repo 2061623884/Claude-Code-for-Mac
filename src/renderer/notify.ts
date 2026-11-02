@@ -6,9 +6,12 @@ import { useDesk } from './store'
 
 export function notifyIfAway(sessionId: string, event: ChatEvent): void {
   if (document.hasFocus()) return
+  const settings = useDesk.getState().settings
+  if (event.kind === 'approval' && settings?.notifyApproval === false) return
+  if (event.kind === 'result' && settings?.notifyCompletion === false) return
   const text = message(event)
   if (!text) return
-  const n = new Notification(text.title, { body: sessionTitle(sessionId), silent: false })
+  const n = new Notification(text.title, { body: sessionTitle(sessionId), silent: useDesk.getState().settings?.notificationSound === false })
   n.onclick = () => {
     void window.desk.app.focus()
     const projectId = useChat.getState().chats[sessionId]?.projectId

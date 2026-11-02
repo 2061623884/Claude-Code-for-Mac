@@ -31,6 +31,8 @@ export function get(): Promise<MetaInfo> {
           efforts: m.supportsEffort ? (m.supportedEffortLevels ?? []) : []
         })),
       subscriptionType: init.account?.subscriptionType ?? null,
+      email: init.account?.email ?? null,
+      organization: init.account?.organization ?? null,
       claudeVersion: init.claude_code_version ?? null
     }
   })

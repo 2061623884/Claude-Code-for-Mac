@@ -32,6 +32,7 @@ ipcMain.handle = (name, handler) => {
     'sessions:list': () => ['a', 'b'].map(id => ({ id, title: '侧栏测试会话 ' + id, cwd: project, lastModified: 0, archived: false })),
     'chat:open': () => ({ messages: [], state: 'idle', approvals: [], live: false }),
     'chat:context': () => null, 'chat:checkExternal': () => false,
+    'usage:overview': () => ({ account: { key: 'fixture', email: null, organization: null, subscriptionType: null }, profile: { name: '', avatar: null }, usage: { available: false, windows: [] }, updatedAt: Date.now() }),
     'meta:get': () => ({ models: [], subscriptionType: null, claudeVersion: 'fixture' }),
     'meta:commands': (_event, cwd) => ({ cwd, revision: 1, commands: [], status: 'ready', updatedAt: Date.now() }),
     'meta:usage': () => ({ subscriptionType: null, available: false, windows: [] }),
@@ -81,6 +82,7 @@ app.on('browser-window-created', (_event, win) => {
       await click('readme.md')
       await wait(`!!document.querySelector('aside .md h1')`)
       await shot('sidebar-markdown')
+      await click('关闭readme.md')
       for (const [file, condition] of [
         ['example.ts', `document.querySelector('.code-lines')?.textContent.includes('previewWorks')`],
         ['pixel.png', `document.querySelector('img[alt="pixel.png"]')?.naturalWidth === 1`],
@@ -111,6 +113,8 @@ app.on('browser-window-created', (_event, win) => {
         }
         await new Promise(r => setTimeout(r, 150))
         await shot('sidebar-' + file.replace('.', '-'))
+        // 文件预览按项释放；六页上限另有专门测试。
+        await click('关闭' + file)
       }
       await card('工作区文件'); await click('protected.pdf')
       await wait(`!!document.querySelector('input[aria-label="PDF 密码"]')`)
@@ -119,8 +123,10 @@ app.on('browser-window-created', (_event, win) => {
       await wait(`document.body.innerText.includes('密码不正确')`)
       await fill('[aria-label="PDF 密码"]', 'preview'); await card('解锁 PDF')
       await wait(`document.querySelector('canvas')?.width > 100 && document.body.innerText.includes('1 / 1')`)
+      await click('关闭protected.pdf')
       await card('工作区文件'); await click('broken.pdf')
       await wait(`document.querySelector('[role="alert"]')?.innerText.includes('无法读取 PDF')`)
+      await click('关闭broken.pdf')
       await card('工作区文件'); await click('example.xlsx')
       await wait(`document.querySelector('[role="grid"]')?.innerText.includes('产品')`)
       await card('大表')
@@ -129,6 +135,7 @@ app.on('browser-window-created', (_event, win) => {
       await wait(`document.querySelector('[role="grid"]')?.innerText.includes('row-1000')`)
       if (await js(`document.querySelectorAll('[role="gridcell"]').length`) > 2000) throw new Error('Spreadsheet rendered too many cells')
       await shot('sidebar-spreadsheet-large')
+      await click('关闭example.xlsx')
       await click('新建侧栏页面'); await card('基于当前会话')
       await wait(`!!document.querySelector('textarea[placeholder="顺便问一下…"]')`)
       await fill('textarea[placeholder="顺便问一下…"]', '保留的草稿')

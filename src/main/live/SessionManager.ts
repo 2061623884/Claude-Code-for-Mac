@@ -49,8 +49,8 @@ export class SessionManager {
   }
 
   commandsFor(cwd: string, configuration?: string): Promise<CommandInfo[]> | undefined {
-    const session = [...this.live.values()].find((candidate) => candidate.cwd === cwd && (configuration === undefined || this.commandConfigurations.get(candidate) === configuration))
-    return session?.commands()
+    const entry = [...this.live].find(([, candidate]) => candidate.cwd === cwd && (configuration === undefined || this.commandConfigurations.get(candidate) === configuration))
+    return entry ? this.live.use(entry[0], () => entry[1].commands()) : undefined
   }
 
   async open(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
@@ -200,20 +200,22 @@ export class SessionManager {
     history: BtwTurn[],
     options: SessionOptions
   ): Promise<string | null> {
-    const session = await this.ensureLive(sessionId, projectPath, options)
-    return session.sideQuestion(question, history)
+    return this.live.use(sessionId, async () => {
+      const session = await this.ensureLive(sessionId, projectPath, options)
+      return session.sideQuestion(question, history)
+    })
   }
 
   /** /mcp：会话在运行就问它，否则临时起一个进程读取（不发消息） */
   async mcp(sessionId: string | null, projectPath: string): Promise<McpStatus[]> {
     const live = sessionId ? this.live.get(sessionId) : undefined
-    const list = live ? await live.mcpStatus() : await withIdleQuery({ cwd: projectPath }, (q) => q.mcpServerStatus())
+    const list = live ? await this.live.use(sessionId!, () => live.mcpStatus()) : await withIdleQuery({ cwd: projectPath }, (q) => q.mcpServerStatus())
     return list.map((s) => ({ name: s.name, status: s.status, error: s.error, scope: s.scope, tools: s.tools?.length ?? 0 }))
   }
 
   async interrupt(sessionId: string): Promise<void> {
     this.pauseQueue(sessionId)
-    await this.live.get(sessionId)?.interrupt()
+    await this.live.use(sessionId, async () => { await this.live.get(sessionId)?.interrupt() })
   }
 
   setMode(sessionId: string, mode: SessionOptions['mode']): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { mode })) }
@@ -241,7 +243,7 @@ export class SessionManager {
   async context(sessionId: string, projectPath: string, model: string | null): Promise<ContextUsage | null> {
     const live = this.live.get(sessionId)
     // 新会话还没写出会话文件时读不到，返回 null 即可
-    return (live ? live.contextUsage() : peekContext(sessionId, projectPath, model)).catch(() => null)
+    return (live ? this.live.use(sessionId, () => live.contextUsage()) : peekContext(sessionId, projectPath, model)).catch(() => null)
   }
 
   reload(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
@@ -364,7 +366,7 @@ export class SessionManager {
   }
 
   private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const next = (this.locks.get(id) ?? Promise.resolve()).catch(() => {}).then(fn)
+    const next = (this.locks.get(id) ?? Promise.resolve()).catch(() => {}).then(() => this.live.use(id, fn))
     this.locks.set(id, next)
     void next.finally(() => { if (this.locks.get(id) === next) this.locks.delete(id) }).catch(() => {})
     return next
@@ -423,14 +425,14 @@ export class SessionManager {
   /** 同时运行的进程太多时，关掉最久没用的空闲会话 */
   private evictIfFull(): void {
     if (this.live.size < MAX_LIVE) return
-    const idle = [...this.live].filter(([, s]) => s.state === 'idle').sort((a, b) => a[1].lastActive - b[1].lastActive)
+    const idle = this.live.idle().sort((a, b) => a[1].lastActive - b[1].lastActive)
     const victim = idle[0]
     if (victim) this.closeSession(victim[0])
   }
 
   private closeIdle(): void {
     const now = Date.now()
-    for (const [id, s] of this.live) if (s.state === 'idle' && now - s.lastActive > IDLE_MS) this.closeSession(id)
+    for (const [id, s] of this.live.idle()) if (now - s.lastActive > IDLE_MS) this.closeSession(id)
   }
 
   private closeSession(id: string): void {

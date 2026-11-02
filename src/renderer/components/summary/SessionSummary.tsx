@@ -1,5 +1,6 @@
+import summaryNote from '../../assets/icons/summary-note.svg'
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, ListFilter, ListTree } from 'lucide-react'
+import { ChevronRight, ListFilter } from 'lucide-react'
 import { emptySessionSummary, SUMMARY_LABELS, SUMMARY_SECTIONS, type SummaryView } from '@shared/sessionSummary'
 import { useChat } from '../../chatStore'
 import { useDesk } from '../../store'
@@ -27,7 +28,7 @@ export function SessionSummary({ sessionId, projectId }: { sessionId: string; pr
   }, [opened, sessionId])
   return <div ref={box} className="no-drag relative">
     <button type="button" aria-label="切换摘要面板状态" title="会话摘要" aria-expanded={opened} onClick={() => useSummaryUi.getState().toggle(sessionId)}
-      className={`flex size-8 items-center justify-center rounded-xl transition-colors ${opened ? 'bg-active text-fg' : 'text-fg2 hover:bg-hover'}`}><ListTree size={19} /></button>
+      className={`session-toolbar-button ${opened ? 'bg-active text-fg' : 'text-fg2 hover:bg-hover'}`}><span aria-hidden="true" data-summary-note className="inline-block size-[23px] shrink-0 bg-current" style={{ mask: `url("${summaryNote}") center / contain no-repeat`, WebkitMask: `url("${summaryNote}") center / contain no-repeat` }} /></button>
     {opened && <section aria-label="会话摘要" className="absolute right-0 top-full z-40 mt-3 max-h-[calc(100vh-100px)] w-[340px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-2xl border border-line-strong bg-card p-5 shadow-pop animate-pop-in [transform-origin:top_right]">
       <h2 className="mb-3 truncate text-[14px] font-medium text-fg2" title={project?.path}>{project?.name ?? '当前会话'}</h2>
       <div className="border-t border-line py-2">

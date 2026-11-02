@@ -32,6 +32,8 @@ export interface UiMessage {
   role: 'user' | 'assistant' | 'notice'
   /** 内容来源与界面角色分开；unknown 保留原文，不冒充已确认的真人输入。 */
   source?: 'human' | 'unknown' | 'internal' | 'external'
+  /** 内部来源的显示用途；缺失时保守地保留可见通知。 */
+  internalKind?: 'technical' | 'compact' | 'command' | 'notification'
   originKind?: string
   /** 明确的界面分组边界。旧快照缺少此字段时才回退到 role。 */
   startsTurn?: boolean

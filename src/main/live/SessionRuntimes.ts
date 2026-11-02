@@ -5,6 +5,7 @@ import type { LiveSession } from './LiveSession'
 export class SessionRuntimes {
   private sessions = new Map<string, LiveSession>()
   private pending = new Map<string, Promise<LiveSession>>()
+  private uses = new Map<string, { count: number }>()
   private closed = false
 
   get size(): number { return this.sessions.size }
@@ -12,6 +13,29 @@ export class SessionRuntimes {
   has(id: string): boolean { return this.sessions.has(id) }
   values(): MapIterator<LiveSession> { return this.sessions.values() }
   [Symbol.iterator](): MapIterator<[string, LiveSession]> { return this.sessions.entries() }
+
+  /** 在恢复或等待 SDK 前登记占用；并发操作全部结束后才允许自动回收。 */
+  async use<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    if (this.closed) throw new Error('应用已关闭')
+    const usage = this.uses.get(id) ?? { count: 0 }
+    this.uses.set(id, usage)
+    usage.count++
+    try {
+      return await operation()
+    } finally {
+      usage.count--
+      // 显式关闭或重载后，旧请求的完成不能释放新实例的占用。
+      if (usage.count === 0 && this.uses.get(id) === usage) {
+        this.uses.delete(id)
+        const session = this.sessions.get(id)
+        if (session) session.lastActive = Date.now()
+      }
+    }
+  }
+
+  idle(): [string, LiveSession][] {
+    return [...this.sessions].filter(([id, session]) => session.state === 'idle' && !this.uses.has(id))
+  }
 
   add(id: string, session: LiveSession): void {
     if (this.closed) throw new Error('应用已关闭')
@@ -21,6 +45,7 @@ export class SessionRuntimes {
 
   remove(id: string, expected: LiveSession): boolean {
     if (this.sessions.get(id) !== expected) return false
+    this.uses.delete(id)
     return this.sessions.delete(id)
   }
 
@@ -41,6 +66,7 @@ export class SessionRuntimes {
 
   close(id: string): void {
     this.pending.delete(id)
+    this.uses.delete(id)
     const session = this.sessions.get(id)
     this.sessions.delete(id)
     session?.close()
@@ -49,6 +75,7 @@ export class SessionRuntimes {
   closeAll(): void {
     this.closed = true
     this.pending.clear()
+    this.uses.clear()
     for (const session of this.sessions.values()) session.close()
     this.sessions.clear()
   }

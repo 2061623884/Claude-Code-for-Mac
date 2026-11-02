@@ -3,6 +3,8 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ComposerCrab, nextVerb } from '../src/renderer/components/newSession/ComposerCrab'
 import { crabActivity } from '../src/renderer/components/newSession/crabActivity'
+import { useDesk } from '../src/renderer/store'
+import { SPINNER_VERBS_ZH } from '../src/renderer/components/newSession/spinnerVerbsZh'
 import { SPINNER_VERBS } from '../src/renderer/components/newSession/spinnerVerbs'
 import type { ChatActivity } from '../src/shared/chat'
 
@@ -10,7 +12,10 @@ const activity = (phase: ChatActivity['phase'], toolName?: string): ChatActivity
 const pose = () => document.querySelector('[data-crab-pose]')?.getAttribute('data-crab-pose')
 const word = () => document.querySelector('.composer-crab-verb')?.textContent
 const tick = (ms: number) => act(() => vi.advanceTimersByTime(ms))
-beforeEach(() => vi.useFakeTimers())
+beforeEach(() => {
+  vi.useFakeTimers()
+  useDesk.setState({ settings: { theme: 'system', defaultModel: 'opus', defaultEffort: 'medium', defaultPermissionMode: 'default', claudePath: null, allowBypass: false, executionLanguage: 'en' } })
+})
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('composer crab', () => {
@@ -26,9 +31,9 @@ describe('composer crab', () => {
   })
   it('gives execution priority over queued draft editing, and resets after completion', () => {
     const view = render(<ComposerCrab hasDraft={false} state="running" activity={activity('thinking')} />)
-    tick(60_000); expect(pose()).toBe('thinking')
+    tick(60_000); expect(document.querySelector('[data-crab-gesture]')).not.toBeNull()
     view.rerender(<ComposerCrab hasDraft state="running" activity={activity('responding')} />)
-    expect(pose()).toBe('writing'); expect(screen.getByRole('status').textContent).toBe('Responding')
+    expect(document.querySelector('[data-crab-gesture]')).not.toBeNull(); expect(screen.getByRole('status').textContent).toBe('Responding')
     view.rerender(<ComposerCrab hasDraft={false} state="idle" />)
     expect(pose()).toBe('idle'); tick(30_000); expect(pose()).toBe('sleep')
   })
@@ -78,4 +83,50 @@ describe('composer crab', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     expect(nextVerb(SPINNER_VERBS[0])).toBe(SPINNER_VERBS[1])
   })
+})
+
+it('defaults to Chinese with complete one-to-one copy and keeps English identifiers for deduplication', () => {
+  useDesk.setState({ settings: null })
+  expect(Object.keys(SPINNER_VERBS_ZH)).toEqual([...SPINNER_VERBS])
+  expect(new Set(Object.values(SPINNER_VERBS_ZH)).size).toBe(187)
+  for (const text of Object.values(SPINNER_VERBS_ZH)) expect(text).toMatch(/[\u4e00-\u9fff]/)
+  vi.spyOn(Math, 'random').mockReturnValue(0)
+  render(<ComposerCrab hasDraft={false} state="running" />)
+  expect(word()).toBe(SPINNER_VERBS_ZH.Accomplishing + '…')
+  expect(screen.getByRole('status').textContent).toBe('正在执行任务')
+  tick(8000)
+  expect(word()).toBe(SPINNER_VERBS_ZH.Actioning + '…')
+})
+it('translates the same active word without restarting rotation and localizes approvals', () => {
+  const view = render(<ComposerCrab hasDraft={false} state="running" />)
+  const english = word()!.replace(/…$/, '') as keyof typeof SPINNER_VERBS_ZH
+  tick(4000)
+  act(() => useDesk.setState({ settings: { ...useDesk.getState().settings!, executionLanguage: 'zh' } }))
+  expect(word()).toBe(SPINNER_VERBS_ZH[english] + '…')
+  expect(screen.getByRole('status').textContent).toBe('正在执行任务')
+  tick(4000)
+  expect(word()).not.toBe(SPINNER_VERBS_ZH[english] + '…')
+  view.rerender(<ComposerCrab hasDraft={false} state="awaiting" />)
+  expect(screen.getByRole('status').textContent).toBe('等你确认后继续')
+  view.rerender(<ComposerCrab hasDraft={false} state="idle" />)
+  view.rerender(<ComposerCrab hasDraft={false} state="running" />)
+  expect(screen.getByRole('status').textContent).toBe('正在执行任务')
+  expect(Object.values(SPINNER_VERBS_ZH)).toContain(word()?.replace(/…$/, ''))
+  view.rerender(<ComposerCrab hasDraft={false} state="awaiting" />)
+  expect(screen.getByRole('status').textContent).toBe('等你确认后继续')
+  view.rerender(<ComposerCrab hasDraft={false} state="error" />)
+  expect(screen.getByRole('status').textContent).toBe('出了点问题，请查看提示')
+  expect(word()).toBeUndefined()
+})
+it.each([
+ ['Read','正在读取'], ['Write','正在写入或修改'], ['Bash','正在运行命令'], ['Agent','正在交给子代理处理'], ['Grep','正在查找']
+])('translates actual %s state without changing its pose or behavior', (tool,label) => {
+ const en = crabActivity('running', activity('tool',tool),'en')
+ expect(crabActivity('running', activity('tool',tool),'zh')).toEqual({ ...en,label })
+})
+
+it('maps every word to one of seven gestures', async () => {
+ const { CRAB_GESTURES } = await import('../src/renderer/components/newSession/crabGestures')
+ expect(Object.keys(CRAB_GESTURES)).toEqual([...SPINNER_VERBS])
+ expect(new Set(Object.values(CRAB_GESTURES)).size).toBe(7)
 })

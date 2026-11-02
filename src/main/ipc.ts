@@ -1,4 +1,4 @@
-import { homedir } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import type { BtwTurn, ChatEvent, Decision, QueueAction, SessionOptions } from '../shared/chat'
@@ -11,6 +11,7 @@ import { withIdleQuery } from './sdk'
 import { UsageWorkerClient } from './usageWorkerClient'
 import { UsageProfiles, usageAccount } from './usageProfile'
 import type { UsageOverview } from '../shared/usageAnalytics'
+import { readClaudeConfig } from './claudeConfigSnapshot'
 import { runLocalCommand } from './localCommand'
 import * as projects from './projects'
 import * as sessions from './sessions'
@@ -72,7 +73,11 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     ipcMain.handle(channel, (_e, ...args) => fn(...args))
   }
 
-  handle('app:state', () => ({ seededFromHistory: store.read().seededFromHistory, demo, home: homedir() }))
+  handle('app:state', () => {
+    let username: string | null = null
+    try { username = userInfo().username } catch { /* greeting may omit the name */ }
+    return { seededFromHistory: store.read().seededFromHistory, demo, home: homedir(), username }
+  })
   ipcMain.handle('app:focus', (e) => {
     if (focusWindow) { focusWindow(); return }
     const win = BrowserWindow.fromWebContents(e.sender)
@@ -96,6 +101,7 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
 
   handle('settings:get', () => store.read().settings)
   handle('settings:set', (patch) => {
+    if (patch && typeof patch === 'object' && 'executionLanguage' in patch && patch.executionLanguage !== 'zh' && patch.executionLanguage !== 'en') throw new Error('执行提示语言仅支持中文或英文')
     const previousPath = store.read().settings.claudePath
     const next = store.update((d) => {
       d.settings = { ...d.settings, ...(patch as Partial<Settings>) }
@@ -118,6 +124,7 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     if (key !== activeAccountKey) throw new Error('账户信息已变化，请刷新后重试')
     return profiles().save(str(key, 'accountKey'), profile)
   })
+  handle('meta:configSnapshot', path => readClaudeConfig(str(path, 'path')))
   handle('meta:config', (path, setting) =>
     runLocalCommand(str(path, 'path'), typeof setting === 'string' && setting ? `/config ${setting}` : '/config')
   )

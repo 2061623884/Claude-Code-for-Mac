@@ -29,7 +29,6 @@ export function UsageDetails({ usage, title }: { usage: TokenUsage; title: strin
           </div>
         ))}
       </dl>
-      <p className="mt-2 text-[11px] text-fg3">累计输入、输出及缓存用量。同一段上下文可能被多次计入，不用于判断自动压缩阈值。</p>
     </div>
   )
 }

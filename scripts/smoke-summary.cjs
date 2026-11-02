@@ -29,6 +29,7 @@ ipcMain.handle = (name, handler) => {
     'sessions:list': () => [{ id: 'summary-test', title: '会话摘要集成验证', cwd: project, lastModified: Date.now(), archived: false }],
     'chat:open': () => ({ messages: [{ id: 'welcome', role: 'assistant', parentToolUseId: null, blocks: [{ kind: 'text', text: '本会话已读取参考文件、搜索网页并修改代码。摘要展示项目、任务和子 Agent 的真实事件记录。' }] }], state: 'idle', approvals: [], live: false, summary: collector.snapshot() }),
     'chat:context': () => null, 'chat:checkExternal': () => false,
+    'usage:overview': () => ({ account: { key: 'fixture', email: null, organization: null, subscriptionType: null }, profile: { name: '', avatar: null }, usage: { available: false, windows: [] }, updatedAt: Date.now() }),
     'meta:get': () => ({ models: [{ value: 'opus', label: 'Opus', efforts: [] }], subscriptionType: null, claudeVersion: 'fixture' }),
     'meta:commands': (_event, cwd) => ({ cwd, revision: 1, commands: [], status: 'ready', updatedAt: Date.now() })
   }
@@ -80,4 +81,4 @@ app.on('browser-window-created', (_event, win) => {
     } catch (error) { console.error(error); writeFileSync(join(output, 'summary-failure.png'), (await win.capturePage()).toPNG()); clearTimeout(timeout); app.exit(1) }
   })
 })
-require('../out/main/index.js')
+require(process.env.CLAUDE_DESK_SMOKE_ENTRY || '../out/main/index.js')

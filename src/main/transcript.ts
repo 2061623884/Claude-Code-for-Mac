@@ -278,7 +278,7 @@ export class Transcript {
       return
     }
     // 只有已确认的内部消息才解释内部文本格式。未知来源始终原样保留。
-    if (source === 'internal') {
+    if (source === 'internal' && raw.isCompactSummary !== true) {
       const output = COMMAND_OUTPUT.exec(text.trim())
       if (output) { this.addCommand(output[2]); return }
       const command = COMMAND_NAME.exec(text)
@@ -290,6 +290,13 @@ export class Transcript {
     const msg = this.ensure(uuid, 'notice', null)
     msg.uuid = uuid
     msg.source = source
+    if (source === 'internal') {
+      msg.internalKind = raw.isCompactSummary === true ? 'compact'
+        : COMMAND_NAME.test(text) ? 'command'
+        : raw.isSynthetic === true || raw.is_error === true || raw.error != null ? 'notification'
+        : raw.isMeta === true || raw.is_meta === true || raw.isVisibleInTranscriptOnly === true ? 'technical'
+        : 'notification'
+    }
     msg.originKind = sdkOriginKind(raw)
     // 未知旧历史保留推定分组；实时未知事件不凭空开启真人轮次。
     msg.startsTurn = source === 'unknown' && mode === 'history'

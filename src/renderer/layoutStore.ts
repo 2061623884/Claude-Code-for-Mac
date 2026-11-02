@@ -23,6 +23,7 @@ interface SessionLayout {
 }
 const empty = (): SessionLayout => ({ rightOpen: false, rightTab: null, pages: [], openFiles: [], expanded: false })
 const snapshot = (s: SessionLayout): SessionLayout => ({ projectId: s.projectId, rightOpen: s.rightOpen, rightTab: s.rightTab, pages: s.pages, openFiles: s.openFiles, expanded: s.expanded })
+export const MAX_SIDEBAR_PAGES = 6
 export const LEFT = { min: 220, max: 420, default: 272 }
 export const RIGHT = { min: 320, max: 600, default: 380 }
 const KEY = 'claude-desk.layout'
@@ -87,7 +88,7 @@ export const useLayout = create<LayoutStore>((set, get) => {
     setExpanded: (expanded) => { if (get().activeSessionId) set({ expanded }) },
     newPage: (cwd, kind = 'start') => {
       const { activeSessionId, projectId, pages } = get()
-      if (!activeSessionId) return null
+      if (!activeSessionId || sidebarPageCount(get()) >= MAX_SIDEBAR_PAGES) return null
       const id = `page:${crypto.randomUUID()}` as const
       set({ pages: [...pages, { id, kind, cwd, sessionId: activeSessionId, projectId }], rightOpen: true, rightTab: id })
       return id
@@ -95,6 +96,7 @@ export const useLayout = create<LayoutStore>((set, get) => {
     openSummary: (sessionId, projectId, section) => {
       if (sessionId !== get().activeSessionId) return
       const existing = get().pages.find((p) => p.kind === 'summary' && p.section === section)
+      if (!existing && sidebarPageCount(get()) >= MAX_SIDEBAR_PAGES) return
       const id = existing?.id ?? `page:${crypto.randomUUID()}` as const
       if (!existing) set({ pages: [...get().pages, { id, kind: 'summary', sessionId, projectId, section }] })
       set({ rightOpen: true, rightTab: id })
@@ -116,8 +118,9 @@ export const useLayout = create<LayoutStore>((set, get) => {
     openFile: (path, line) => {
       if (!get().activeSessionId) return
       const existing = get().openFiles.find((f) => f.path === path)
+      if (!existing && sidebarPageCount(get()) >= MAX_SIDEBAR_PAGES) return
       const entry = { path, line, nonce: (existing?.nonce ?? 0) + 1 }
-      const openFiles = existing ? get().openFiles.map((f) => f.path === path ? entry : f) : [...get().openFiles, entry].slice(-6)
+      const openFiles = existing ? get().openFiles.map((f) => f.path === path ? entry : f) : [...get().openFiles, entry]
       set({ openFiles, rightOpen: true, rightTab: `file:${path}` })
     },
     closeFile: (path) => {

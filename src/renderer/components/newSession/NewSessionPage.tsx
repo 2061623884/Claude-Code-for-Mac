@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { attachmentTitle, type ComposerAttachment } from '@shared/attachments'
 import { shortenPath } from '@shared/format'
+import { captureFirstSend } from '../../motion/firstSend'
 import { useDesk } from '../../store'
+import { draftSessionOptions } from '../../sessionOptions'
 import { useChat } from '../../chatStore'
 import { openAppPanel, usePanel } from '../../panelStore'
 import { CommandPanel } from '../commands/CommandPanel'
@@ -10,7 +12,12 @@ import { Button } from '../ui/Dialog'
 import { Composer, EffortChip, ModelChip, PermissionChip, ProjectChip } from './Composer'
 
 export function NewSessionPage() {
-  const { projects, selectedProjectId, home, pickProject, draftModel, draftEffort, draftMode, setDraft } = useDesk()
+  const composerRoot = useRef<HTMLDivElement>(null)
+  const transition = useRef<ReturnType<typeof captureFirstSend>>(undefined)
+  useEffect(() => () => transition.current?.release(), [])
+  const desk = useDesk()
+  const { projects, selectedProjectId, home, pickProject, setDraft } = desk
+  const options = draftSessionOptions(desk)
   const start = useChat((s) => s.start)
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
@@ -38,7 +45,7 @@ export function NewSessionPage() {
 
   return (
     <Centered>
-      <h1 className="font-serif text-[30px] font-normal tracking-tight">今天想做点什么？</h1>
+      <h1 className="font-serif text-[30px] font-normal tracking-tight">{desk.greeting}</h1>
       <p className="mt-1.5 truncate text-fg3">
         {project ? (
           <>
@@ -48,7 +55,7 @@ export function NewSessionPage() {
           '请先选择一个项目'
         )}
       </p>
-      <div className="relative mt-2">
+      <div ref={composerRoot} className="relative mt-2">
         <Composer
           sessionState={error ? 'error' : sending ? 'running' : 'idle'}
           value={text}
@@ -63,7 +70,7 @@ export function NewSessionPage() {
                 ctx={{
                   sessionId: null,
                   cwd: project?.path,
-                  options: { model: draftModel, effort: draftEffort, mode: draftMode },
+                  options,
                   setOptions: (patch) => setDraft(patch)
                 }}
               />
@@ -71,11 +78,13 @@ export function NewSessionPage() {
           }
           onCommand={openAppPanel}
           onSubmit={async ({ text: body, prompt, attachments: submitted }) => {
+            transition.current = captureFirstSend(composerRoot.current)
             setSending(true)
             setError(null)
             try {
-              await start(prompt, attachmentTitle(body, submitted))
+              await start(prompt, attachmentTitle(body, submitted), transition.current?.arm)
             } catch (err) {
+              transition.current?.cancel()
               setError(err instanceof Error ? err.message : String(err))
               throw err
             } finally {
@@ -87,9 +96,9 @@ export function NewSessionPage() {
           chips={
             <>
               <ProjectChip />
-              <ModelChip value={draftModel} onChange={(model) => setDraft({ model })} />
-              <EffortChip model={draftModel} value={draftEffort} onChange={(effort) => setDraft({ effort })} />
-              <PermissionChip value={draftMode} onChange={(mode) => setDraft({ mode })} />
+              <ModelChip value={options.model} onChange={(model) => setDraft({ model })} />
+              <EffortChip model={options.model} value={options.effort} onChange={(effort) => setDraft({ effort })} />
+              <PermissionChip value={options.mode} onChange={(mode) => setDraft({ mode })} />
             </>
           }
         />

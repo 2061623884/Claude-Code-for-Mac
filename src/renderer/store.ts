@@ -1,12 +1,18 @@
 import { create } from 'zustand'
+import { FALLBACK_GREETING, greetingName, nextGreeting } from './greeting'
+import { useUsage } from './usageStore'
 import { useLayout } from './layoutStore'
 import { projectRemoved } from './projectLifecycle'
 import { errorText } from './ipcError'
-import type { DemoState, DetectedFolder, EffortLevel, MetaInfo, PermissionMode, Project, SessionSummary, Settings } from '@shared/types'
+import type { DemoState, DetectedFolder, MetaInfo, Project, SessionSummary, Settings } from '@shared/types'
+import type { SessionOptions } from '@shared/chat'
 
-export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings' } | { kind: 'usage' }
+export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings'; tab?: 'general' | 'claude' | 'mcp' | 'models' | 'context' | 'notifications' | 'advanced'; projectId?: string | null; sessionId?: string | null } | { kind: 'usage' }
 
 interface DeskState {
+  greeting: string
+  greetingSelected: boolean
+  username: string | null
   actionError: string | null
   clearActionError(): void
   ready: boolean
@@ -19,9 +25,7 @@ interface DeskState {
   metaError: string | null
   view: View
   selectedProjectId: string | null
-  draftModel: string | null
-  draftMode: PermissionMode
-  draftEffort: EffortLevel | null
+  draftOverrides: Partial<SessionOptions>
   sidebarCollapsed: boolean
   /** 待确认添加的项目路径（选择器选完后弹确认框） */
   pendingProjectPath: string | null
@@ -41,7 +45,7 @@ interface DeskState {
   renameSession(session: SessionSummary, projectId: string, title: string): Promise<void>
   setArchived(session: SessionSummary, projectId: string, archived: boolean): Promise<void>
   updateSettings(patch: Partial<Settings>): Promise<void>
-  setDraft(patch: { model?: string | null; mode?: PermissionMode; effort?: EffortLevel | null; projectId?: string }): void
+  setDraft(patch: Partial<SessionOptions> & { projectId?: string }): void
   toggleSidebar(): void
   setSearchOpen(open: boolean): void
   /** 新会话刚开始时先在侧栏放一条，等会话文件写出后刷新成真实标题 */
@@ -50,7 +54,19 @@ interface DeskState {
 
 const desk = (): Window['desk'] => window.desk
 
+function chooseGreeting(state: DeskState): string {
+  const overview = useUsage.getState().overview
+  const email = state.meta?.email ?? overview?.account.email
+  const profile = overview && (!state.meta || overview.account.email === state.meta.email) ? overview.profile.name : null
+  // Do not let a late account response change a greeting already on screen.
+  const username = state.meta || state.metaError || overview ? state.username : null
+  return nextGreeting(greetingName(profile, email, username))
+}
+
 export const useDesk = create<DeskState>((set, get) => ({
+  greeting: FALLBACK_GREETING,
+  greetingSelected: false,
+  username: null,
   actionError: null,
   clearActionError: () => set({ actionError: null }),
   ready: false,
@@ -63,9 +79,7 @@ export const useDesk = create<DeskState>((set, get) => ({
   metaError: null,
   view: { kind: 'new' },
   selectedProjectId: null,
-  draftModel: null,
-  draftMode: 'default',
-  draftEffort: null,
+  draftOverrides: {},
   sidebarCollapsed: false,
   searchOpen: false,
   pendingProjectPath: null,
@@ -77,13 +91,14 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({
       ready: true,
       home: state.home,
+      username: state.username ?? null,
+      greetingSelected: !!projects.length && demo?.route !== 'settings',
+      greeting: projects.length && demo?.route !== 'settings' ? nextGreeting(null) : FALLBACK_GREETING,
       demo,
       projects,
       settings,
       selectedProjectId: projects[0]?.id ?? null,
-      draftModel: settings.defaultModel,
-      draftMode: settings.defaultPermissionMode,
-      draftEffort: settings.defaultEffort,
+      draftOverrides: {},
       view: demo?.route === 'settings' ? { kind: 'settings' } : { kind: 'new' },
       pendingProjectPath: demo?.dialog === 'add-project' ? (demo.dialogPath ?? state.home) : null
     })
@@ -107,11 +122,16 @@ export const useDesk = create<DeskState>((set, get) => ({
   },
 
   setView(view) {
-    set({ view })
+    const previous = get().view
+    if (view.kind === 'settings') {
+      const source = previous.kind === 'session' || previous.kind === 'settings' ? previous : null
+      view = { ...view, projectId: view.projectId === undefined ? source?.projectId ?? get().selectedProjectId : view.projectId, sessionId: view.sessionId === undefined ? source?.sessionId ?? null : view.sessionId }
+    }
+    set({ view, ...(view.kind === 'new' && !get().greetingSelected && get().projects.length ? { greeting: chooseGreeting(get()), greetingSelected: true } : {}) })
   },
 
   newChat(projectId) {
-    set({ view: { kind: 'new' }, selectedProjectId: projectId ?? get().selectedProjectId ?? get().projects[0]?.id ?? null })
+    set({ greetingSelected: !!get().projects.length, greeting: get().projects.length ? chooseGreeting(get()) : FALLBACK_GREETING, view: { kind: 'new' }, draftOverrides: {}, selectedProjectId: projectId ?? get().selectedProjectId ?? get().projects[0]?.id ?? null })
   },
 
   async pickProject() {
@@ -125,6 +145,7 @@ export const useDesk = create<DeskState>((set, get) => ({
     const projects = await desk().projects.add(path)
     const added = projects.find((p) => p.path === path)
     set({ projects, pendingProjectPath: null, selectedProjectId: added?.id ?? get().selectedProjectId })
+    if (!get().greetingSelected && get().view.kind === 'new' && projects.length) set({ greeting: chooseGreeting(get()), greetingSelected: true })
     if (added) await get().refreshSessions(added.id)
   },
 
@@ -152,6 +173,7 @@ export const useDesk = create<DeskState>((set, get) => ({
     for (const path of paths) projects = await desk().projects.add(path)
     await desk().projects.markSeeded()
     set({ projects, importCandidates: null, selectedProjectId: get().selectedProjectId ?? projects[0]?.id ?? null })
+    if (!get().greetingSelected && get().view.kind === 'new' && projects.length) set({ greeting: chooseGreeting(get()), greetingSelected: true })
     await get().refreshSessions()
   },
 
@@ -184,9 +206,12 @@ export const useDesk = create<DeskState>((set, get) => ({
 
   setDraft({ model, mode, effort, projectId }) {
     set({
-      ...(model !== undefined && { draftModel: model }),
-      ...(mode !== undefined && { draftMode: mode }),
-      ...(effort !== undefined && { draftEffort: effort }),
+      draftOverrides: {
+        ...get().draftOverrides,
+        ...(model !== undefined && { model }),
+        ...(mode !== undefined && { mode }),
+        ...(effort !== undefined && { effort })
+      },
       ...(projectId !== undefined && { selectedProjectId: projectId })
     })
   },

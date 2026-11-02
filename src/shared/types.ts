@@ -1,3 +1,4 @@
+import type { ClaudeConfigSnapshot } from './claudeConfig'
 import type { UsageAnalytics, UsageOverview, UsageProfile } from './usageAnalytics'
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
@@ -43,6 +44,13 @@ export interface Settings {
   defaultEffort: EffortLevel
   claudePath: string | null
   allowBypass: boolean
+  autoScroll?: boolean
+  reduceMotion?: boolean
+  /** Desktop execution copy only; does not change CLI or model language. */
+  executionLanguage?: 'zh' | 'en'
+  notifyCompletion?: boolean
+  notifyApproval?: boolean
+  notificationSound?: boolean
 }
 
 export type { CommandInfo } from './commandCatalog'
@@ -70,6 +78,8 @@ export interface ProjectEntry {
 }
 
 export interface MetaInfo {
+  email?: string | null
+  organization?: string | null
   models: ModelOption[]
   subscriptionType: string | null
   claudeVersion: string | null
@@ -105,6 +115,8 @@ export interface DemoState {
 }
 
 export interface AppState {
+  /** Local login name, only for UI greetings. */
+  username?: string | null
   seededFromHistory: boolean
   demo: DemoState | null
   home: string
@@ -169,6 +181,7 @@ export interface DeskApi {
     usage(): Promise<PlanUsage>
     /** 执行 /config：不带参数返回设置清单，带 key=value 修改一项（临时会话，不写入任何对话） */
     config(projectPath: string, setting?: string): Promise<string>
+    configSnapshot(projectPath: string): Promise<ClaudeConfigSnapshot>
   }
   files: {
     /** Electron 44 不再在 File 对象上暴露 path，需要通过 webUtils 转换 */

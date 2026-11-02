@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { PanelLeft, SquarePen } from 'lucide-react'
+import { cancelFirstSend, isFirstSendTarget, syncFirstSend } from './motion/firstSend'
 import { useDesk } from './store'
 import { useChat } from './chatStore'
 import { usePanel } from './panelStore'
@@ -23,6 +24,17 @@ export function App() {
   const { actionError, clearActionError, ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, refreshSessions, setSearchOpen } =
     useDesk()
 
+  const reduceMotion = useDesk(s => s.settings?.reduceMotion ?? false)
+  useLayoutEffect(() => {
+    syncFirstSend(view.kind === 'session' ? view.sessionId : undefined)
+  }, [view])
+  useEffect(() => cancelFirstSend, [])
+  useEffect(() => {
+    if (reduceMotion) cancelFirstSend()
+    document.documentElement.dataset.reduceMotion = String(reduceMotion)
+    return () => { delete document.documentElement.dataset.reduceMotion }
+  }, [reduceMotion])
+
   useEffect(() => {
     void init()
   }, [init])
@@ -36,9 +48,9 @@ export function App() {
     []
   )
 
+  // 开发截图用：自动打开会话或自动发送消息（等会话列表加载后执行一次）
   useEffect(() => ready ? startUsagePolling() : undefined, [ready])
 
-  // 开发截图用：自动打开会话或自动发送消息（等会话列表加载后执行一次）
   const demoDone = useRef(false)
   useEffect(() => {
     const { demo, projects, sessions: all, setView, setDraft } = useDesk.getState()
@@ -108,7 +120,7 @@ export function App() {
         </div>
         {!sidebarCollapsed && <ResizeHandle side="left" width={leftWidth} defaultWidth={LEFT.default} onResize={setLeftWidth} />}
       </div>
-      <main inert={rightOpen && expanded && view.kind === 'session'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
+      <main data-first-send-target={view.kind === 'session' && isFirstSendTarget(view.sessionId) ? '' : undefined} inert={rightOpen && expanded && view.kind === 'session'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
         <div className="drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 pl-[84px]">
           {sidebarCollapsed && (
             <div className="no-drag animate-fade-in flex gap-1">

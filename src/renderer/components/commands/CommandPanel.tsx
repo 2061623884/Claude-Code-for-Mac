@@ -1,9 +1,11 @@
+import { ClaudeConfigSettings } from '../settings/ClaudeConfigSettings'
+import { McpSettings } from '../settings/McpSettings'
 // 输入框上方的命令浮层：/usage、/context、/model、/effort、/config、/mcp 由应用直接处理，不发任何消息；
 // 交给 Claude Code 执行的本地命令（/output-style…）的输出也显示在这里。Esc、× 或点外面关闭。
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, RefreshCw, SquareTerminal, X } from 'lucide-react'
-import type { CommandBlock, ContextUsage, McpStatus, SessionOptions, TokenUsage } from '@shared/chat'
-import { commandText, commandTitle, CONFIG_LABELS, parseCommandOutput } from '@shared/commands'
+import type { CommandBlock, ContextUsage, SessionOptions, TokenUsage } from '@shared/chat'
+import { commandText, commandTitle,  parseCommandOutput } from '@shared/commands'
 import { EFFORT_LEVELS, resetTimeZh } from '@shared/format'
 import type { PlanUsage } from '@shared/types'
 import { useDismiss } from '../../hooks/useDismiss'
@@ -127,9 +129,9 @@ function AppBody({ name, ctx, onDone }: { name: AppPanel; ctx: PanelContext; onD
     case 'effort':
       return <EffortBody ctx={ctx} onDone={onDone} />
     case 'config':
-      return <ConfigBody ctx={ctx} />
+      return <ClaudeConfigSettings cwd={ctx.cwd ?? useDesk.getState().home} />
     case 'mcp':
-      return <McpBody ctx={ctx} />
+      return <McpSettings sessionId={ctx.sessionId} cwd={ctx.cwd ?? useDesk.getState().home} />
   }
 }
 
@@ -296,149 +298,5 @@ function EffortBody({ ctx, onDone }: { ctx: PanelContext; onDone(): void }) {
         onDone()
       }}
     />
-  )
-}
-
-// 设置清单是固定的，整个应用读一次就够
-let configList: Promise<string> | null = null
-
-function ConfigBody({ ctx }: { ctx: PanelContext }) {
-  const home = useDesk((s) => s.home)
-  const cwd = ctx.cwd ?? home
-  const [text, error] = useLoad<string>(() => {
-    configList ??= window.desk.meta.config(cwd).catch((err: unknown) => {
-      configList = null
-      throw err
-    })
-    return configList
-  }, [cwd])
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Record<string, { value: string; text?: string; error?: string }>>({})
-
-  if (error) return <Note>读取失败：{error}</Note>
-  if (!text) return <Note>读取中…</Note>
-  const view = parseCommandOutput('config', text)
-  if (view.kind !== 'config') return <Note>{text}</Note>
-
-  const q = query.trim().toLowerCase()
-  const items = q ? view.items.filter((i) => `${i.key} ${CONFIG_LABELS[i.key] ?? ''}`.toLowerCase().includes(q)) : view.items
-  const set = (key: string, value: string): void => {
-    setResults((r) => ({ ...r, [key]: { value } }))
-    window.desk.meta.config(cwd, `${key}=${value}`).then(
-      (out) => setResults((r) => ({ ...r, [key]: { value, text: out } })),
-      (err: unknown) => setResults((r) => ({ ...r, [key]: { value, error: errorText(err) } }))
-    )
-  }
-
-  return (
-    <div className="-m-3.5">
-      <input
-        autoFocus
-        value={query}
-        placeholder="搜索设置"
-        onChange={(e) => setQuery(e.target.value)}
-        className="w-full border-b border-line bg-transparent px-3.5 py-2.5 text-[13.5px] outline-none placeholder:text-fg3"
-      />
-      <p className="px-3.5 pt-2.5 text-[12px] text-fg3">选择后立即写入 Claude Code 的全局设置（不会发送任何消息）。暂时无法显示各项的当前值。</p>
-      <div className="divide-y divide-line">
-        {items.map((item) => {
-          const r = results[item.key]
-          return (
-            <div key={item.key} className="flex items-center gap-4 px-3.5 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]">{CONFIG_LABELS[item.key] ?? item.key}</div>
-                <div className="truncate font-mono text-[11px] text-fg3">
-                  {item.key}
-                  {r && (
-                    <span className={r.error ? 'text-danger' : 'text-accent'}>
-                      {r.error ? ` · ${r.error}` : r.text ? ` · 已设为 ${r.value}` : ' · 正在保存…'}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex max-w-[60%] flex-wrap justify-end gap-1">
-                {item.values.length ? (
-                  item.values.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => set(item.key, v)}
-                      className={`rounded-lg border px-1.5 py-0.5 font-mono text-[11.5px] transition-colors ${
-                        r?.value === v && !r.error ? 'border-accent/50 bg-accent/10 text-accent' : 'border-line bg-bg text-fg2 hover:border-accent/40 hover:text-fg'
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))
-                ) : (
-                  <FreeValue onSubmit={(v) => set(item.key, v)} />
-                )}
-              </div>
-            </div>
-          )
-        })}
-        {items.length === 0 && <div className="px-3.5 py-3 text-[13px] text-fg3">没有匹配的设置</div>}
-      </div>
-    </div>
-  )
-}
-
-function FreeValue({ onSubmit }: { onSubmit(value: string): void }) {
-  const [value, setValue] = useState('')
-  return (
-    <input
-      value={value}
-      placeholder="输入后回车"
-      onChange={(e) => setValue(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing && value.trim()) onSubmit(value.trim())
-      }}
-      className="w-32 rounded-lg border border-line bg-bg px-2 py-0.5 text-[12px] outline-none focus:border-accent/45"
-    />
-  )
-}
-
-const MCP_STATUS: Record<McpStatus['status'], { label: string; color: string }> = {
-  connected: { label: '已连接', color: '#788c5d' },
-  pending: { label: '连接中', color: '#a3a093' },
-  'needs-auth': { label: '需要授权', color: '#c6a27a' },
-  failed: { label: '连接失败', color: 'var(--danger)' },
-  disabled: { label: '已停用', color: '#a3a093' }
-}
-
-function McpBody({ ctx }: { ctx: PanelContext }) {
-  const home = useDesk((s) => s.home)
-  const [list, error, reload] = useLoad<McpStatus[]>(() => window.desk.chat.mcp(ctx.sessionId, ctx.cwd ?? home), [ctx.sessionId, ctx.cwd])
-  if (error) return <Note>读取失败：{error}</Note>
-  if (!list) return <Note>读取中…</Note>
-  if (list.length === 0) return <Note>没有配置 MCP 服务器。</Note>
-  return (
-    <>
-      <div className="-mx-1.5 space-y-0.5">
-        {list.map((s, i) => {
-          const st = MCP_STATUS[s.status]
-          return (
-            <div key={s.name} className="animate-fade-up flex items-start gap-2.5 rounded-lg px-1.5 py-1.5" style={{ animationDelay: `${i * 30}ms` }}>
-              <span className="mt-[7px] size-2 shrink-0 rounded-full" style={{ background: st.color }} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="truncate font-medium">{s.name}</span>
-                  <span className="shrink-0 text-[12px] text-fg3">
-                    {st.label}
-                    {s.status === 'connected' && ` · ${s.tools} 个工具`}
-                    {s.scope && ` · ${s.scope}`}
-                  </span>
-                </div>
-                {s.error && <div className="mt-0.5 text-[12px] text-danger select-text">{s.error}</div>}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <button type="button" onClick={reload} className="mt-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-fg3 hover:bg-hover hover:text-fg2">
-        <RefreshCw size={12} />
-        刷新
-      </button>
-    </>
   )
 }

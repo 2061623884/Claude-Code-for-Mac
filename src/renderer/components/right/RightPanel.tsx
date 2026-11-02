@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Compass, FileText, FolderOpen, Globe, ListTree, Maximize2, MessageCircleQuestion, Minimize2, PanelRight, Plus, Terminal, X } from 'lucide-react'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { Compass, FileText, FolderOpen, Globe, ListTree, Maximize2, MessageCircleQuestion, Minimize2, Plus, Terminal, X } from 'lucide-react'
 import { fileName } from '@shared/fileLinks'
 import { FilePreview } from '../files/FilePreview'
 import { useChat } from '../../chatStore'
-import { RIGHT, sidebarPageCount, useLayout, type SidePage } from '../../layoutStore'
+import { RIGHT, MAX_SIDEBAR_PAGES, sidebarPageCount, useLayout, type SidePage } from '../../layoutStore'
 import { useDesk } from '../../store'
 import { useModal } from '../../modalStore'
 import { IconButton } from '../sidebar/SessionRow'
@@ -91,7 +91,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId: string; projec
             })}
           </div>
           <div className="no-drag flex">
-            <IconButton label="新建侧栏页面" onClick={() => layout.newPage(cwd)}><Plus size={16} /></IconButton>
+            {sidebarPageCount(layout) < MAX_SIDEBAR_PAGES && <IconButton label="新建侧栏页面" onClick={() => layout.newPage(cwd)}><Plus size={16} /></IconButton>}
             <IconButton label={expanded ? '还原侧栏宽度' : '展开侧栏页面'} onClick={() => layout.setExpanded(!expanded)}>{expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>
 
           </div>
@@ -121,13 +121,40 @@ export function RightPanel({ sessionId, projectId }: { sessionId: string; projec
   )
 }
 
+const PAGE_COLORS = [
+  ['#B96D4F', '#D99A7E'], // I · Hestia / hearth
+  ['#71805A', '#A4B88A'], // II · Athena / olive
+  ['#487D96', '#82B4CC'], // III · Poseidon / sea
+  ['#A68538', '#D2B264'], // IV · Apollo / light
+  ['#AD7187', '#D49BAF'], // V · Aphrodite / rose
+  ['#826394', '#B49AC6']  // VI · Dionysus / grape
+]
+
+function romanPageCount(count: number): string {
+  if (count === 0) return '—'
+  let result = ''
+  for (const [value, numeral] of [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']] as const) {
+    while (count >= value) { result += numeral; count -= value }
+  }
+  return result
+}
+
 export function RightPanelToggle() {
   const layout = useLayout()
   const count = sidebarPageCount(layout)
+  const palette = PAGE_COLORS[Math.min(count, MAX_SIDEBAR_PAGES) - 1]
+  const countStyle = palette ? { '--page-count-color': palette[0], '--page-count-color-dark': palette[1] } as CSSProperties : undefined
   const label = layout.rightOpen ? '收起右栏（⌘⇧B）' : '展开右栏（⌘⇧B）'
   return <div className="no-drag">
-    <button type="button" title={`${label} · ${count} 个页面`} aria-label={label} aria-expanded={layout.rightOpen} data-page-count={count} onClick={() => layout.setRightOpen(!layout.rightOpen)} className={`flex size-8 items-center justify-center rounded-lg text-fg2 hover:bg-active ${layout.rightOpen ? 'bg-active' : ''}`}>
-      {layout.rightOpen ? <PanelRight size={19} aria-hidden="true" /> : <span aria-label={`已打开 ${count} 个侧栏页面`} className="flex size-[19px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[11px] font-medium tabular-nums">{count}</span>}
+    <button type="button" title={`${label} · ${count} 个页面`} aria-label={label} aria-expanded={layout.rightOpen} data-page-count={count} onClick={() => layout.setRightOpen(!layout.rightOpen)} className={`session-toolbar-button ${layout.rightOpen ? 'bg-active text-fg' : 'text-fg2 hover:bg-hover'}`}>
+      <svg viewBox="0 0 24 24" className="sidebar-page-count size-[23px] overflow-visible" style={countStyle} role="img" aria-label={`已打开 ${count} 个侧栏页面`}>
+        <g fill="none" stroke="currentColor" strokeWidth="0.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3.4 5.1 Q10.8 5.6 18.9 6.5 L18.6 21 Q11.2 20.3 3.1 19.4 Z" />
+          <path d="M3.4 5.1 L7.4 2.9 Q14.8 3.4 22.1 4.3 L18.9 6.5 M22.1 4.3 L21.8 18.3 L18.6 21" />
+          {layout.rightOpen && <path d="M14.6 6.1 Q14.3 13.5 14.5 20.6 M16.2 9 L17.3 9.1 M16.2 11.1 L17.3 11.2" />}
+        </g>
+        {!layout.rightOpen && <text x="10.9" y="15.6" textAnchor="middle" fill="currentColor" fontFamily="Georgia, serif" fontSize="8" transform="rotate(5 10.9 13)">{romanPageCount(count)}</text>}
+      </svg>
     </button>
   </div>
 }

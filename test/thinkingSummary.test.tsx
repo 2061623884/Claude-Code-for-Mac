@@ -27,12 +27,15 @@ it('shows a compact live summary automatically and preserves explicit expansion 
   fireEvent.click(screen.getByRole('button', { name: '收起思考摘要' }))
   expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
 })
-it('collapses untouched previews after completion and does not include subagent text', () => {
+it('keeps live preview and header placement stable after completion, excluding subagents', () => {
   const source = [...messages('主会话'), { ...messages('子 Agent')[0], id: 'child', parentToolUseId: 'tool' }]
   const view = render(<ThinkingSummary messages={source} state="running" />)
   expect(screen.getByLabelText('思考摘要内容').textContent).toBe('主会话')
+  const header = screen.getByRole('button', { name: '展开思考摘要' })
+  const headerClass = header.className
   view.rerender(<ThinkingSummary messages={source} state="idle" />)
-  expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
+  expect(screen.getByLabelText('思考摘要内容').textContent).toBe('主会话')
+  expect(header.className).toBe(headerClass)
 })
 it('leaves the reader in place while viewing earlier text in an expanded summary', () => {
   const view = render(<ThinkingSummary messages={messages('first')} state="running" />)

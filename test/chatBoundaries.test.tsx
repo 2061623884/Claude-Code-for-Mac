@@ -4,10 +4,16 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useChat, useChatActions } from '../src/renderer/chatStore'
 import { useDesk } from '../src/renderer/store'
 import { useLayout } from '../src/renderer/layoutStore'
+import type { SessionOptions } from '../src/shared/chat'
 const project = (id: string) => ({ id, path: '/tmp/review-project', name: 'review', addedAt: 0, collapsed: false })
 const options = { model: 'opus', mode: 'default' as const, effort: 'medium' as const }
 const chat = (projectId: string) => ({ projectId, loaded: true, messages: [], approvals: [], state: 'idle' as const, options, error: null })
+let revision = 0
+function confirmOptions(id: string, patch: Partial<SessionOptions>): void {
+  useChat.getState().handle(id, { kind: 'options', options: { ...useChat.getState().chats[id].options, ...patch }, revision: ++revision })
+}
 beforeEach(() => {
+  revision = 0
   useLayout.setState({ activeSessionId: null, projectId: undefined, sessions: {}, pages: [] })
   useDesk.setState({ projects: [project('old')], sessions: {}, view: { kind: 'new' }, selectedProjectId: 'old' })
   useChat.setState({ chats: { s: chat('old') } })
@@ -15,7 +21,13 @@ beforeEach(() => {
     workspace: { closePage: vi.fn().mockResolvedValue(undefined) },
     projects: { remove: vi.fn().mockResolvedValue([]), add: vi.fn().mockResolvedValue([project('new')]) },
     sessions: { list: vi.fn().mockResolvedValue([]) },
-    chat: { send: vi.fn().mockResolvedValue(undefined), open: vi.fn(), setMode: vi.fn().mockResolvedValue(undefined), setModel: vi.fn().mockResolvedValue(undefined), setEffort: vi.fn().mockResolvedValue(undefined), respond: vi.fn().mockResolvedValue(undefined) }
+    chat: {
+      send: vi.fn().mockResolvedValue(undefined), open: vi.fn(),
+      setMode: vi.fn(async (id: string, mode: SessionOptions['mode']) => confirmOptions(id, { mode })),
+      setModel: vi.fn(async (id: string, model: SessionOptions['model']) => confirmOptions(id, { model })),
+      setEffort: vi.fn(async (id: string, effort: SessionOptions['effort']) => confirmOptions(id, { effort })),
+      respond: vi.fn().mockResolvedValue(undefined)
+    }
   } as unknown as Window['desk']
 })
 afterEach(cleanup)
@@ -56,6 +68,68 @@ it('does not show a plan approval as effective after rejection', async () => {
   vi.mocked(window.desk.chat.respond).mockRejectedValue(new Error('mode rejected'))
   await expect(useChat.getState().respond('s', 'request', { type: 'planApprove', mode: 'plan' })).rejects.toThrow('mode rejected')
   expect(useChat.getState().chats.s.options.mode).toBe('default')
+})
+
+it.each([
+  { method: 'setMode' as const, patch: { mode: 'plan' as const } },
+  { method: 'setModel' as const, patch: { model: 'requested' } },
+  { method: 'setEffort' as const, patch: { effort: 'high' as const } }
+])('keeps newer authoritative options when an older $method acknowledgement arrives', async ({ method, patch }) => {
+  let resolve!: () => void
+  vi.mocked(window.desk.chat[method]).mockImplementation(() => new Promise<void>(yes => { resolve = yes }))
+  const changing = useChat.getState().setOptions('s', patch)
+  await vi.waitFor(() => expect(window.desk.chat[method]).toHaveBeenCalledOnce())
+  confirmOptions('s', patch)
+  const newer: SessionOptions = { model: 'newer', mode: 'acceptEdits', effort: 'low' }
+  confirmOptions('s', newer)
+  resolve()
+  await changing
+  expect(useChat.getState().chats.s.options).toEqual(newer)
+  expect(useChat.getState().chats.s.sync?.fields.options?.revision).toBe(2)
+  await useChat.getState().send('s', 'continue')
+  expect(window.desk.chat.send).toHaveBeenCalledWith('s', '/tmp/review-project', 'continue', newer)
+})
+
+it('does not invent an applied mode when an expired plan approval returns without an options event', async () => {
+  await useChat.getState().respond('s', 'expired-request', { type: 'planApprove', mode: 'acceptEdits' })
+  expect(useChat.getState().chats.s.options).toEqual(options)
+})
+
+it('does not let a delayed plan approval acknowledgement overwrite a later mode event', async () => {
+  let resolve!: () => void
+  vi.mocked(window.desk.chat.respond).mockImplementation(() => new Promise<void>(yes => { resolve = yes }))
+  const responding = useChat.getState().respond('s', 'request', { type: 'planApprove', mode: 'acceptEdits' })
+  await vi.waitFor(() => expect(window.desk.chat.respond).toHaveBeenCalledOnce())
+  confirmOptions('s', { mode: 'acceptEdits' })
+  confirmOptions('s', { mode: 'plan' })
+  resolve()
+  await responding
+  expect(useChat.getState().chats.s.options.mode).toBe('plan')
+})
+
+it('keeps options events received before a new session ID is returned', async () => {
+  useDesk.setState({ draftOverrides: { model: 'requested' } })
+  const actual: SessionOptions = { model: 'confirmed', mode: 'plan', effort: 'high' }
+  window.desk.chat.start = vi.fn(async () => {
+    useChat.getState().handle('created', { kind: 'options', revision: 1, options: actual })
+    return 'created'
+  })
+  await useChat.getState().start('task')
+  expect(useChat.getState().chats.created).toMatchObject({ projectId: 'old', options: actual, loaded: true })
+})
+it.each(['state', 'upsert'] as const)('keeps submitted options when only an early %s event has arrived', async kind => {
+  const selected: SessionOptions = { model: 'selected-model', mode: 'plan', effort: 'high' }
+  useDesk.setState({ draftOverrides: selected })
+  window.desk.chat.start = vi.fn(async () => {
+    useChat.getState().handle('created', kind === 'state'
+      ? { kind, revision: 1, state: 'running' }
+      : { kind, revision: 1, messages: [] })
+    return 'created'
+  })
+  await useChat.getState().start('task')
+  expect(useChat.getState().chats.created.options).toEqual(selected)
+  await useChat.getState().send('created', 'continue')
+  expect(window.desk.chat.send).toHaveBeenCalledWith('created', '/tmp/review-project', 'continue', selected)
 })
 it('rebinds cached sessions after removing and readding their directory, releasing pages once', async () => {
   useDesk.getState().setView({ kind: 'session', sessionId: 's', projectId: 'old' })
