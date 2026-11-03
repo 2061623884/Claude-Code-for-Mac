@@ -32,7 +32,8 @@ export const usePanel = create<PanelStore>((set) => ({
 export function openAppPanel(name: string, args: string): boolean {
   if (!args && (name === 'config' || name === 'mcp')) {
     usePanel.getState().close()
-    useDesk.getState().setView({ kind: 'settings', tab: name === 'config' ? 'claude' : 'mcp' })
+    const view = useDesk.getState().view
+    useDesk.getState().setView({ kind: 'settings', tab: name === 'config' ? 'claude' : 'mcp', ...(view.kind === 'session' ? { sessionId: view.sessionId, projectId: view.projectId } : {}) })
     return true
   }
   const panel = appPanelFor(name, args)

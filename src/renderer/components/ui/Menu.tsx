@@ -1,3 +1,4 @@
+import { useMenuRoom } from '../../hooks/useMenuRoom'
 import { useRef, useState, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import { useDismiss } from '../../hooks/useDismiss'
@@ -16,16 +17,18 @@ export interface MenuItem {
 interface MenuProps {
   trigger(props: { open: boolean; toggle(): void }): ReactNode
   items: MenuItem[]
+  footer?: ReactNode
   align?: 'left' | 'right'
   placement?: 'top' | 'bottom'
   width?: number
   defaultOpen?: boolean
 }
 
-export function Menu({ trigger, items, align = 'left', placement = 'bottom', width = 240, defaultOpen = false }: MenuProps) {
+export function Menu({ trigger, items, footer, align = 'left', placement = 'bottom', width = 240, defaultOpen = false }: MenuProps) {
   const [open, setOpen] = useState(defaultOpen)
   const ref = useRef<HTMLDivElement>(null)
 
+  const room = useMenuRoom(ref, open && placement === 'top')
   useDismiss(ref, open, () => setOpen(false))
 
   return (
@@ -40,6 +43,7 @@ export function Menu({ trigger, items, align = 'left', placement = 'bottom', wid
           style={
             {
               width,
+              ...(placement === 'top' && room !== undefined ? { maxHeight: room, overflowY: 'auto' } : {}),
               // 从触发按钮那一侧弹出
               transformOrigin: `${placement === 'top' ? 'bottom' : 'top'} ${align}`,
               '--menu-from': placement === 'top' ? '4px' : '-4px'
@@ -69,6 +73,7 @@ export function Menu({ trigger, items, align = 'left', placement = 'bottom', wid
               </button>
             </div>
           ))}
+          {footer}
         </div>
       )}
     </div>

@@ -1,3 +1,6 @@
+import { sessionCommand } from '../../shared/sessionCommand'
+import { changeRule } from '../permissionRules'
+import { gitDiff } from '../gitDiff'
 import { access } from 'node:fs/promises'
 import * as store from '../store'
 import type { SessionPreferences, SessionPreferencesRepository } from '../sessionPreferences'
@@ -53,6 +56,24 @@ export class SessionManager {
     return entry ? this.live.use(entry[0], () => entry[1].commands()) : undefined
   }
 
+  async openForDisplay(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
+    const prefs = this.prefs(sessionId).options
+    if (!this.live.has(sessionId) && (prefs?.ultracode || prefs?.fastMode)) {
+      try { await this.prepareControls(sessionId, projectPath) }
+      catch (error) {
+        return { ...await this.open(sessionId, projectPath), runtime: { error: String(error) } }
+      }
+    }
+    return this.open(sessionId, projectPath)
+  }
+
+  prepareControls(sessionId: string, projectPath: string): Promise<void> {
+    return this.lock(sessionId, async () => {
+      const live = await this.ensureLive(sessionId, projectPath, this.options(sessionId))
+      await live.readyForControls()
+    })
+  }
+
   async open(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
     const transcript = await this.transcript(sessionId, projectPath)
     const session = this.live.get(sessionId)
@@ -62,6 +83,7 @@ export class SessionManager {
       queue: structuredClone(prefs.queue),
       ...this.preferences.persistence(sessionId),
       revision: this.revisions.get(sessionId) ?? 0,
+      runtime: session?.runtime,
       activity: session?.activity.snapshot(),
       summary: transcript.activity.snapshot(),
       messages: structuredClone(transcript.messages),
@@ -103,6 +125,8 @@ export class SessionManager {
 
   async send(sessionId: string, projectPath: string, text: string, options: SessionOptions, attachments: string[] = []): Promise<void> {
     return this.lock(sessionId, async () => {
+      const control = sessionCommand(text)
+      if (control) { await this.applyOptions(sessionId, control); return }
       for (const path of attachments) await access(path)
       const prefs = this.prefs(sessionId)
       const session = this.live.get(sessionId)
@@ -220,6 +244,72 @@ export class SessionManager {
 
   setMode(sessionId: string, mode: SessionOptions['mode']): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { mode })) }
   setModel(sessionId: string, model: string | null): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { model })) }
+  setWorkflows(sessionId: string, workflows: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { workflows })) }
+  setFastMode(sessionId: string, enabled: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { fastMode: enabled }, true)) }
+
+  async control(sessionId: string, path: string, operation: string, value?: string): Promise<any> {
+    return this.lock(sessionId, async () => {
+      if (operation === 'diff') return gitDiff(path, value ?? 'working')
+      const live = await this.ensureLive(sessionId, path, this.options(sessionId))
+      if (operation === 'tasks') return [...live.tasks.values()].map(t => ({ task_id: t.task_id, task_type: t.task_type, description: t.description, status: t.status, summary: t.summary }))
+      if (operation === 'applySetting') {
+        const patch = JSON.parse(value ?? '{}')
+        if (typeof patch.key !== 'string' || typeof patch.value !== 'string') throw new Error('无效设置')
+        await live.applySetting(patch.key, patch.value)
+        await live.refreshRuntime()
+        return
+      }
+      if (operation === 'changeRule') {
+        const change = JSON.parse(value ?? '{}')
+        const reply = await live.control({ subtype: 'list_permission_rules' })
+        const state = reply.state ?? reply.response?.state
+        if (!state || state.managedOnly) throw new Error('当前策略不允许编辑权限规则')
+        if (change.remove && !state.rules.some((r: any) => r.rule === change.rule && r.source === change.source && r.behavior === change.behavior && r.editability === 'persistent')) throw new Error('该规则无法撤销')
+        await changeRule(path, change)
+        await live.refreshConfiguration()
+        return live.control({ subtype: 'list_permission_rules' })
+      }
+      if (operation === 'reloadConfiguration') {
+        if (live.state !== 'idle') throw new Error('请等待当前任务结束后重载')
+        this.closeSession(sessionId)
+        const replacement = await this.ensureLive(sessionId, path, this.options(sessionId))
+        await replacement.refreshRuntime()
+        return
+      }
+      if (operation === 'rules') return live.control({ subtype: 'list_permission_rules' })
+      if (operation === 'taskOutput') return live.control({ subtype: 'get_task_output', task_id: value })
+      if (operation === 'stopTask') { await live.stopTask(value!); return }
+      if (operation === 'rewindPreview') return live.rewind(value!, true)
+      if (operation === 'restoreConversation') {
+        if (live.state !== 'idle') throw new Error('请等待当前任务结束后恢复对话')
+        const target = JSON.parse(value ?? '{}')
+        const original = await this.transcript(sessionId, path)
+        const message = original.messages.find(m => m.id === target.messageId && m.role === 'user')
+        if (!message || message.forkFrom === undefined) throw new Error('找不到可恢复的消息位置')
+        const options = { ...this.options(sessionId) }
+        if (message.forkFrom === null) {
+          const id = randomUUID()
+          const transcript = new Transcript(path)
+          this.transcripts.set(id, transcript)
+          this.updatePrefs(id, p => { p.options = options })
+          this.spawn(id, path, false, options, transcript)
+          return id
+        }
+        const sdk = await loadSdk()
+        const result = await sdk.forkSession(sessionId, { dir: path, upToMessageId: message.forkFrom })
+        this.updatePrefs(result.sessionId, p => { p.options = options })
+        return result.sessionId
+      }
+      if (operation === 'rewindFiles') {
+        if (live.state !== 'idle') throw new Error('请等待当前任务结束后恢复文件')
+        return live.rewind(value!, false)
+      }
+      throw new Error('不支持的会话操作')
+    })
+  }
+
+  refreshRuntime(sessionId: string): Promise<void> { return this.lock(sessionId, async () => { await this.live.get(sessionId)?.refreshRuntime() }) }
+  setUltracode(sessionId: string, enabled: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { ultracode: enabled })) }
   setEffort(sessionId: string, effort: SessionOptions['effort']): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { effort })) }
 
   async respond(sessionId: string, requestId: string, decision: Decision): Promise<void> {
@@ -372,17 +462,29 @@ export class SessionManager {
     return next
   }
 
-  private async applyOptions(id: string, patch: Partial<SessionOptions>): Promise<void> {
-    for (const key of ['model', 'effort', 'mode'] as const) {
+  private async applyOptions(id: string, patch: Partial<SessionOptions>, force = false): Promise<void> {
+    // 初始配置完成后再接受修改，避免启动时的默认值覆盖用户刚选的设置。
+    const existing = this.live.get(id)
+    if (existing) await existing.readyForControls()
+    const runtime = this.live.get(id)?.runtime
+    if (patch.ultracode && runtime?.ultracodeAvailable === false && runtime.workflowAction) {
+      patch = { ...patch, workflows: true }
+      force = true
+    }
+    for (const key of ['model', 'effort', 'mode', 'workflows', 'ultracode', 'fastMode'] as const) {
       if (patch[key] === undefined) continue
       const live = this.live.get(id)
-      if (live && this.options(id)[key] !== patch[key]) {
+      if (live && (force || this.options(id)[key] !== patch[key])) {
         if (key === 'model') await live.setModel(patch.model!)
-        if (key === 'effort') await live.setEffort(patch.effort!)
+        if (key === 'effort') await live.setEffort(patch.effort!, patch.ultracode ?? this.options(id).ultracode)
+        if (key === 'workflows') await live.setWorkflows(patch.workflows!)
+        if (key === 'fastMode') await live.setFastMode(patch.fastMode!)
+        if (key === 'ultracode') await live.setUltracode(patch.ultracode!)
         if (key === 'mode') await live.setMode(patch.mode!)
       }
       this.updatePrefs(id, p => { p.options = { ...this.options(id), [key]: patch[key] } }, live ? 'applied' : 'durable')
     }
+    await this.live.get(id)?.refreshRuntime()
   }
 
   private async dispatch(id: string, cwd: string): Promise<void> {

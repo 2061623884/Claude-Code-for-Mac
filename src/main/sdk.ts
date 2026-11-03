@@ -3,6 +3,7 @@
 import { join } from 'node:path'
 import type { Options, Query } from '@anthropic-ai/claude-agent-sdk'
 import { app } from 'electron'
+import { adoptLoginShellPath } from './env'
 import { temporaryQuery } from './temporaryQuery'
 import * as store from './store'
 
@@ -11,7 +12,11 @@ export type Sdk = typeof import('@anthropic-ai/claude-agent-sdk')
 let sdk: Promise<Sdk> | undefined
 
 export function loadSdk(): Promise<Sdk> {
-  return (sdk ??= import('@anthropic-ai/claude-agent-sdk'))
+  // Hooks and MCP subprocesses inherit PATH when a query is created. The window can open earlier.
+  return sdk ??= Promise.all([
+    import('@anthropic-ai/claude-agent-sdk'),
+    app.isPackaged ? adoptLoginShellPath() : undefined
+  ]).then(([loaded]) => loaded)
 }
 
 /**

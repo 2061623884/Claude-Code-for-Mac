@@ -71,6 +71,7 @@ function PermissionCard({ request, total, cwd, onDecide }: CardProps) {
         </>
       }
     >
+      {request.grants?.length ? <details className="mb-2 text-[12px] text-fg3"><summary>始终允许将授予以下规则和范围</summary>{request.grants.map((g,i) => <pre key={i} className="whitespace-pre-wrap break-all">{g}</pre>)}</details> : null}
       {request.reason && <p className="mb-2 text-[12.5px] text-fg3">{request.reason}</p>}
       <div className="overflow-hidden rounded-xl border border-line">
         <ToolBody block={{ kind: 'tool', id: request.requestId, name: request.toolName, input: request.input }} />

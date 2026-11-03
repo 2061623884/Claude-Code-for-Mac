@@ -6,11 +6,11 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.39-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.39-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.40-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.40-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
-当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。应用尚未使用 Apple Developer ID 签名或经过 Apple 公证，macOS 可能显示安全提示。
+当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。v0.3.40 的桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
 
 首次使用需要在本机配置有效的 Claude Code 登录或 API 认证。安装包不包含账号、API Key 或聊天记录。
 
@@ -59,6 +59,15 @@ macOS 红色关闭按钮和 `Command-W` 仅隐藏窗口，聊天、草稿、终�
 | VI | 葡萄紫 `#826394` | 狄俄尼索斯的葡萄酒 |
 
 这是借用希腊神话意象的现代配色，并非古代规定的对应关系。深色主题使用同色系的较亮版本，保持标记清晰。意象参考 [Theoi Greek Mythology](https://www.theoi.com/greek-mythology/olympian-gods.html)。
+
+## v0.3.40 更新
+
+- 启动首页时只预读当前项目的模型与思考档位。已有缓存的项目可以先选择，CLI 随后校验。首次打开项目仍需等待真实能力查询，自动思考档位可直接使用。
+- 输入 `/` 时读取项目命令。已完成的模型查询可以复用同一次 CLI 初始化返回的命令。侧栏额度轮询延后启动，打开使用情况页仍会立即读取。
+- 会话初始化与后续设置修改按顺序执行，避免刚选的 effort 被启动默认值覆盖。文件恢复会显示影响范围并请求确认。桌面主窗口限制顶层导航，网页浏览保留在独立侧栏。
+- 整合当前桌面版本的 Fast、Ultracode、权限规则、后台任务和会话恢复入口。具体可用能力取决于本机 CLI 和账号。
+
+测量方法、样本结果与审查边界见[本次代码审查](docs/code-review-2026-11-04.md)。
 
 ## v0.3.39 更新
 

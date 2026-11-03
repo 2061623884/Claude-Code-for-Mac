@@ -4,6 +4,7 @@ import { Check, Copy, Ellipsis, Pencil, Volume2, VolumeX } from 'lucide-react'
 import type { UiMessage } from '@shared/chat'
 import { formatClock, markdownToPlain } from '@shared/format'
 import { sumUsage, totalTokens } from '@shared/usageStats'
+import { RestoreMessage } from './RestoreMessage'
 import { Menu } from '../ui/Menu'
 import { UsagePill } from './UsageStats'
 
@@ -136,6 +137,7 @@ export function UserActions({ message, text, onEdit }: { message: UiMessage; tex
           <Pencil size={13} />
         </ActionButton>
       )}
+      <RestoreMessage message={message} />
     </div>
   )
 }

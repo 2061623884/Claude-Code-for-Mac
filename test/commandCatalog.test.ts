@@ -70,3 +70,17 @@ it('times out after fifteen seconds and aborts owned requests on close', async (
   expect(load.mock.calls[1][1].aborted).toBe(true)
   await vi.runAllTimersAsync()
 })
+it('accepts metadata seeds only while their scope and generation remain current', () => {
+  const seed = catalog.seedFromMetadata('/a')
+  seed([command('metadata')])
+  expect(catalog.get('/a').commands).toEqual([command('metadata')])
+  now += 300001
+  const stale = catalog.seedFromMetadata('/a')
+  catalog.publisher('/a')([command('live')])
+  stale([command('late')])
+  expect(catalog.get('/a').commands).toEqual([command('live')])
+  const oldConfiguration = catalog.seedFromMetadata('/b')
+  configuration = 'custom'
+  oldConfiguration([command('wrong')])
+  expect(publish.mock.calls.flat().some(snapshot => snapshot.commands?.some((c: CommandInfo) => c.name === 'wrong'))).toBe(false)
+})

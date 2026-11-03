@@ -14,6 +14,20 @@ beforeEach(()=>{
   window.desk={meta:{commands:vi.fn(()=>new Promise(()=>{})),onCommands:(listener:(s:CommandCatalogSnapshot)=>void)=>{listeners.add(listener);return()=>listeners.delete(listener)}}} as unknown as Window['desk']
 })
 afterEach(()=>{cleanup();Reflect.deleteProperty(window,'desk')})
+it('only requests project commands when slash completion is in use', () => {
+  function IdleComposer({ slash }: { slash: boolean }) {
+    useSuggestions(slash ? { kind: '/', start: 0, query: '' } : null, '/a')
+    return null
+  }
+  const view = render(<IdleComposer slash={false} />)
+  fireEvent.focus(window)
+  expect(window.desk.meta.commands).not.toHaveBeenCalled()
+  view.rerender(<IdleComposer slash />)
+  expect(window.desk.meta.commands).toHaveBeenCalledTimes(1)
+  view.rerender(<IdleComposer slash={false} />)
+  fireEvent.focus(window)
+  expect(window.desk.meta.commands).toHaveBeenCalledTimes(1)
+})
 it('renders init without waiting for SDK and filters each keystroke without new IPC requests',()=>{
   const view=render(<Harness />)
   expect(screen.getByRole('button',{name:'/init'})).toBeTruthy()

@@ -1,3 +1,4 @@
+import { useDesk } from '../store'
 import { useEffect, useRef, useState } from 'react'
 import type { ClaudeConfigSnapshot } from '@shared/claudeConfig'
 import { errorText } from '../ipcError'
@@ -7,7 +8,7 @@ interface ConfigView {
   snapshot: ClaudeConfigSnapshot | null
   error: string | null
   saving: string | null
-  results: Record<string, { error?: string }>
+  results: Record<string, { error?: string; status?: string }>
 }
 const empty = (cwd: string): ConfigView => ({ cwd, snapshot: null, error: null, saving: null, results: {} })
 
@@ -39,8 +40,16 @@ export function useClaudeConfig(cwd: string) {
       await window.desk.meta.config(cwd, `${key}=${value}`)
       written = true
       if (request.current !== id) return
+      let status = '已保存 · 后续启动生效'
+      const route = useDesk.getState().view
+      if (route.kind === 'settings' && route.sessionId && ['outputStyle', 'language', 'thinking'].includes(key)) {
+        try {
+          await window.desk.chat.control(route.sessionId, cwd, 'applySetting', JSON.stringify({ key, value }))
+          status = '已保存 · 当前会话已应用'
+        } catch (e) { status = '已保存 · 当前会话应用失败，请重载：' + errorText(e) }
+      }
       const snapshot = await window.desk.meta.configSnapshot(cwd)
-      if (request.current === id) setState(previous => ({ ...previous, snapshot, results: { ...previous.results, [key]: {} } }))
+      if (request.current === id) setState(previous => ({ ...previous, snapshot, results: { ...previous.results, [key]: { status } } }))
     } catch (error) {
       if (request.current === id) setState(previous => ({
         ...previous,

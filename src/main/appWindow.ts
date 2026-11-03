@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
 
 /** 窗口的隐藏、唤回和应用退出由同一个所有者控制；渲染层不管理进程生命周期。 */
@@ -62,12 +63,25 @@ export class AppWindow {
         app.exit(0)
       }, Number(process.env.CLAUDE_DESK_SHOT_DELAY ?? 2500))
     })
+    const devServer = !app.isPackaged && process.env.ELECTRON_RENDERER_URL
+    const entry = devServer ? new URL(devServer) : pathToFileURL(join(__dirname, '../renderer/index.html'))
+    const allowed = (url: string): boolean => {
+      try {
+        const target = new URL(url)
+        return target.protocol === entry.protocol && target.host === entry.host && target.pathname === entry.pathname
+      } catch { return false }
+    }
+    win.webContents.on('will-navigate', (event) => {
+      if (!allowed(event.url)) event.preventDefault()
+    })
+    win.webContents.on('will-redirect', (event) => {
+      if (event.isMainFrame && !allowed(event.url)) event.preventDefault()
+    })
     win.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//.test(url)) void shell.openExternal(url)
       return { action: 'deny' }
     })
-    if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
-    else void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadURL(entry.href)
     return win
   }
 }

@@ -73,7 +73,7 @@ it('repairs corrupt history and safely handles inaccessible storage', () => {
 describe('desk navigation', () => {
   beforeEach(() => {
     useUsage.setState({ overview: null })
-    useDesk.setState({ greeting: 'existing', username: 'local', meta: null, metaError: null, projects: [{ id: 'p', name: 'p', path: '/tmp', addedAt: 0, collapsed: false }], view: { kind: 'new' }, selectedProjectId: 'p' })
+    useDesk.setState({ greeting: 'existing', username: 'local', projects: [{ id: 'p', name: 'p', path: '/tmp', addedAt: 0, collapsed: false }], view: { kind: 'new' }, selectedProjectId: 'p' })
   })
   it('changes on explicit new chat even when already on the new page', () => {
     useDesk.getState().newChat()
@@ -90,7 +90,10 @@ describe('desk navigation', () => {
     useDesk.getState().setView({ kind: 'new' })
     useDesk.getState().setDraft({ projectId: 'p', model: 'sonnet' })
     useDesk.getState().toggleSidebar()
-    useDesk.setState({ meta: { email: 'later@example.com', models: [], subscriptionType: null, claudeVersion: null } })
+    useUsage.setState({ overview: {
+      account: { key: 'test', email: 'later@example.com', organization: null, subscriptionType: null },
+      profile: { name: 'Later', avatar: null }, usage: null, updatedAt: 1
+    } })
     expect(useDesk.getState().greeting).toBe(before)
     expect(localStorage.getItem(HISTORY_KEY)).toBe(history)
   })

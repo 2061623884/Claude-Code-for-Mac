@@ -53,6 +53,17 @@ export class CommandCatalog {
     if (!this.disposed && !entry.controller && (force || (!fresh && !failedRecently))) this.refresh(entry)
     return structuredClone(entry.snapshot)
   }
+  /** 元信息查询启动时捕获版本，避免迟到结果覆盖会话或新配置。 */
+  seedFromMetadata(cwd: string): (commands: CommandInfo[]) => void {
+    const entry = this.entry(cwd)
+    const generation = entry.generation
+    return (commands) => {
+      const current = this.entries.get(this.key(cwd, entry.configuration))
+      const fresh = entry.snapshot.status === 'ready' && entry.snapshot.updatedAt <= this.now() && this.now() - entry.snapshot.updatedAt < TTL
+      if (this.disposed || current !== entry || entry.configuration !== this.deps.configuration() || entry.generation !== generation || entry.controller || fresh) return
+      this.accept(entry, commands)
+    }
+  }
   /** 会话在创建时捕获配置，防止旧可执行文件的迟到事件污染新目录。 */
   publisher(cwd: string): (commands: CommandInfo[]) => void {
     const configuration = this.deps.configuration()

@@ -40,13 +40,14 @@ export const useUsage = create<State>((set, get) => ({
 /** One shared foreground poll for sidebar and page. Focus checks do not bypass backoff. */
 export function startUsagePolling(): () => void {
   let stopped = false
+  // Let the model handshake start before the sidebar opens another CLI to fetch quota.
+  const firstPoll = Date.now() + 5000
   const tick = (): void => {
-    if (stopped || document.hidden || !document.hasFocus()) return
+    if (stopped || document.hidden || !document.hasFocus() || Date.now() < firstPoll) return
     const state = useUsage.getState()
     const interval = Math.min(300000, 60000 * 2 ** Math.min(state.failures, 3))
     if (!state.lastAttempt || Date.now() - state.lastAttempt >= interval) void state.refresh()
   }
-  tick()
   const timer = window.setInterval(tick, 5000)
   window.addEventListener('focus', tick)
   document.addEventListener('visibilitychange', tick)

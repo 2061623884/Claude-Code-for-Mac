@@ -1,3 +1,4 @@
+import { createPatch } from 'diff'
 import { useState } from 'react'
 import { FileDiff } from 'lucide-react'
 import type { UiMessage } from '@shared/chat'
@@ -14,7 +15,12 @@ export function TurnFiles({ messages, cwd }: { messages: UiMessage[]; cwd?: stri
   const [all, setAll] = useState(false)
   if (changes.length === 0) return null
 
-  const open = (path: string): void => useLayout.getState().openFile(path)
+  const open = (path: string): void => {
+    const change = changes.find(c => c.path === path)
+    if (!change) return
+    const patch = change.edits.map(edit => createPatch(path, edit.before, edit.after)).join('\n')
+    useLayout.getState().openDiff(cwd, patch)
+  }
   const added = changes.reduce((n, c) => n + c.added, 0)
   const removed = changes.reduce((n, c) => n + c.removed, 0)
   const name = (path: string): string => relativePath(path, cwd).split('/').pop() ?? path
@@ -34,6 +40,7 @@ export function TurnFiles({ messages, cwd }: { messages: UiMessage[]; cwd?: stri
         <LineStats added={added} removed={removed} />
         <span className="ml-auto shrink-0 text-[12px] text-fg3 opacity-0 transition-opacity group-hover:opacity-100">在右栏打开</span>
       </button>
+      <button type="button" className="px-3.5 py-1 text-[12px] text-fg3 hover:text-fg" onClick={() => useLayout.getState().openFile(changes[0]!.path)}>查看完整文件</button>
       {changes.length > 1 && (
         <div className="border-t border-line py-1">
           {shown.map((c) => (

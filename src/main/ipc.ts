@@ -68,6 +68,10 @@ export const commandCatalog: CommandCatalog = new CommandCatalog({
 })
 export const chats: SessionManager = new SessionManager(broadcast, activityRepository, { configuration: commandConfiguration, publisher: (cwd) => commandCatalog.publisher(cwd) }, createHumanSubmissionRepository(() => join(app.getPath('userData'), 'human-submissions')), createSessionPreferencesRepository(() => join(app.getPath('userData'), 'session-preferences')))
 
+export function projectMetadata(cwd: string) {
+  return meta.get(cwd, commandCatalog.seedFromMetadata(cwd))
+}
+
 export function registerIpc(demo: DemoState | null, focusWindow?: () => void): void {
   const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
     ipcMain.handle(channel, (_e, ...args) => fn(...args))
@@ -106,12 +110,13 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     const next = store.update((d) => {
       d.settings = { ...d.settings, ...(patch as Partial<Settings>) }
     }).settings
-    if (next.claudePath !== previousPath) commandCatalog.invalidate()
+    if (next.claudePath !== previousPath) { commandCatalog.invalidate(); meta.invalidate() }
     applyTheme(next.theme)
     return next
   })
 
-  handle('meta:get', () => meta.get())
+  handle('meta:get', path => projectMetadata(typeof path === 'string' ? path : homedir()))
+  handle('meta:cachedModels', path => meta.cachedModels(typeof path === 'string' ? path : undefined))
   handle('meta:commands', (path, force) => {
     const cwd = str(path, 'path')
     if (!isAbsolute(cwd)) throw new Error('项目路径必须是绝对路径')
@@ -164,7 +169,8 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   })
 
   const opts = (value: unknown): SessionOptions => value as SessionOptions
-  handle('chat:open', (id, path) => chats.open(str(id, 'id'), str(path, 'path')))
+  handle('chat:prepareControls', (id, path) => chats.prepareControls(str(id, 'id'), str(path, 'path')))
+  handle('chat:open', (id, path) => chats.openForDisplay(str(id, 'id'), str(path, 'path')))
   handle('chat:start', (path, text, o) => chats.start(str(path, 'path'), str(text, 'text'), opts(o)))
   handle('chat:fork', (path, from, at, text, o) =>
     chats.fork(str(from, 'from'), str(path, 'path'), str(at, 'at'), str(text, 'text'), opts(o))
@@ -174,6 +180,11 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   handle('chat:interrupt', (id) => chats.interrupt(str(id, 'id')))
   handle('chat:setMode', (id, mode) => chats.setMode(str(id, 'id'), mode as SessionOptions['mode']))
   handle('chat:setModel', (id, model) => chats.setModel(str(id, 'id'), (model as string | null) ?? null))
+  handle('chat:control', (id, path, operation, value) => chats.control(str(id, 'id'), str(path, 'path'), str(operation, 'operation'), typeof value === 'string' ? value : undefined))
+  handle('chat:setWorkflows', (id, value) => { if (typeof value !== 'boolean') throw new Error('无效开关值'); return chats.setWorkflows(str(id, 'id'), value) })
+  handle('chat:setFastMode', (id, value) => { if (typeof value !== 'boolean') throw new Error('无效开关值'); return chats.setFastMode(str(id, 'id'), value) })
+  handle('chat:setUltracode', (id, enabled) => { if (typeof enabled !== 'boolean') throw new Error('无效开关值'); return chats.setUltracode(str(id, 'id'), enabled) })
+  handle('chat:refreshRuntime', id => chats.refreshRuntime(str(id, 'id')))
   handle('chat:setEffort', (id, effort) => chats.setEffort(str(id, 'id'), (effort as SessionOptions['effort']) ?? null))
   handle('chat:respond', (id, requestId, decision) =>
     chats.respond(str(id, 'id'), str(requestId, 'requestId'), decision as Decision)

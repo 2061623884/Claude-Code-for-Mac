@@ -41,7 +41,7 @@ const api: DeskApi = {
     setArchived: call('sessions:setArchived')
   },
   settings: { get: call('settings:get'), set: call('settings:set') },
-  meta: { get: call('meta:get'), commands: call('meta:commands'), onCommands: (listener) => subscribe('meta:commands', listener), usage: call('meta:usage'), config: call('meta:config'), configSnapshot: call('meta:configSnapshot') },
+  meta: { get: call('meta:get'), cachedModels: call('meta:cachedModels'), commands: call('meta:commands'), onCommands: (listener) => subscribe('meta:commands', listener), usage: call('meta:usage'), config: call('meta:config'), configSnapshot: call('meta:configSnapshot') },
   files: {
     pathFor: (file) => webUtils.getPathForFile(file),
     describe: call('files:describe'),
@@ -69,6 +69,12 @@ const api: DeskApi = {
     setMode: call('chat:setMode'),
     setModel: call('chat:setModel'),
     setEffort: call('chat:setEffort'),
+    control: call('chat:control'),
+    setWorkflows: call('chat:setWorkflows'),
+    prepareControls: call('chat:prepareControls'),
+    setFastMode: call('chat:setFastMode'),
+    setUltracode: call('chat:setUltracode'),
+    refreshRuntime: call('chat:refreshRuntime'),
     respond: call('chat:respond'),
     checkExternal: call('chat:checkExternal'),
     reload: call('chat:reload'),

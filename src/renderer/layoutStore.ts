@@ -6,11 +6,12 @@ import { onProjectRemoved } from './projectLifecycle'
 export type RightTab = `file:${string}` | `page:${string}`
 export interface SidePage {
   id: `page:${string}`
-  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary' | 'chat'
+  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary' | 'chat' | 'controls'
   sessionId?: string
   projectId?: string
   section?: SummaryView
   cwd?: string
+  turnDiff?: string
 }
 export interface OpenFile { path: string; line?: number; nonce: number }
 interface SessionLayout {
@@ -43,6 +44,7 @@ interface LayoutStore extends SessionLayout {
   activateSession(sessionId: string | null, projectId?: string): void
   removeProject(projectId: string): void
   setExpanded(expanded: boolean): void
+  openDiff(cwd: string | undefined, text: string): void
   newPage(cwd?: string, kind?: SidePage['kind']): SidePage['id'] | null
   changePage(id: SidePage['id'], kind: SidePage['kind'], cwd?: string): void
   closePage(id: SidePage['id']): void
@@ -86,6 +88,10 @@ export const useLayout = create<LayoutStore>((set, get) => {
       set({ sessions, ...(state.projectId === projectId ? { ...empty(), activeSessionId: null, projectId: undefined } : {}) })
     },
     setExpanded: (expanded) => { if (get().activeSessionId) set({ expanded }) },
+    openDiff: (cwd, text) => {
+      const id = get().newPage(cwd, 'controls')
+      if (id) set({ pages: get().pages.map(p => p.id === id ? { ...p, turnDiff: text } : p) })
+    },
     newPage: (cwd, kind = 'start') => {
       const { activeSessionId, projectId, pages } = get()
       if (!activeSessionId || sidebarPageCount(get()) >= MAX_SIDEBAR_PAGES) return null

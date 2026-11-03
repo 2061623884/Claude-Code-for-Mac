@@ -40,7 +40,7 @@ export class SessionPreferencesState {
     const entry = this.entry(id)
     const current = entry.value.options, saved = entry.savedOptions
     return {
-      optionsSaved: Boolean(current && saved && current.model === saved.model && current.mode === saved.mode && current.effort === saved.effort),
+      optionsSaved: Boolean(current && saved && current.model === saved.model && current.mode === saved.mode && current.effort === saved.effort && current.ultracode === saved.ultracode && current.fastMode === saved.fastMode && current.workflows === saved.workflows),
       optionsSaveError: entry.saveError
     }
   }

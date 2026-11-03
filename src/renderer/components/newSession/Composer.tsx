@@ -20,6 +20,8 @@ import {
 import type { CommandInfo, EffortLevel, PermissionMode } from '@shared/types'
 import { EFFORT_LEVELS, findTrigger, PERMISSION_MODES, shortenPath } from '@shared/format'
 import { useDesk } from '../../store'
+import { useDismiss } from '../../hooks/useDismiss'
+import type { RuntimeSettings } from '@shared/chat'
 import { Menu } from '../ui/Menu'
 import type { ChatActivity, ChatState } from '@shared/chat'
 import { AttachmentCard } from '../files/AttachmentCard'
@@ -28,6 +30,8 @@ import { ComposerEditor, type EditorHandle } from './ComposerEditor'
 import { useSuggestions, type Suggestion } from './useSuggestions'
 
 interface ComposerProps {
+  fast?: boolean
+  rainbow?: boolean
   sessionState?: ChatState
   activity?: ChatActivity
   sessionId?: string
@@ -64,6 +68,7 @@ interface ComposerProps {
 }
 
 export function Composer({
+  fast, rainbow,
   sessionState,
   activity,
   sessionId,
@@ -280,10 +285,10 @@ export function Composer({
 
   return (
     <div className="relative pt-[52px] composer-with-crab">
-      <ComposerCrab key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} />
+      <ComposerCrab fast={fast} rainbow={rainbow} key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} />
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
-      <div data-composer-surface className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
+      <div data-composer-surface data-ultracode={rainbow || undefined} className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
         {queuePanel && <div className="composer-queue-panel">{queuePanel}</div>}
         {header}
         {attachments.length > 0 && (
@@ -351,6 +356,7 @@ export function Composer({
             <button
               type="button"
               title="停止"
+              data-composer-action
               aria-label="停止"
               onClick={onStop}
               className="flex size-8 items-center justify-center rounded-full bg-accent text-accent-fg hover:opacity-85"
@@ -361,6 +367,7 @@ export function Composer({
             <button
               type="button"
               title={submitHint}
+              data-composer-action
               aria-label={submitLabel ?? "发送"}
               disabled={!canSend}
               onClick={() => {
@@ -482,7 +489,7 @@ function Chip({ icon, children, onClick, title }: { icon: ReactNode; children: R
 
 type Placement = 'top' | 'bottom'
 
-export function ProjectChip({ placement = 'bottom' }: { placement?: Placement }) {
+export function ProjectChip({ placement = 'top' }: { placement?: Placement }) {
   const { projects, selectedProjectId, home, demo, setDraft, pickProject } = useDesk()
   const current = projects.find((p) => p.id === selectedProjectId)
   return (
@@ -516,70 +523,7 @@ export function ProjectChip({ placement = 'bottom' }: { placement?: Placement })
   )
 }
 
-export function ModelChip({ value, onChange, placement = 'bottom' }: { value: string | null; onChange(v: string | null): void; placement?: Placement }) {
-  const { meta, metaError, demo } = useDesk()
-  const models = meta?.models ?? []
-  const current = models.find((m) => m.value === value)
-  const label = current?.label ?? value ?? (metaError ? '模型' : '加载中…')
-  return (
-    <Menu
-      placement={placement}
-      width={220}
-      defaultOpen={demo?.openMenu === 'model'}
-      trigger={({ toggle }) => (
-        <Chip icon={<Box size={13} />} onClick={toggle} title={metaError ? `无法读取模型列表：${metaError}` : '模型'}>
-          {label}
-        </Chip>
-      )}
-      items={models.map((m) => ({
-        key: m.value,
-        label: m.label,
-        checked: m.value === value,
-        onSelect: () => onChange(m.value)
-      }))}
-    />
-  )
-}
-
-export function EffortChip({
-  model,
-  value,
-  onChange,
-  placement = 'bottom'
-}: {
-  model: string | null
-  value: EffortLevel | null
-  onChange(v: EffortLevel | null): void
-  placement?: Placement
-}) {
-  const { meta, demo } = useDesk()
-  const info = meta?.models.find((m) => m.value === model)
-  // 模型列表还没加载好或模型不支持调节时不显示
-  if (!info || info.efforts.length === 0) return null
-  const levels = EFFORT_LEVELS.filter((l) => info.efforts.includes(l.value))
-  const current = levels.find((l) => l.value === value)
-  return (
-    <Menu
-      placement={placement}
-      width={260}
-      defaultOpen={demo?.openMenu === 'effort'}
-      trigger={({ toggle }) => (
-        <Chip icon={<Brain size={13} />} onClick={toggle} title="思考程度">
-          {`思考：${current?.label ?? value ?? '未设置'}`}
-        </Chip>
-      )}
-      items={levels.map((l) => ({
-        key: l.value,
-        label: l.label,
-        description: l.description,
-        checked: l.value === current?.value,
-        onSelect: () => onChange(l.value)
-      }))}
-    />
-  )
-}
-
-export function PermissionChip({ value, onChange, placement = 'bottom' }: { value: PermissionMode; onChange(v: PermissionMode): void; placement?: Placement }) {
+export function PermissionChip({ value, onChange, placement = 'top' }: { value: PermissionMode; onChange(v: PermissionMode): void; placement?: Placement }) {
   const { settings, demo } = useDesk()
   const modes = PERMISSION_MODES.filter((m) => m.value !== 'bypassPermissions' || settings?.allowBypass)
   // 当前生效模式不受“是否允许选择”影响，关闭开关不会撤销已有会话权限。

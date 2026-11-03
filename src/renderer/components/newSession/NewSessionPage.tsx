@@ -1,3 +1,5 @@
+import { ModePicker } from '../newSession/ModePicker'
+import { sessionCommand } from '@shared/sessionCommand'
 import { useEffect, useRef, useState } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { attachmentTitle, type ComposerAttachment } from '@shared/attachments'
@@ -9,7 +11,7 @@ import { useChat } from '../../chatStore'
 import { openAppPanel, usePanel } from '../../panelStore'
 import { CommandPanel } from '../commands/CommandPanel'
 import { Button } from '../ui/Dialog'
-import { Composer, EffortChip, ModelChip, PermissionChip, ProjectChip } from './Composer'
+import { Composer, PermissionChip, ProjectChip } from './Composer'
 
 export function NewSessionPage() {
   const composerRoot = useRef<HTMLDivElement>(null)
@@ -56,7 +58,7 @@ export function NewSessionPage() {
         )}
       </p>
       <div ref={composerRoot} className="relative mt-2">
-        <Composer
+        <Composer fast={!!options.fastMode} rainbow={options.ultracode}
           sessionState={error ? 'error' : sending ? 'running' : 'idle'}
           value={text}
           onChange={setText}
@@ -76,7 +78,11 @@ export function NewSessionPage() {
               />
             )
           }
-          onCommand={openAppPanel}
+          onCommand={(name, args) => {
+            const control = sessionCommand('/' + name + ' ' + args)
+            if (control) { setDraft(control); return true }
+            return openAppPanel(name, args)
+          }}
           onSubmit={async ({ text: body, prompt, attachments: submitted }) => {
             transition.current = captureFirstSend(composerRoot.current)
             setSending(true)
@@ -96,8 +102,7 @@ export function NewSessionPage() {
           chips={
             <>
               <ProjectChip />
-              <ModelChip value={options.model} onChange={(model) => setDraft({ model })} />
-              <EffortChip model={options.model} value={options.effort} onChange={(effort) => setDraft({ effort })} />
+              <ModePicker options={options} cwd={project?.path} onChange={setDraft} />
               <PermissionChip value={options.mode} onChange={(mode) => setDraft({ mode })} />
             </>
           }

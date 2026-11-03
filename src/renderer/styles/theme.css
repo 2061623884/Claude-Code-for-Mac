@@ -331,23 +331,165 @@ button {
 
 /* Decorative gestures follow the word; actual state remains in the accessible status. */
 .crab[data-crab-gesture] .crab-prop { animation: crab-prop-in .25s ease-out; }
-.crab-stir { transform-box: fill-box; transform-origin: center; animation: crab-stir 2.4s ease-in-out infinite; }
+.crab-stir { transform-box: fill-box; transform-origin: center; animation: crab-stir 3s ease-in-out infinite; }
 .crab-steam { animation: crab-steam 3s ease-out infinite; }
-.crab-block { animation: crab-block 3s ease-in-out infinite; }
-.crab-thread { animation: crab-stir 3.2s ease-in-out infinite; transform-origin: 21px 5px; }
+.crab .crab-wrench { transform-box: fill-box; transform-origin: 8.5px 2.7px; animation: crab-tighten 2s ease-in-out infinite; }
+.crab-book-first { animation: crab-stack-first 4s ease-in-out infinite; }
+.crab-book-last { animation: crab-stack-last 4s ease-in-out infinite; }
+.crab-book-push { animation: crab-push-spines 4s ease-in-out infinite; }
 .crab-sprout { animation: crab-sprout 4s ease-in-out infinite; transform-origin: 21px 6px; }
 .crab-glass { animation: crab-search 3.5s ease-in-out infinite; }
 .crab-star { animation: crab-star 3s ease-in-out infinite; transform-origin: 21px -1px; }
 .crab[data-crab-gesture="playing"] .crab-body { animation: crab-play 3s ease-in-out infinite; }
 .crab[data-crab-gesture="thinking"] .crab-body { animation: crab-thought 4s ease-in-out infinite; }
 @keyframes crab-prop-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes crab-stir { 0%,25%,100% { transform: rotate(-12deg); } 55%,75% { transform: rotate(12deg); } }
+@keyframes crab-stir {
+  0%, 30%, 54%, 100% { transform: translate(0, 0); }
+  15%, 70% { transform: translate(.65px, .55px) rotate(-10deg); }
+  84% { transform: translate(-.35px, .3px); }
+}
 @keyframes crab-steam { 0%,100% { opacity:0; transform:translateY(0); } 40% { opacity:1; } 80% { opacity:0; transform:translateY(-3px); } }
-@keyframes crab-block { 0%,20%,100% { transform:translate(0,-1px); } 50%,80% { transform:translate(0,2px); } }
+@keyframes crab-tighten {
+  0%, 15%, 100% { transform: rotate(9deg); }
+  45%, 60% { transform: rotate(-11deg); }
+}
+@keyframes crab-stack-first {
+  0%, 8%, 100% { opacity: 0; transform: translate(-3px, -2px); }
+  15% { opacity: 1; transform: translate(-3px, -2px); }
+  32%, 86% { opacity: 1; transform: translate(0, 0); }
+  95% { opacity: 0; transform: translate(0, 0); }
+}
+@keyframes crab-stack-last {
+  0%, 35%, 100% { opacity: 0; transform: translate(-4px, -3px); }
+  43% { opacity: 1; transform: translate(-4px, -3px); }
+  56%, 62% { opacity: 1; transform: translate(-1px, 0); }
+  70%, 86% { opacity: 1; transform: translate(0, 0); }
+  95% { opacity: 0; transform: translate(0, 0); }
+}
+@keyframes crab-push-spines {
+  0%, 48%, 85%, 100% { transform: translate(-2px, 2.4px); }
+  60%, 62% { transform: translate(-1px, 0); }
+  70%, 74% { transform: translate(0, 0); }
+}
 @keyframes crab-sprout { 0%,20%,100% { transform:scaleY(.8); } 50%,80% { transform:scaleY(1); } }
 @keyframes crab-search { 0%,25%,100% { transform:translateX(0); } 50%,75% { transform:translateX(-2px); } }
 @keyframes crab-star { 0%,20%,100% { opacity:.25; transform:scale(.6); } 50%,75% { opacity:1; transform:scale(1); } }
 @keyframes crab-play { 0%,20%,100% { transform:translateY(0); } 40% { transform:translateY(-1px) rotate(-3deg); } 60% { transform:translateY(0) rotate(3deg); } }
 @keyframes crab-thought { 0%,20%,100% { transform:rotate(0); } 50%,75% { transform:rotate(-4deg); } }
+/* During a gesture the working claw shares its tool's transform. */
+.crab[data-crab-gesture] .crab-claw-l { animation: none; }
+.crab-cheek { animation: crab-rest-cheek 4s ease-in-out infinite; }
+.crab-flick { animation: crab-toss 3s ease-in-out infinite; }
+@keyframes crab-rest-cheek {
+  0%, 90%, 100% { transform: translate(.5px, 1.8px); }
+  18%, 75% { transform: translate(-1px, -.8px); }
+}
+@keyframes crab-toss {
+  0%, 20%, 82%, 100% { transform: translate(-1px, 1px); }
+  35% { transform: translate(.5px, -1.4px); }
+  58% { transform: translate(0, -.5px); }
+}
+/* Gaze and props share a cycle. Moving by one SVG unit reads as three screen pixels. */
+.crab-gaze rect { transform-origin: center; }
+[data-crab-gesture="thinking"] .crab-gaze { animation: crab-glance-up 4s ease-in-out infinite; }
+[data-crab-gesture="thinking"] .crab-bulb { animation: crab-idea 4s ease-in-out infinite; }
+[data-crab-gesture="cooking"] .crab-gaze rect:last-child { animation: crab-watch-pot 3s ease-in-out infinite; }
+[data-crab-gesture="making"] .crab-gaze rect:last-child { animation: crab-squint 2s ease-in-out infinite; }
+[data-crab-gesture="sorting"] .crab-gaze { animation: crab-check-edges 4s ease-in-out infinite; }
+[data-crab-gesture="growing"] .crab-gaze { animation: crab-watch-leaf 4s ease-in-out infinite; }
+[data-crab-gesture="exploring"] .crab-gaze { animation: crab-scan 3.5s ease-in-out infinite; }
+[data-crab-gesture="playing"] .crab-gaze rect:last-child { animation: crab-wink 3s ease-in-out infinite; }
+@keyframes crab-glance-up {
+  0%, 10%, 95%, 100% { transform: translate(0, 1px); }
+  28%, 72% { transform: translate(.5px, -.5px); }
+}
+@keyframes crab-idea { 0%, 28%, 100% { opacity: .25; } 42%, 78% { opacity: 1; } }
+@keyframes crab-watch-pot {
+  0%, 22%, 64%, 100% { transform: none; }
+  38%, 48% { transform: translate(.5px, .5px) scale(.75, 2.4); }
+}
+@keyframes crab-squint {
+  0%, 15%, 100% { transform: scale(.85, 1.8); }
+  45%, 60% { transform: translate(.5px, -.5px) scale(1.05, .8); }
+}
+@keyframes crab-check-edges {
+  0%, 15%, 100% { transform: none; }
+  30%, 48% { transform: translate(0, .75px); }
+  60%, 80% { transform: translate(.85px, -.5px); }
+}
+@keyframes crab-watch-leaf {
+  0%, 20%, 100% { transform: translate(0, .75px); }
+  52%, 80% { transform: translate(.5px, -.75px); }
+}
+@keyframes crab-scan {
+  0%, 8%, 90%, 100% { transform: translate(.5px, 0); }
+  24%, 65% { transform: translate(-.75px, -.5px); }
+}
+@keyframes crab-wink {
+  0%, 43%, 66%, 100% { transform: scale(.7, 2.6); }
+  50%, 58% { transform: none; }
+}
 @media (prefers-reduced-motion: reduce) { .crab[data-crab-gesture] * { animation:none !important; } }
 html[data-reduce-motion="true"] .crab[data-crab-gesture] * { animation:none !important; }
+
+.picker-option { display:flex; align-items:baseline; justify-content:space-between; gap:10px; width:100%; padding:6px 10px; border-radius:8px; font-size:13px; text-align:left; cursor:pointer; }
+.model-choice-name { font-size:13.5px; line-height:20px; font-weight:400; }
+.picker-option small { display:block; color:var(--color-fg3); font-size:12px; }
+.picker-option:hover,.picker-option:focus-visible { background:var(--color-hover); }
+.picker-divider { align-items:center; border-top:1px solid var(--color-line); margin-top:4px; }
+.violet-pixel { animation: violet-flow 4s ease-in-out infinite; }
+@keyframes violet-flow {
+  0%,100% { fill:#f498e7; }
+  24%,76% { fill:#854fc1; }
+  47% { fill:#6ca2f9; }
+}
+.composer-crab:has(.crab-violet) :is(.composer-crab-verb,.composer-crab-state) { color:color-mix(in srgb,#a177bc 75%,var(--fg2)); }
+
+@property --ultra-angle { syntax:'<angle>'; inherits:false; initial-value:0deg; }
+[data-composer-surface][data-ultracode]::after {
+  content:''; position:absolute; inset:-1px; border-radius:inherit; padding:2px; pointer-events:none;
+  background:conic-gradient(from var(--ultra-angle),#854fc1,#f498e7 12%,#854fc1 28%,#854fc1 48%,#6ca2f9 65%,#854fc1 82%);
+  mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  mask-composite:exclude;
+  animation:ultracode-border-flow 4s linear infinite;
+}
+@keyframes ultracode-border-flow { to { --ultra-angle:360deg; } }
+@media (prefers-reduced-motion:reduce) {
+  .violet-pixel, [data-composer-surface][data-ultracode]::after { animation-play-state:paused; }
+}
+
+.picker-closing { pointer-events:none; animation: picker-close 120ms ease-in forwards; }
+@keyframes picker-close { to { opacity:0; transform:translateY(4px) scale(.98); } }
+@media (prefers-reduced-motion:reduce) { .picker-closing { opacity:0; animation:none; } }
+
+.fast-option { align-items:center; cursor:default; }
+.fast-checkbox { position:relative; display:inline-flex; }
+.fast-checkbox input { margin:0; cursor:pointer; }
+.fast-hint { position:absolute; z-index:1; bottom:calc(100% + 8px); right:0; padding:9px 12px; border:1px solid #deddd9; border-radius:7px; background:#f6f5f2; color:#292824; box-shadow:0 2px 8px #24222010; font-size:12px; line-height:19px; white-space:nowrap; pointer-events:none; visibility:hidden; }
+.fast-hint strong { display:block; font-size:13px; }
+.fast-checkbox input:is(:hover,:focus-visible) + .fast-hint { visibility:visible; transition:visibility 0s .2s; }
+.crab-track { position:relative; flex:none; }
+.crab-speed { position:absolute; top:27px; left:-11px; width:17px; pointer-events:none; opacity:0; animation:crab-speed .68s ease-out; }
+.crab-speed-task { animation:crab-task-burst 4s ease-out 2.25s infinite; }
+@keyframes crab-task-burst { 0%,17%,100% {opacity:0} 3%,9% {opacity:.85} 17%,100% {transform:translateX(-4px)} }
+.crab-speed i { display:block; height:2px; margin:0 0 3px auto; background:#191816; border-radius:1px; }
+.crab-speed i:first-child { width:11px; }
+.crab-speed i:last-child { width:8px; }
+@keyframes crab-speed { 0%,100% {opacity:0} 20%,52% {opacity:.85} 100% {transform:translateX(-4px)} }
+.crab-run { transform-origin:50% 95%; animation:crab-two-steps .64s ease-in-out; }
+@keyframes crab-two-steps { 0%,100% {transform:none} 25% {transform:translate(2px,-2px) rotate(2deg)} 50% {transform:translateX(3px)} 75% {transform:translate(4px,-2px) rotate(2deg)} }
+.crab-run svg>g:first-of-type>rect { animation:crab-step .32s ease-in-out 2; }
+.crab-run svg>g:first-of-type>rect:nth-child(even) { animation-direction:reverse; }
+@keyframes crab-step { 0%,100% {transform:none} 25% {transform:translateX(1px)} 75% {transform:translateX(-1px)} }
+.crab-violet :is(.crab-grip-skin,.crab-face-skin,.crab-claw-l,.crab-claw-r), .crab-violet>g:first-of-type>rect { fill:#854fc1; }
+.crab-violet :is(.crab-grip-skin,.crab-face-skin), .crab-violet>g:first-of-type>rect { animation:violet-flow 4s ease-in-out infinite; animation-delay:-1.2s; }
+@media (prefers-reduced-motion:reduce) { .crab-speed,.crab-run,.crab-run svg>g:first-of-type>rect { animation:none; } }
+
+[data-composer-surface][data-ultracode] [data-composer-action] {
+  background: conic-gradient(from var(--ultra-angle), #7546aa, #b460a7 18%, #7546aa 42%, #6478bd 68%, #7546aa);
+  color: white;
+  animation: ultracode-border-flow 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-surface][data-ultracode] [data-composer-action] { animation: none; }
+}

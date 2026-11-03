@@ -1,9 +1,11 @@
+import { ModePicker } from '../newSession/ModePicker'
+import { SessionControlsPane } from '../right/SessionControlsPane'
 import { ClaudeConfigSettings } from './ClaudeConfigSettings'
 import { McpSettings } from './McpSettings'
-import { useState, type ReactNode } from 'react'
-import type { Settings, Theme } from '@shared/types'
+import { useEffect, useState, type ReactNode } from 'react'
+import type { MetaInfo, Settings, Theme } from '@shared/types'
 import { errorText } from '../../ipcError'
-import { EFFORT_LEVELS, PERMISSION_MODES } from '@shared/format'
+import { PERMISSION_MODES } from '@shared/format'
 import { useDesk } from '../../store'
 
 const THEMES: { value: Theme; label: string }[] = [
@@ -21,12 +23,27 @@ export const CONFIG_GROUPS = {
 const GROUPED_KEYS = Object.values(CONFIG_GROUPS).flat()
 
 export function SettingsPage() {
-  const { settings, meta, metaError, updateSettings, view, projects, home, setView } = useDesk()
+  const { settings, updateSettings, view, projects, home, setView } = useDesk()
   const [languageSaving, setLanguageSaving] = useState(false)
   const [languageError, setLanguageError] = useState<string | null>(null)
   const [scope, setScope] = useState('desktop')
   const [notificationError, setNotificationError] = useState<string | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [environment, setEnvironment] = useState<{ path: string | null; meta: MetaInfo | null; error: string | null } | null>(null)
+  const [environmentAttempt, setEnvironmentAttempt] = useState(0)
+  const advanced = view.kind === 'settings' && view.tab === 'advanced'
+  const executable = settings?.claudePath ?? null
+  useEffect(() => {
+    if (!advanced) return
+    let active = true
+    setEnvironment(null)
+    void window.desk.meta.get().then(meta => {
+      if (active) setEnvironment({ path: executable, meta, error: null })
+    }, error => {
+      if (active) setEnvironment({ path: executable, meta: null, error: errorText(error) })
+    })
+    return () => { active = false }
+  }, [advanced, executable, environmentAttempt])
   const saveSettings = (patch: Partial<Settings>): void => {
     setSettingsError(null)
     void updateSettings(patch).catch(error => setSettingsError(errorText(error)))
@@ -63,12 +80,14 @@ export function SettingsPage() {
     {tab === 'models' && <>
       <div className="mt-5"><Segmented options={[{ value: 'desktop', label: '桌面新对话' }, { value: 'terminal', label: '终端默认值' }]} value={scope} onChange={setScope} /></div>
       {scope === 'desktop' ? <Section title="新对话默认值">
-        <Row label="模型"><Select value={settings.defaultModel} options={(meta?.models ?? [{ value: settings.defaultModel, label: settings.defaultModel }]).map(m => ({ value: m.value, label: m.label }))} onChange={defaultModel => saveSettings({ defaultModel })} /></Row>
-        <Row label="思考程度"><Select value={settings.defaultEffort} options={EFFORT_LEVELS} onChange={v => saveSettings({ defaultEffort: v as typeof settings.defaultEffort })} /></Row>
+        <Row label="模型"><ModePicker inline="defaultModel" options={{ model: settings.defaultModel, effort: settings.defaultEffort, mode: settings.defaultPermissionMode }} onChange={patch => { if (patch.model) saveSettings({ defaultModel: patch.model }) }} /></Row>
+        <Row label="思考程度"><ModePicker inline="defaults" options={{ model: settings.defaultModel, effort: settings.defaultEffort, mode: settings.defaultPermissionMode }}
+          onChange={patch => { if (patch.effort !== undefined) saveSettings({defaultEffort:patch.effort}) }} /></Row>
         <Row label="权限模式"><Select value={settings.defaultPermissionMode} options={PERMISSION_MODES.filter(m => m.value !== 'bypassPermissions' || settings.allowBypass)} onChange={v => saveSettings({ defaultPermissionMode: v as typeof settings.defaultPermissionMode })} /></Row>
         <Row label="允许选择跳过权限模式"><Toggle label="允许选择跳过权限模式" value={settings.allowBypass} onChange={allowBypass => saveSettings({ allowBypass, ...(!allowBypass && settings.defaultPermissionMode === 'bypassPermissions' ? { defaultPermissionMode: 'default' as const } : {}) })} /></Row>
       </Section> : <ClaudeConfigSettings key={cwd} cwd={cwd} keys={CONFIG_GROUPS.models} searchable={false} />}
     </>}
+    {tab === 'models' && route.sessionId && <SessionControlsPane sessionId={route.sessionId} cwd={cwd} active initialTab="rules" />}
     {tab === 'context' && <ClaudeConfigSettings key={cwd} cwd={cwd} keys={CONFIG_GROUPS.context} searchable={false} />}
     {tab === 'notifications' && <>
       <Section title="桌面系统通知 · 窗口在后台时">
@@ -97,8 +116,8 @@ export function SettingsPage() {
         { title: '其他原生选项', excludeKeys: GROUPED_KEYS }
       ]} />
       <Section title="运行环境">
-        <Row label="可执行文件"><span className="text-fg2" title={settings.claudePath ?? undefined}>{settings.claudePath ? '自定义路径' : `SDK 内置${meta?.claudeVersion ? ` v${meta.claudeVersion}` : ''}`}</span></Row>
-        <Row label="账户"><span className="text-fg2">{metaError ? '读取失败' : (meta?.subscriptionType ?? '读取中…')}</span></Row>
+        <Row label="可执行文件"><span className="text-fg2" title={settings.claudePath ?? undefined}>{settings.claudePath ? '自定义路径' : `SDK 内置${environment?.path === executable && environment.meta?.claudeVersion ? ` v${environment.meta.claudeVersion}` : ''}`}</span></Row>
+        <Row label="账户"><span className="text-fg2">{environment?.path !== executable ? '读取中…' : environment.error ? <button onClick={() => setEnvironmentAttempt(value => value + 1)}>读取失败 · 重试</button> : environment.meta?.subscriptionType ?? '未知'}</span></Row>
       </Section>
     </>}
   </div></div>

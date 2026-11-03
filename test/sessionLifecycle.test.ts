@@ -113,7 +113,7 @@ it('requests summarized thinking for new, resumed and forked queries without cha
   await manager.fork('source', '/tmp', 'at', 'fork', options)
   await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(3))
   for (const [request] of sdk.query.mock.calls) {
-    expect(request.options.extraArgs).toEqual({ 'thinking-display': 'summarized' })
+    expect(request.options.extraArgs).toEqual({ 'thinking-display': 'summarized', 'replay-user-messages': null })
     expect(request.options.includePartialMessages).toBe(true)
     expect(request.options.thinking).toBeUndefined()
     expect(request.options.effort).toBeUndefined()

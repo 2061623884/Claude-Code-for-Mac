@@ -16,7 +16,7 @@ const DEFAULTS: StoreData = {
   version: 1,
   projects: [],
   archived: {},
-  settings: { executionLanguage: 'zh', theme: 'system', defaultModel: 'opus', defaultPermissionMode: 'default', defaultEffort: 'medium', claudePath: null, allowBypass: false },
+  settings: { executionLanguage: 'zh', theme: 'system', defaultModel: 'opus', defaultPermissionMode: 'default', defaultEffort: null, claudePath: null, allowBypass: false },
   seededFromHistory: false
 }
 
@@ -32,7 +32,7 @@ export function read(): StoreData {
     const settings = { ...DEFAULTS.settings, ...loaded.settings }
     // 早期版本用 null 表示"默认"，现在统一换成明确的模型和思考程度
     settings.defaultModel ??= DEFAULTS.settings.defaultModel
-    settings.defaultEffort ??= DEFAULTS.settings.defaultEffort
+    // null 表示自动，保留用户已保存的明确档位。
     if (settings.executionLanguage !== 'en' && settings.executionLanguage !== 'zh') settings.executionLanguage = 'zh'
     data = { ...DEFAULTS, ...loaded, settings }
   }

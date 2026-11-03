@@ -1,23 +1,16 @@
+import { useDesk } from '../../store'
 import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { CONFIG_LABELS } from '@shared/commands'
+import { CONFIG_LABELS, VALUE_LABELS } from '@shared/commands'
 import { useClaudeConfig } from '../../hooks/useClaudeConfig'
 
-const VALUE_LABELS: Record<string, string> = {
-  true: '开启', false: '关闭', default: '默认', auto: '自动', normal: '普通', vim: 'Vim',
-  light: '浅色', dark: '深色', 'light-daltonized': '浅色（色觉辅助）', 'dark-daltonized': '深色（色觉辅助）',
-  'light-ansi': '浅色 ANSI', 'dark-ansi': '深色 ANSI',
-  'Switch automatically': '自动切换', 'Ask each time': '每次询问', 'Not asked yet': '尚未选择',
-  Proactive: '主动', Concise: '简洁', Explanatory: '讲解', Learning: '学习',
-  '12-hour': '12 小时制', '24-hour': '24 小时制', '24-hour-utc': '24 小时制（UTC）',
-  small: '小', medium: '中', large: '大', unrestricted: '不限',
-  fresh: '最新基准', head: '当前 HEAD', plan: '计划', acceptEdits: '自动接受编辑', dontAsk: '不询问',
-  terminal_bell: '终端提示音', notifications_disabled: '关闭通知'
-}
 type ConfigGroup = { title: string; keys?: readonly string[]; excludeKeys?: readonly string[] }
 export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true, groups }: { cwd: string; keys?: readonly string[]; excludeKeys?: readonly string[]; searchable?: boolean; groups?: ConfigGroup[] }) {
   const { snapshot, error, saving, results, save, refresh } = useClaudeConfig(cwd)
   const [query, setQuery] = useState('')
+  const [reloadResult, setReloadResult] = useState('')
+  const route = useDesk(s => s.view)
+  const sessionId = route.kind === 'settings' ? route.sessionId : undefined
   const items = snapshot?.items.filter(i => (!keys || keys.includes(i.key)) && !excludeKeys?.includes(i.key)).filter(i => `${i.key} ${CONFIG_LABELS[i.key] ?? ''}`.toLowerCase().includes(query.toLowerCase().trim())) ?? []
   const sections = (groups ?? [{ title: '' }]).map(group => ({ ...group, items: items.filter(item => (!group.keys || group.keys.includes(item.key)) && !group.excludeKeys?.includes(item.key)) })).filter(group => group.items.length)
   return <section aria-label="Claude Code 配置" className="mt-5">
@@ -25,6 +18,12 @@ export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true
       {searchable && <input aria-label="搜索 Claude Code 设置" placeholder="搜索设置" value={query} onChange={e => setQuery(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 outline-none focus:border-accent" />}
       <button type="button" aria-label="刷新 Claude Code 设置" disabled={!!saving} onClick={refresh} className="rounded-md p-2 text-fg2 hover:bg-hover"><RefreshCw size={15} /></button>
     </div>
+    <p className="mb-3 text-[12px] text-fg3">默认设置在下次启动时生效。</p>
+    {sessionId && <button type="button" className="mb-3 rounded-lg bg-chip px-3 py-2 text-[12px]" onClick={async () => {
+      try { await window.desk.chat.control(sessionId, cwd, 'reloadConfiguration'); setReloadResult('已重载当前会话') }
+      catch (e) { setReloadResult(String(e)) }
+    }}>空闲时重载当前会话</button>}
+    {reloadResult && <p role="status" className="mb-3 text-[12px] text-fg3">{reloadResult}</p>}
     {error ? <p role="alert" className="text-danger">{error}</p> : !snapshot ? <p className="text-fg3">读取中…</p> : <>
       {sections.map(group => <section key={group.title} className={group.title ? 'mt-7' : undefined}>
         {group.title && <h2 className="mb-2 text-[13px] font-medium text-fg2">{group.title}</h2>}
@@ -42,7 +41,7 @@ export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true
               {item.values.map(v => <option key={v} value={v}>{VALUE_LABELS[v] ?? v}</option>)}
             </select> : <ConfigInput key={`${item.key}:${item.value}`} id={`config-${item.key}`} initialValue={item.value} disabled={disabled} onSave={value => void save(item.key, value)} />}
           </div>
-          {saving === item.key ? <p role="status" className="mt-1 text-[12px] text-fg3">保存中…</p> : results[item.key] && <p role={results[item.key].error ? 'alert' : 'status'} className={`mt-1 text-[12px] ${results[item.key].error ? 'text-danger' : 'text-fg3'}`}>{results[item.key].error ?? '已保存'}</p>}
+          {saving === item.key ? <p role="status" className="mt-1 text-[12px] text-fg3">保存中…</p> : results[item.key] && <p role={results[item.key].error ? 'alert' : 'status'} className={`mt-1 text-[12px] ${results[item.key].error ? 'text-danger' : 'text-fg3'}`}>{results[item.key].error ?? results[item.key].status ?? '已保存 · 后续启动生效'}</p>}
         </div>
       })}
         </div>

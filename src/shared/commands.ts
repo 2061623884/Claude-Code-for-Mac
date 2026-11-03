@@ -204,3 +204,15 @@ export const CONFIG_LABELS: Record<string, string> = {
   workflows: '工作流',
   worktreeBaseRef: 'worktree 基准'
 }
+
+export const VALUE_LABELS: Record<string, string> = {
+  true: '开启', false: '关闭', default: '默认', auto: '自动', normal: '普通', vim: 'Vim',
+  light: '浅色', dark: '深色', 'light-daltonized': '浅色（色觉辅助）', 'dark-daltonized': '深色（色觉辅助）',
+  'light-ansi': '浅色 ANSI', 'dark-ansi': '深色 ANSI',
+  'Switch automatically': '自动切换', 'Ask each time': '每次询问', 'Not asked yet': '尚未选择',
+  Proactive: '主动', Concise: '简洁', Explanatory: '讲解', Learning: '学习',
+  '12-hour': '12 小时制', '24-hour': '24 小时制', '24-hour-utc': '24 小时制（UTC）',
+  small: '小', medium: '中', large: '大', unrestricted: '不限',
+  fresh: '最新基准', head: '当前 HEAD', plan: '计划', acceptEdits: '自动接受编辑', dontAsk: '不询问',
+  terminal_bell: '终端提示音', notifications_disabled: '关闭通知'
+}

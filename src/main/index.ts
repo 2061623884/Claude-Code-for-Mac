@@ -4,12 +4,10 @@ import { closeTemporaryQueries } from './temporaryQuery'
 import { AppWindow } from './appWindow'
 import type { DemoState } from '../shared/types'
 import { adoptLoginShellPath } from './env'
-import { applyTheme, chats, commandCatalog, registerIpc } from './ipc'
+import { applyTheme, chats, commandCatalog, projectMetadata, registerIpc } from './ipc'
 import * as store from './store'
 import { flushActivityRepository } from './activityRepository'
 import { registerWorkspaceIpc, closeWorkspace } from './workspace'
-
-if (app.isPackaged) adoptLoginShellPath()
 
 // 应用数据放在独立目录，开发截图时可用 CLAUDE_DESK_USERDATA 指向临时目录
 app.setPath('userData', process.env.CLAUDE_DESK_USERDATA ?? join(app.getPath('appData'), 'claude-desk'))
@@ -32,6 +30,7 @@ if (process.argv.includes('--probe')) {
 } else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  if (app.isPackaged) void adoptLoginShellPath()
   const window = new AppWindow(() => {
     for (const cleanup of [() => commandCatalog.close(), closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
       try { cleanup() } catch (error) { console.error('退出清理失败', error) }
@@ -44,5 +43,8 @@ if (process.argv.includes('--probe')) {
     registerWorkspaceIpc()
     window.installMenu()
     window.open()
+    // The initial composer opens in the first saved project. Overlap its CLI handshake with rendering.
+    const firstProject = store.read().projects[0]
+    if (firstProject && demo?.route !== 'settings') void projectMetadata(firstProject.path).catch(() => {})
   })
 }

@@ -1,3 +1,5 @@
+import { ModePicker } from '../newSession/ModePicker'
+import type { RuntimeSettings } from '@shared/chat'
 import { ClaudeConfigSettings } from '../settings/ClaudeConfigSettings'
 import { McpSettings } from '../settings/McpSettings'
 // 输入框上方的命令浮层：/usage、/context、/model、/effort、/config、/mcp 由应用直接处理，不发任何消息；
@@ -21,6 +23,8 @@ export interface PanelContext {
   /** 新建会话页还没有会话 */
   sessionId: string | null
   cwd?: string
+  optionsUpdating?: boolean
+  runtime?: RuntimeSettings
   options: SessionOptions
   setOptions(patch: Partial<SessionOptions>): void
   /** 把命令交给会话执行（浮层里的选项，如切换输出风格）；会话忙时不传 */
@@ -115,7 +119,7 @@ function Toast({ text, onDone, ref }: { text: string; onDone(): void; ref: React
 }
 
 function OutputBody({ block, ctx }: { block: CommandBlock; ctx: PanelContext }) {
-  return <CommandOutput block={block} onRun={ctx.onRun} />
+  return <CommandOutput cwd={ctx.cwd ?? useDesk.getState().home} block={block} onRun={ctx.onRun} />
 }
 
 function AppBody({ name, ctx, onDone }: { name: AppPanel; ctx: PanelContext; onDone(): void }) {
@@ -125,9 +129,9 @@ function AppBody({ name, ctx, onDone }: { name: AppPanel; ctx: PanelContext; onD
     case 'context':
       return <ContextBody ctx={ctx} />
     case 'model':
-      return <ModelBody ctx={ctx} onDone={onDone} />
+      return <PickerBody onDone={onDone} ctx={ctx} kind="model" />
     case 'effort':
-      return <EffortBody ctx={ctx} onDone={onDone} />
+      return <PickerBody onDone={onDone} ctx={ctx} kind="effort" />
     case 'config':
       return <ClaudeConfigSettings cwd={ctx.cwd ?? useDesk.getState().home} />
     case 'mcp':
@@ -203,100 +207,7 @@ function ContextBody({ ctx }: { ctx: PanelContext }) {
   return <ContextBreakdown usage={usage} />
 }
 
-interface SelectItem {
-  value: string
-  label: string
-  detail?: string
-  active?: boolean
-}
-
-/** 带搜索的选择列表：打开即聚焦搜索框，↑↓ 移动，回车确认，当前值高亮 */
-function SelectList({ items, placeholder, onSelect }: { items: SelectItem[]; placeholder: string; onSelect(value: string): void }) {
-  const [query, setQuery] = useState('')
-  const q = query.trim().toLowerCase()
-  const shown = q ? items.filter((i) => `${i.label} ${i.value} ${i.detail ?? ''}`.toLowerCase().includes(q)) : items
-  const [active, setActive] = useState(() => Math.max(items.findIndex((i) => i.active), 0))
-  const index = Math.min(active, Math.max(shown.length - 1, 0))
-  const list = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    list.current?.children[index]?.scrollIntoView({ block: 'nearest' })
-  }, [index])
-
-  return (
-    <div className="-m-3.5">
-      <input
-        autoFocus
-        value={query}
-        placeholder={placeholder}
-        onChange={(e) => {
-          setQuery(e.target.value)
-          setActive(0)
-        }}
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return
-          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault()
-            const n = shown.length || 1
-            setActive((index + (e.key === 'ArrowDown' ? 1 : n - 1)) % n)
-          } else if (e.key === 'Enter' && shown[index]) {
-            e.preventDefault()
-            onSelect(shown[index].value)
-          }
-        }}
-        className="w-full border-b border-line bg-transparent px-3.5 py-2.5 text-[13.5px] outline-none placeholder:text-fg3"
-      />
-      <div ref={list} role="listbox" className="p-1.5">
-        {shown.map((item, i) => (
-          <div
-            key={item.value}
-            role="option"
-            aria-selected={i === index}
-            onMouseMove={() => i !== index && setActive(i)}
-            onClick={() => onSelect(item.value)}
-            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${i === index ? 'bg-active' : ''}`}
-          >
-            <span className="w-4 shrink-0 text-accent">{item.active && <Check size={14} />}</span>
-            <span className="shrink-0">{item.label}</span>
-            {item.detail && <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg3">{item.detail}</span>}
-          </div>
-        ))}
-        {shown.length === 0 && <div className="px-2.5 py-2 text-[13px] text-fg3">没有匹配的选项</div>}
-      </div>
-    </div>
-  )
-}
-
-function ModelBody({ ctx, onDone }: { ctx: PanelContext; onDone(): void }) {
-  const models = useDesk((s) => s.meta?.models)
-  if (!models) return <Note>模型列表加载中…</Note>
-  return (
-    <SelectList
-      placeholder="搜索模型"
-      items={models.map((m) => ({ value: m.value, label: m.label, detail: m.value, active: m.value === ctx.options.model }))}
-      onSelect={(model) => {
-        ctx.setOptions({ model })
-        onDone()
-      }}
-    />
-  )
-}
-
-function EffortBody({ ctx, onDone }: { ctx: PanelContext; onDone(): void }) {
-  const info = useDesk((s) => s.meta?.models.find((m) => m.value === ctx.options.model))
-  if (!info || info.efforts.length === 0) return <Note>当前模型不支持调节思考程度。</Note>
-  return (
-    <SelectList
-      placeholder="搜索"
-      items={EFFORT_LEVELS.filter((l) => info.efforts.includes(l.value)).map((l) => ({
-        value: l.value,
-        label: l.label,
-        detail: l.description,
-        active: l.value === ctx.options.effort
-      }))}
-      onSelect={(effort) => {
-        ctx.setOptions({ effort: effort as SessionOptions['effort'] })
-        onDone()
-      }}
-    />
-  )
+function PickerBody({ ctx, kind, onDone }: { onDone(): void; ctx: PanelContext; kind: 'effort' | 'model' }) {
+  return <ModePicker inline={kind} options={ctx.options} cwd={ctx.cwd} live={!!ctx.sessionId} runtime={ctx.runtime}
+    busy={ctx.optionsUpdating} onChange={patch => { ctx.setOptions(patch); if (patch.model !== undefined || patch.effort !== undefined) onDone() }} onRetry={() => {if(ctx.sessionId) void window.desk.chat.refreshRuntime(ctx.sessionId)}} />
 }

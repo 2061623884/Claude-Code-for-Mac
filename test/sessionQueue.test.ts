@@ -82,6 +82,28 @@ it('persists acknowledged fields only when SDK rejects a setting', async () => {
   manager.closeAll(); manager = setup()
   expect((await manager.open(id, '/tmp')).options).toEqual({ ...options, effort: 'high' })
 })
+it('applies a user effort change after the initial session settings finish', async () => {
+  let release!: () => void
+  const initialSetting = new Promise<void>(resolve => { release = resolve })
+  let currentEffort: string | null = 'low'
+  const stream = new PushQueue<unknown>()
+  const applyFlagSettings = vi.fn(async (settings: { effortLevel?: string | null }) => {
+    if (settings.effortLevel === null) await initialSetting
+    if (settings.effortLevel !== undefined) currentEffort = settings.effortLevel
+  })
+  sdk.query.mockReturnValue(Object.assign(stream, { close: () => stream.end(), applyFlagSettings }))
+  const id = manager.start('/tmp', 'first', { ...options, effort: null })
+  await vi.waitFor(() => expect(applyFlagSettings).toHaveBeenCalledWith({ effortLevel: null }))
+  const change = manager.setEffort(id, 'high')
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(applyFlagSettings).toHaveBeenCalledTimes(1)
+  release()
+  await change
+  expect(currentEffort).toBe('high')
+  expect((await manager.open(id, '/tmp')).options?.effort).toBe('high')
+  manager.closeAll(); manager = setup()
+  expect((await manager.open(id, '/tmp')).options?.effort).toBe('high')
+})
 it('pauses after stop or failure and does not insert while stopping', async () => {
   const { id, first, output } = await start()
   await manager.send(id, '/tmp', 'next', options)
@@ -212,4 +234,16 @@ it('does not mistake child-agent correlation for consumed main-session queue inp
   output.push({ type: 'assistant', parent_tool_use_id: 'child', user_message_uuid: second.uuid, message: { id: 'child', content: [{ type: 'text', text: 'child output' }] } })
   output.push({ type: 'result', subtype: 'success', is_error: false, result: 'done', duration_ms: 1, queued_turn_count: 0 })
   await vi.waitFor(async () => expect((await manager.open(id, '/tmp')).queue!.items[0].status).toBe('unknown'))
+})
+
+it('preserves Ultracode in explicit effort changes and queued option snapshots', async () => {
+  const { id, output } = await start()
+  await manager.setUltracode(id, true)
+  await manager.setEffort(id, 'high')
+  expect(output.applyFlagSettings).toHaveBeenLastCalledWith({ effortLevel: 'high', ultracode: true })
+  await manager.setEffort(id, null)
+  expect(output.applyFlagSettings).toHaveBeenLastCalledWith({ effortLevel: null, ultracode: true })
+  const selected = { ...options, ultracode: true }
+  await manager.send(id, '/tmp', 'queued with switch', selected)
+  expect((await manager.open(id, '/tmp')).queue!.items[0].options.ultracode).toBe(true)
 })

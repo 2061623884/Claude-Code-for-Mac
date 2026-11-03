@@ -1,3 +1,4 @@
+import { sessionCommand } from '@shared/sessionCommand'
 import { create } from 'zustand'
 import { applyChatEvent, mergeChatSnapshot, staleChatEvent, type ChatProjection } from './chatSync'
 import { emptySessionSummary } from '@shared/sessionSummary'
@@ -14,6 +15,8 @@ import { useShallow } from 'zustand/react/shallow'
 const EFFORTS: string[] = EFFORT_LEVELS.map((e) => e.value)
 
 export interface ChatEntry extends ChatProjection {
+  firstSendUltracode?: boolean
+  optionsUpdating?: boolean
   projectId: string
   loaded: boolean
 }
@@ -107,7 +110,7 @@ export const useChat = create<ChatStore>((set, get) => {
       const pending = get().chats[sessionId] // 事件可能先于返回值到达
       // 状态/正文事件建立的占位记录不代表后端确认过配置。
       const confirmedOptions = pending?.sync?.fields.options ? pending.options : options
-      set({ chats: { ...get().chats, [sessionId]: { ...blank(projectId, options), ...pending, options: confirmedOptions, projectId, loaded: true } } })
+      set({ chats: { ...get().chats, [sessionId]: { ...blank(projectId, options), ...pending, firstSendUltracode: options.ultracode === true, options: confirmedOptions, projectId, loaded: true } } })
       useDesk.getState().addPendingSession(projectId, sessionId, title?.trim() || text)
       onCreated?.(sessionId)
       useDesk.getState().setView({ kind: 'session', sessionId, projectId })
@@ -137,13 +140,8 @@ export const useChat = create<ChatStore>((set, get) => {
       await optionChanges.get(sessionId)
       const c = get().chats[sessionId]
       if (!c) return
-      // /model、/effort 会直接改会话设置，选择器也跟着变
-      const cmd = /^\/(model|effort)\s+(\S+)\s*$/.exec(text.trim())
-      const value = cmd && (cmd[2] === 'default' || cmd[2] === 'auto' ? null : cmd[2])
-      if (cmd?.[1] === 'model') { await get().setOptions(sessionId, { model: value }); return }
-      if (cmd?.[1] === 'effort' && (value === null || EFFORTS.includes(value as EffortLevel))) {
-        await get().setOptions(sessionId, { effort: value as EffortLevel | null }); return
-      }
+      const control = sessionCommand(text)
+      if (control) { await get().setOptions(sessionId, control); return }
       patch(sessionId, () => ({ error: null }))
       await desk().chat.send(sessionId, projectPath(c.projectId), text, c.options, ...(attachments ? [attachments] : []))
     },
@@ -153,9 +151,9 @@ export const useChat = create<ChatStore>((set, get) => {
     },
 
     async setOptions(sessionId, next) {
-      const { mode, model, effort } = next
+      const { mode, model, effort, ultracode, workflows, fastMode } = next
       return enqueueOptions(sessionId, async () => {
-        patch(sessionId, () => ({ error: null }))
+        patch(sessionId, () => ({ error: null, optionsUpdating: true }))
         try {
           // IPC 只确认命令完成；实际配置统一由主进程的版本化 options 事件更新。
           if (mode !== undefined) {
@@ -164,13 +162,19 @@ export const useChat = create<ChatStore>((set, get) => {
           if (model !== undefined) {
             await desk().chat.setModel(sessionId, model)
           }
+          if (workflows !== undefined || fastMode !== undefined || ultracode !== undefined) {
+            await desk().chat.prepareControls(sessionId, projectPath(get().chats[sessionId].projectId))
+          }
+          if (workflows !== undefined) await desk().chat.setWorkflows(sessionId, workflows)
+          if (fastMode !== undefined) await desk().chat.setFastMode(sessionId, fastMode)
+          if (ultracode !== undefined) await desk().chat.setUltracode(sessionId, ultracode)
           if (effort !== undefined) {
             await desk().chat.setEffort(sessionId, effort)
           }
         } catch (error) {
           patch(sessionId, () => ({ error: `会话设置更新失败：${errorText(error)}` }))
           throw error
-        }
+        } finally { patch(sessionId, () => ({ optionsUpdating: false })) }
       })
     },
 

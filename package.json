@@ -1,7 +1,7 @@
 {
   "name": "claude-desk",
   "productName": "Claude Code",
-  "version": "0.3.39",
+  "version": "0.3.40",
   "private": true,
   "description": "Codex 风格的中文 Claude Code 桌面应用",
   "main": "out/main/index.js",
@@ -82,7 +82,8 @@
         }
       ],
       "icon": "build/icon.icns",
-      "identity": null,
+      "identity": "-",
+      "signIgnore": ["/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude$"],
       "category": "public.app-category.developer-tools",
       "darkModeSupport": true
     }

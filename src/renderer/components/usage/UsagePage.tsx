@@ -22,6 +22,7 @@ export function UsagePage() {
   const [editing, setEditing] = useState(false)
   const request = useRef<(force?: boolean) => void>(() => {})
   useEffect(() => {
+    if (!useUsage.getState().lastAttempt) void refresh()
     let disposed = false, busy = false, timer: ReturnType<typeof setTimeout> | undefined
     const read = async (force = false): Promise<void> => {
       if (busy || disposed) return
@@ -39,7 +40,7 @@ export function UsagePage() {
     const onFocus = (): void => { void read(true) }
     window.addEventListener('focus', onFocus)
     return () => { disposed = true; clearTimeout(timer); clearTimeout(afterResult); unsubscribe(); window.removeEventListener('focus', onFocus) }
-  }, [])
+  }, [refresh])
   const quota = overview?.usage
   const metrics = [
     [formatTokens(stats.total), '累计 Token', '输入、输出、缓存读取和缓存写入之和'],

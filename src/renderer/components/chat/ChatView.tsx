@@ -1,3 +1,4 @@
+import { ModePicker } from '../newSession/ModePicker'
 import { Fragment, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { ComposerAttachment } from '@shared/attachments'
@@ -16,7 +17,7 @@ import { useDesk } from '../../store'
 import { CommandPanel, type PanelContext } from '../commands/CommandPanel'
 import { useCommandAutoOpen } from '../commands/useCommandAutoOpen'
 import { FileContext } from '../files/FileLink'
-import { Composer, EffortChip, ModelChip, PermissionChip } from '../newSession/Composer'
+import { Composer, PermissionChip } from '../newSession/Composer'
 import { ApprovalCard } from './ApprovalCard'
 import { CommandRecord } from './CommandRecord'
 import { ContextMeter } from './ContextMeter'
@@ -137,6 +138,8 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
     sessionId,
     cwd,
     options: chat.options,
+    runtime: chat.runtime,
+    optionsUpdating: chat.optionsUpdating,
     setOptions: (patch) => void setOptions(sessionId, patch).catch(() => {}),
     onRun: runCommand,
     sessionUsage
@@ -215,7 +218,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
               {chat.optionsSaveError && <div role="alert" className="text-[12px] text-danger">{chat.optionsSaveError}</div>}
               {chat.optionsSaved === false && !chat.optionsSaveError && <div className="text-[11px] text-fg3">此旧会话没有已保存配置；当前选择将用于下次执行。</div>}
 
-              <Composer
+              <Composer fast={chat.runtime?.fastMode ? chat.runtime.fastMode === 'on' : undefined} rainbow={chat.runtime ? chat.runtime.ultracode === true : chat.state !== 'error' && chat.firstSendUltracode && !chat.sync?.fields.runtime}
                 queuePanel={<MessageQueue key={`queue-${sessionId}`} queue={chat.queue} canInsert={chat.state === 'running' && chat.activity?.phase !== 'stopping' && !approval} onAction={action => queueAction(sessionId, action)} editingId={editing?.id} onEdit={async item => {
                 await queueAction(sessionId, { type: 'beginEdit', id: item.id })
                 useComposerDrafts.getState().beginEdit(sessionId, item)
@@ -278,13 +281,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 }
                 chips={editing ? <span className="px-2 text-[12px] text-fg3">沿用原队列配置</span> :
                   <>
-                    <ModelChip placement="top" value={chat.options.model} onChange={(model) => void setOptions(sessionId, { model }).catch(() => {})} />
-                    <EffortChip
-                      placement="top"
-                      model={chat.options.model}
-                      value={chat.options.effort}
-                      onChange={(effort) => void setOptions(sessionId, { effort }).catch(() => {})}
-                    />
+                    <ModePicker live options={chat.options} runtime={chat.runtime} cwd={cwd} busy={chat.optionsUpdating} onChange={panelCtx.setOptions} onRetry={() => void window.desk.chat.refreshRuntime(sessionId)} />
                     <PermissionChip placement="top" value={chat.options.mode} onChange={(mode) => void setOptions(sessionId, { mode }).catch(() => {})} />
                   </>
                 }

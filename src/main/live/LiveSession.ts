@@ -1,5 +1,7 @@
 // 一个常驻的 claude 进程，对应一个打开着的会话（流式输入模式，可随时追加消息、中断、切换模式）。
 import type { CanUseTool, HookCallback, McpServerStatus, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { readConfigState } from '../claudeConfigProtocol'
+import type { RuntimeSettings } from '../../shared/chat'
 import { randomUUID } from 'node:crypto'
 import type { HumanSubmission } from '../humanSubmissionRepository'
 import type { CommandInfo } from '../../shared/types'
@@ -49,14 +51,23 @@ const debug = (...args: unknown[]): void => {
 
 export class LiveSession {
   readonly activity = new TurnActivity()
+  tasks = new Map<string, Record<string, unknown>>()
+  runtime: RuntimeSettings = {}
   state: ChatState = 'idle'
   lastActive = Date.now()
   private pending = new Map<string, Pending>()
   private input = new PushQueue<SDKUserMessage>()
+  private releaseInput!: () => void
+  private configured = new Promise<void>(resolve => { this.releaseInput = resolve })
+  private async *configuredInput() {
+    await this.configured
+    yield* this.input
+  }
   private abort = new AbortController()
   private q: Query | null = null
   private closed = false
   private commandsChanged = false
+  private runtimeRequest = 0
   private outstandingInputs = new Set<string>()
   private turnInputIds = new Set<string>()
   private stopTargets: Set<string> | undefined
@@ -82,7 +93,7 @@ export class LiveSession {
       if (this.closed) return
       const { sessionId, cwd, resume, fork, options } = this.init
       this.q = sdk.query({
-        prompt: this.input,
+        prompt: this.configuredInput(),
         options: {
           cwd,
           ...(fork
@@ -93,10 +104,12 @@ export class LiveSession {
           model: options.model ?? undefined,
           permissionMode: options.mode,
           effort: options.effort ?? undefined,
+          settings: { ...(options.workflows !== undefined ? { enableWorkflows: options.workflows } : {}), ...(options.ultracode !== undefined ? { ultracode: options.ultracode } : {}), ...(options.fastMode !== undefined ? { fastMode: options.fastMode } : {}) },
+          enableFileCheckpointing: true,
           systemPrompt: { type: 'preset', preset: 'claude_code' },
           includePartialMessages: true,
           // SDK 会话默认不返回思考文字（只有签名），界面就看不到思考过程；要求返回思考摘要
-          extraArgs: { 'thinking-display': 'summarized' },
+          extraArgs: { 'thinking-display': 'summarized', 'replay-user-messages': null },
           hooks: {
             CwdChanged: [{ hooks: [this.observeDirectory] }],
             DirectoryAdded: [{ hooks: [this.observeDirectory] }]
@@ -109,6 +122,18 @@ export class LiveSession {
         }
       })
       this.onStarted(this.q)
+      await this.refreshRuntime(false)
+      if (options.ultracode && !this.runtime.ultracodeAvailable && this.runtime.workflowAction) {
+        await this.q.applyFlagSettings({ enableWorkflows: true, ultracode: true })
+        await this.refreshRuntime(false)
+      }
+      if (options.effort === null && typeof this.q.applyFlagSettings === 'function') {
+        const ultracode = options.ultracode ?? this.runtime.ultracodeRequested
+        await this.q.applyFlagSettings({ effortLevel: null, ...(ultracode !== undefined ? { ultracode } : {}) })
+        await this.refreshRuntime(false)
+      }
+      if (!this.closed) this.init.emit({ kind: 'runtime', runtime: this.runtime })
+      this.releaseInput()
       if (this.init.onCommands) void this.q.initializationResult().then((result) => {
         if (!this.closed && !this.commandsChanged) this.publishCommands(result.commands)
       }).catch(() => {})
@@ -118,6 +143,8 @@ export class LiveSession {
       if (!this.closed) this.fail(err, '无法启动 Claude')
     }
   }
+
+  async readyForControls(): Promise<void> { await this.configured; await this.query() }
 
   get cwd(): string { return this.init.cwd }
 
@@ -168,8 +195,92 @@ export class LiveSession {
     await (await this.query()).setModel(model ?? undefined)
   }
 
-  async setEffort(effort: SessionOptions['effort']): Promise<void> {
-    await (await this.query()).applyFlagSettings({ effortLevel: effort })
+  async setEffort(effort: SessionOptions['effort'], ultracode?: boolean): Promise<void> {
+    const q = await this.query()
+    const requested = ultracode ?? this.runtime.ultracodeRequested
+    await q.applyFlagSettings({ effortLevel: effort, ...(requested !== undefined ? { ultracode: requested } : {}) })
+  }
+
+  async setWorkflows(enableWorkflows: boolean) {
+    await (await this.query()).applyFlagSettings({ enableWorkflows })
+  }
+
+  async setFastMode(fastMode: boolean): Promise<void> {
+    const q = await this.query()
+    await q.applyFlagSettings({ fastMode })
+    const init = await q.reinitialize()
+    this.runtime.fastMode = init.fast_mode_state
+    this.runtime.fastModeReason = init.fast_mode_disabled_reason
+    if (fastMode && init.fast_mode_state === 'off') {
+      await this.refreshRuntime()
+      throw new Error(init.fast_mode_disabled_reason === 'extra_usage_disabled' ? '快速模式未开启：账号未启用额外用量' : '快速模式未生效：' + (init.fast_mode_disabled_reason ?? 'CLI 未提供原因'))
+    }
+  }
+
+  async control(request: Record<string, unknown>): Promise<any> {
+    const q = await this.query()
+    const bridge = q as unknown as { request(request: Record<string, unknown>): Promise<any> }
+    return bridge.request(request)
+  }
+
+  async applySetting(key: string, value: string): Promise<void> {
+    const settings: Record<string, unknown> = {}
+    if (key === 'outputStyle' || key === 'language') settings[key] = value
+    else if (key === 'thinking') settings.alwaysThinkingEnabled = value === 'true'
+    else throw new Error('此选项需要重载会话')
+    await (await this.query()).applyFlagSettings(settings)
+  }
+
+  async refreshConfiguration() { await (await this.query()).reinitialize() }
+
+  async rewind(target: string, dryRun: boolean) { return (await this.query()).rewindFiles(target, { dryRun }) }
+  async stopTask(taskId: string) { await (await this.query()).stopTask(taskId) }
+
+  async setUltracode(ultracode: boolean): Promise<void> {
+    await (await this.query()).applyFlagSettings({ ultracode })
+  }
+
+  async refreshRuntime(publish = true): Promise<void> {
+    const request = ++this.runtimeRequest
+    try {
+      const q = await this.query()
+      const state = await readConfigState(q)
+      const init = await q.initializationResult?.()
+      if (request !== this.runtimeRequest || this.closed) return
+      if (!state.applied) throw new Error('当前 CLI 不提供实际会话状态')
+      const a = state.applied
+      const configEnv = state.effective.env as Record<string, unknown> | undefined
+      const environmentEffort = process.env.CLAUDE_CODE_EFFORT_LEVEL ?? configEnv?.CLAUDE_CODE_EFFORT_LEVEL
+      const model = init?.models?.find(m => m.resolvedModel === a.model || m.value === a.model)
+      const workflowEnv = process.env.CLAUDE_CODE_WORKFLOWS ?? configEnv?.CLAUDE_CODE_WORKFLOWS
+      const envDisabled = ['0', 'false'].includes(String(workflowEnv))
+      const policyDisabled = state.sources.some(entry => entry.source === 'policySettings' &&
+        (entry.settings.disableWorkflows === true || entry.settings.enableWorkflows === false))
+      const modelBlocked = model?.supportsEffort === false || model?.supportedEffortLevels?.includes('xhigh') === false
+      const proDefault = state.effective.enableWorkflows === undefined && workflowEnv === undefined &&
+        /^(claude )?pro$/i.test(init?.account?.subscriptionType ?? '')
+      const workflowOff = state.effective.enableWorkflows === false || proDefault
+      const restriction = policyDisabled ? '组织策略已禁用工作流'
+        : state.effective.disableWorkflows === true ? 'Claude Code 配置 disableWorkflows 已禁用工作流'
+        : envDisabled ? '环境变量 CLAUDE_CODE_WORKFLOWS 已禁用工作流'
+        : modelBlocked ? '当前模型不支持 Ultracode 所需的 xhigh 档位' : undefined
+      this.runtime = {
+        workflowAction: !restriction && workflowOff,
+        ultraReason: restriction ?? (workflowOff ? '当前会话尚未启用工作流' : 'CLI 未提供具体限制原因'),
+        effortSource: environmentEffort !== undefined ? 'CLAUDE_CODE_EFFORT_LEVEL 环境变量' : undefined,
+        fastMode: this.runtime.fastMode ?? init?.fast_mode_state,
+        fastModeReason: this.runtime.fastModeReason ?? init?.fast_mode_disabled_reason,
+        model: typeof a.model === 'string' ? a.model : undefined,
+        effort: a.effort as RuntimeSettings['effort'],
+        ultracode: typeof a.ultracode === 'boolean' ? a.ultracode : undefined,
+        ultracodeRequested: typeof a.ultracodeRequested === 'boolean' ? a.ultracodeRequested : undefined,
+        ultracodeAvailable: typeof a.ultracodeAvailable === 'boolean' ? a.ultracodeAvailable : undefined
+      }
+    } catch (e) {
+      if (request !== this.runtimeRequest || this.closed) return
+      this.runtime = { error: e instanceof Error ? e.message : String(e) }
+    }
+    if (publish && !this.closed) this.init.emit({ kind: 'runtime', runtime: this.runtime })
   }
 
   async contextUsage(): Promise<ContextUsage | null> {
@@ -196,6 +307,7 @@ export class LiveSession {
       pending.resolve({ behavior: 'deny', message: '会话已结束' })
     }
     this.pending.clear()
+    this.releaseInput()
     this.input.end()
     this.activity.finish()
     this.init.transcript.activity.markInactive()
@@ -248,6 +360,7 @@ export class LiveSession {
         toolName,
         input,
         canAlwaysAllow: !options.suppressAlwaysAllowRule && (options.suggestions?.length ?? 0) > 0,
+        grants: options.suggestions?.map(s => JSON.stringify(s)),
         reason: options.decisionReason
       }
       this.pending.set(requestId, { request, suggestions: options.suggestions, resolve })
@@ -284,6 +397,15 @@ export class LiveSession {
 
   private handle(m: SDKMessage): void {
     this.lastActive = Date.now()
+    if (m.type === 'system') {
+      const event = m as unknown as Record<string, any>
+      if (event.subtype === 'background_tasks_changed') {
+        for (const [id, task] of this.tasks) if (task.status === 'running' && !event.tasks.some((t: any) => t.task_id === id)) task.status = 'ended'
+        for (const task of event.tasks) this.tasks.set(task.task_id, { ...this.tasks.get(task.task_id), ...task, status: 'running' })
+      } else if (String(event.subtype).startsWith('task_') && event.task_id) {
+        this.tasks.set(event.task_id, { ...this.tasks.get(event.task_id), ...event, ...event.patch, status: event.status ?? event.patch?.status ?? (event.subtype === 'task_notification' ? 'completed' : 'running') })
+      }
+    }
     if (m.type === 'system' && m.subtype === 'commands_changed') { this.commandsChanged = true; this.publishCommands(m.commands) }
     this.activity.apply(m)
     this.init.transcript.apply(m, 'live')
@@ -294,7 +416,11 @@ export class LiveSession {
       if (ids.length) this.init.onConsumed?.(ids)
     }
     this.scheduleFlush()
+    if ((m.type === 'result' || (m.type === 'system' && m.subtype === 'init')) && m.fast_mode_state) {
+      this.runtime.fastMode = m.fast_mode_state
+    }
     if (m.type === 'result') {
+      void this.refreshRuntime()
       this.flush()
       const ids = [...new Set([...this.turnInputIds, ...(m.user_message_uuids ?? []), ...(m.user_message_uuid ? [m.user_message_uuid] : [])])]
       this.turnInputIds.clear()

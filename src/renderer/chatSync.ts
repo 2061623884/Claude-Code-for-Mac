@@ -2,7 +2,7 @@ import type { ChatEvent, ChatSnapshot, SessionOptions } from '@shared/chat'
 
 interface Version { received: number; revision?: number }
 type ApprovalEvent = Extract<ChatEvent, { kind: 'approval' | 'approvalDone' }>
-type Field = 'options' | 'queue' | 'activity' | 'summary' | 'state' | 'error' | 'lastResult'
+type Field = 'options' | 'runtime' | 'queue' | 'activity' | 'summary' | 'state' | 'error' | 'lastResult'
 interface SyncState {
   fields: Partial<Record<Field, Version>>
   messages: Record<string, Version>
@@ -38,6 +38,7 @@ export function applyChatEvent(current: ChatProjection, event: ChatEvent, receiv
   }
   switch (event.kind) {
     case 'options': return fields(['options'], { options: event.options, optionsSaved: event.optionsSaved ?? true, optionsSaveError: event.optionsSaveError ?? null })
+    case 'runtime': return fields(['runtime'], { runtime: event.runtime })
     case 'queue': return fields(['queue'], { queue: event.queue })
     case 'activity': return fields(['activity'], (current.activity?.revision ?? 0) <= event.activity.revision ? { activity: event.activity } : {})
     case 'summary': return fields(['summary'], { summary: event.summary })
@@ -89,6 +90,7 @@ export function mergeChatSnapshot(current: ChatProjection, snapshot: ChatSnapsho
     options: newer(sync.fields.options) ? current.options : snapshot.options ?? current.options,
     optionsSaved: newer(sync.fields.options) ? current.optionsSaved : snapshot.optionsSaved,
     optionsSaveError: newer(sync.fields.options) ? current.optionsSaveError : snapshot.optionsSaveError,
+    runtime: newer(sync.fields.runtime) ? current.runtime : snapshot.runtime,
     queue: newer(sync.fields.queue) ? current.queue : snapshot.queue,
     state: newer(sync.fields.state) || (snapshot.revision === undefined && activityNewer) ? current.state : snapshot.state,
     activity: activityNewer ? current.activity : snapshot.activity,

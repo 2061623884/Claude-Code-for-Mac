@@ -7,7 +7,7 @@ import { errorText } from '../../ipcError'
 
 export interface Suggestion { key: string; label: string; hint?: string; detail?: string; insert: string }
 const NO_COMMANDS: CommandInfo[] = []
-function useCommandCatalog(cwd?: string) {
+function useCommandCatalog(cwd: string | undefined, active: boolean) {
   const executable = useDesk((state) => state.settings?.claudePath)
   const scope = JSON.stringify([cwd, executable])
   const currentScope = useRef(scope)
@@ -28,14 +28,14 @@ function useCommandCatalog(cwd?: string) {
   }, [cwd, scope, accept])
   useEffect(() => {
     mounted.current = true
-    if (!cwd) return () => { mounted.current = false }
+    if (!cwd || !active) return () => { mounted.current = false }
     let live = true
     const off = window.desk?.meta?.onCommands?.((snapshot) => { if (live) accept(snapshot) })
     const refresh = (): void => { void request() }
     refresh()
     window.addEventListener('focus', refresh)
     return () => { live = false; mounted.current = false; off?.(); window.removeEventListener('focus', refresh) }
-  }, [cwd, accept, request])
+  }, [cwd, active, accept, request])
   return {
     snapshot: result?.scope === scope ? result.snapshot : { cwd: cwd ?? '', revision: 0, commands: BASE_COMMANDS, status: 'loading' as const, updatedAt: 0 },
     request
@@ -48,13 +48,12 @@ export function matchCommands(commands: CommandInfo[], query: string): Suggestio
     .map((c) => ({ key: c.name, label: '/' + c.name, hint: c.argumentHint || undefined, detail: c.description, insert: '/' + c.name }))
 }
 export function useSuggestions(trigger: Trigger | null, cwd: string | undefined, extra: CommandInfo[] = NO_COMMANDS) {
-  const { snapshot, request } = useCommandCatalog(cwd)
+  const { snapshot, request } = useCommandCatalog(cwd, trigger?.kind === '/')
   const [files, setFiles] = useState<{ context: string; items: Suggestion[] }>({ context: '', items: [] })
   const [selection, setSelection] = useState<{ context: string; key: string } | null>(null)
   const [dismissed, setDismissed] = useState<string | null>(null)
   const context = JSON.stringify([cwd, trigger?.kind, trigger?.start, trigger?.query])
   const kind = trigger?.kind, query = trigger?.query
-  useEffect(() => { if (kind === '/') void request() }, [kind, request])
   useEffect(() => { if (!kind) setDismissed(null) }, [kind])
   useEffect(() => {
     if (kind !== '@' || query === undefined || !cwd) return

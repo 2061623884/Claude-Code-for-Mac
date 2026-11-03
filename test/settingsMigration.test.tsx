@@ -18,7 +18,7 @@ function snapshot(): ClaudeConfigSnapshot { return { cliVersion: '2.1.301', item
 beforeEach(() => {
   useDesk.setState({ home: '/home', view: { kind: 'session', sessionId: 's', projectId: 'p' }, projects: [{ id: 'p', name: 'Project', path: '/project', addedAt: 0, collapsed: false }], selectedProjectId: 'p', settings: { theme: 'light', defaultModel: 'sonnet', defaultEffort: 'low', defaultPermissionMode: 'default', claudePath: null, allowBypass: false } })
   values = { autoCompact: 'true', language: 'English' }
-  window.desk = { meta: { configSnapshot: vi.fn().mockImplementation(async () => snapshot()), config: vi.fn(async (_path, value) => { if (value) { const index = value.indexOf('='); values[value.slice(0, index)] = value.slice(index + 1) }; return value ? 'Saved' : config }) }, chat: { mcp: vi.fn().mockResolvedValue([{ name: 'files', status: 'connected', tools: 7, scope: 'project' }]) } } as unknown as Window['desk']
+  window.desk = { meta: { cachedModels: vi.fn().mockResolvedValue(null), get: vi.fn().mockResolvedValue({ models: [], claudeVersion: null, subscriptionType: null }), configSnapshot: vi.fn().mockImplementation(async () => snapshot()), config: vi.fn(async (_path, value) => { if (value) { const index = value.indexOf('='); values[value.slice(0, index)] = value.slice(index + 1) }; return value ? 'Saved' : config }) }, chat: { control: vi.fn().mockResolvedValue({state:{rules:[]}}), mcp: vi.fn().mockResolvedValue([{ name: 'files', status: 'connected', tools: 7, scope: 'project' }]) } } as unknown as Window['desk']
 })
 afterEach(cleanup)
 it('hides editable stale values during refresh and ignores superseded reads', async () => {
@@ -47,7 +47,7 @@ it('does not project a previous project save into a new project or retain its sa
   expect(window.desk.meta.configSnapshot).toHaveBeenCalledTimes(reads)
   expect(screen.queryByText('已保存')).toBeNull()
   fireEvent.click(screen.getByRole('switch', { name: '自动压缩对话' }))
-  await screen.findByText('已保存')
+  await screen.findByText('已保存 · 后续启动生效')
   expect(window.desk.meta.config).toHaveBeenLastCalledWith('/other', 'autoCompact=false')
 })
 it('marks the saved field unknown when the confirming read fails and allows retry', async () => {
@@ -79,7 +79,7 @@ it('renders every returned option, searches labels and saves enumerated and free
   expect(screen.getByRole('switch', { name: '自动压缩对话' }).getAttribute('aria-checked')).toBe('true')
   expect((screen.getByLabelText('回复语言') as HTMLInputElement).value).toBe('English')
   fireEvent.click(screen.getByRole('switch', { name: '自动压缩对话' }))
-  await screen.findByText('已保存')
+  await screen.findByText('已保存 · 后续启动生效')
   expect(screen.getByRole('switch', { name: '自动压缩对话' }).getAttribute('aria-checked')).toBe('false')
   expect(window.desk.meta.config).toHaveBeenCalledWith('/project', 'autoCompact=false')
   fireEvent.change(screen.getByLabelText('回复语言'), { target: { value: '简体中文' } })
@@ -117,7 +117,7 @@ it('leaves argument commands on their existing route and does not intercept btw'
 it('reads persisted values when reopening and surfaces read errors instead of invented defaults', async () => {
   const view = render(<ClaudeConfigSettings cwd="/project" />)
   fireEvent.click(await screen.findByRole('switch', { name: '自动压缩对话' }))
-  await screen.findByText('已保存')
+  await screen.findByText('已保存 · 后续启动生效')
   view.unmount()
   render(<ClaudeConfigSettings cwd="/project" />)
   expect((await screen.findByRole('switch', { name: '自动压缩对话' })).getAttribute('aria-checked')).toBe('false')
@@ -156,4 +156,19 @@ it('surfaces failed desktop preference writes and keeps the last confirmed value
   fireEvent.click(screen.getByRole('switch', { name: '减少动效' }))
   expect((await screen.findByRole('alert')).textContent).toBe('设置保存失败：disk full')
   expect(screen.getByRole('switch', { name: '减少动效' }).getAttribute('aria-checked')).toBe('false')
+})
+it('shows account and CLI version when advanced settings are opened', async () => {
+  vi.mocked(window.desk.meta.get).mockResolvedValue({ models: [], claudeVersion: '2.1.301', subscriptionType: 'pro' })
+  useDesk.setState({ view: { kind: 'settings', tab: 'advanced' } })
+  render(<SettingsPage />)
+  await screen.findByText('pro')
+  expect(screen.getByText('SDK 内置 v2.1.301')).toBeTruthy()
+})
+it('does not offer Fast in desktop default model selection', async () => {
+  vi.mocked(window.desk.meta.get).mockResolvedValue({ models: [{ value: 'sonnet', label: 'Sonnet', efforts: ['low'] }], claudeVersion: null, subscriptionType: null })
+  useDesk.setState({ view: { kind: 'settings', tab: 'models' } })
+  render(<SettingsPage />)
+  fireEvent.click(screen.getByRole('button', { name: '选择模型' }))
+  await screen.findByRole('button', { name: 'Sonnet' })
+  expect(screen.queryByRole('checkbox', { name: 'Fast' })).toBeNull()
 })

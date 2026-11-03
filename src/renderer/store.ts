@@ -4,7 +4,7 @@ import { useUsage } from './usageStore'
 import { useLayout } from './layoutStore'
 import { projectRemoved } from './projectLifecycle'
 import { errorText } from './ipcError'
-import type { DemoState, DetectedFolder, MetaInfo, Project, SessionSummary, Settings } from '@shared/types'
+import type { DemoState, DetectedFolder, Project, SessionSummary, Settings } from '@shared/types'
 import type { SessionOptions } from '@shared/chat'
 
 export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings'; tab?: 'general' | 'claude' | 'mcp' | 'models' | 'context' | 'notifications' | 'advanced'; projectId?: string | null; sessionId?: string | null } | { kind: 'usage' }
@@ -21,8 +21,6 @@ interface DeskState {
   projects: Project[]
   sessions: Record<string, SessionSummary[]>
   settings: Settings | null
-  meta: MetaInfo | null
-  metaError: string | null
   view: View
   selectedProjectId: string | null
   draftOverrides: Partial<SessionOptions>
@@ -55,12 +53,8 @@ interface DeskState {
 const desk = (): Window['desk'] => window.desk
 
 function chooseGreeting(state: DeskState): string {
-  const overview = useUsage.getState().overview
-  const email = state.meta?.email ?? overview?.account.email
-  const profile = overview && (!state.meta || overview.account.email === state.meta.email) ? overview.profile.name : null
-  // Do not let a late account response change a greeting already on screen.
-  const username = state.meta || state.metaError || overview ? state.username : null
-  return nextGreeting(greetingName(profile, email, username))
+  const { overview, error } = useUsage.getState()
+  return nextGreeting(greetingName(overview?.profile.name, overview?.account.email, overview || error ? state.username : null))
 }
 
 export const useDesk = create<DeskState>((set, get) => ({
@@ -75,8 +69,6 @@ export const useDesk = create<DeskState>((set, get) => ({
   projects: [],
   sessions: {},
   settings: null,
-  meta: null,
-  metaError: null,
   view: { kind: 'new' },
   selectedProjectId: null,
   draftOverrides: {},
@@ -102,10 +94,6 @@ export const useDesk = create<DeskState>((set, get) => ({
       view: demo?.route === 'settings' ? { kind: 'settings' } : { kind: 'new' },
       pendingProjectPath: demo?.dialog === 'add-project' ? (demo.dialogPath ?? state.home) : null
     })
-    desk()
-      .meta.get()
-      .then((meta) => set({ meta }))
-      .catch((err: Error) => set({ metaError: err.message }))
     await get().refreshSessions()
 
     if (demo?.dialog === 'import' || (!state.seededFromHistory && projects.length === 0)) {
@@ -204,13 +192,16 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({ settings: await desk().settings.set(patch) })
   },
 
-  setDraft({ model, mode, effort, projectId }) {
+  setDraft({ model, mode, effort, ultracode, workflows, fastMode, projectId }) {
     set({
       draftOverrides: {
         ...get().draftOverrides,
         ...(model !== undefined && { model }),
         ...(mode !== undefined && { mode }),
-        ...(effort !== undefined && { effort })
+        ...(effort !== undefined && { effort }),
+        ...(ultracode !== undefined && { ultracode }),
+        ...(workflows !== undefined && { workflows }),
+        ...(fastMode !== undefined && { fastMode })
       },
       ...(projectId !== undefined && { selectedProjectId: projectId })
     })

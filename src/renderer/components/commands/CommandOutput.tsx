@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
+import { useClaudeConfig } from '../../hooks/useClaudeConfig'
 import { ChevronRight, RotateCw } from 'lucide-react'
 import type { CommandBlock } from '@shared/chat'
-import { commandText, CONFIG_LABELS, parseCommandOutput, type CommandView } from '@shared/commands'
+import { commandText, CONFIG_LABELS, VALUE_LABELS, parseCommandOutput, type CommandView } from '@shared/commands'
 import { ContextBreakdown } from '../chat/ContextMeter'
 import { Markdown } from '../chat/Markdown'
 import { UsageBar } from '../ui/UsageBar'
@@ -13,7 +14,7 @@ const CURRENT_ZH: [RegExp, string][] = [
 ]
 
 /** 本地斜杠命令的输出内容（显示在输入框上方的浮层里）。onRun 用来执行其中的选项（如切换风格），会话忙时不传 */
-export function CommandOutput({ block, onRun }: { block: CommandBlock; onRun?(command: string): void }) {
+export function CommandOutput({ block, onRun, cwd }: { cwd: string; block: CommandBlock; onRun?(command: string): void }) {
   if (block.output === null) {
     return (
       <div className="flex items-center gap-3 text-[13px] text-fg3">
@@ -22,10 +23,12 @@ export function CommandOutput({ block, onRun }: { block: CommandBlock; onRun?(co
       </div>
     )
   }
-  return <Body view={parseCommandOutput(block.name, block.output)} name={block.name} onRun={onRun} />
+  const view = parseCommandOutput(block.name, block.output)
+  if (view.kind === 'config') return <ConfigRows items={view.items} cwd={cwd} onRun={onRun} />
+  return <Body view={view} name={block.name} onRun={onRun} />
 }
 
-function Body({ view, name, onRun }: { view: CommandView; name: string; onRun?(command: string): void }) {
+function Body({ view, name, onRun }: { view: Exclude<CommandView, { kind: 'config' }>; name: string; onRun?(command: string): void }) {
   switch (view.kind) {
     case 'context':
       return (
@@ -91,28 +94,6 @@ function Body({ view, name, onRun }: { view: CommandView; name: string; onRun?(c
         </>
       )
     }
-    case 'config':
-      return (
-        <div className="-mx-3.5 -my-3.5 max-h-[380px] divide-y divide-line overflow-y-auto">
-          {view.items.map((item) => (
-            <div key={item.key} className="flex items-center gap-4 px-3.5 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]">{CONFIG_LABELS[item.key] ?? item.key}</div>
-                <div className="truncate font-mono text-[11px] text-fg3">{item.key}</div>
-              </div>
-              <div className="flex max-w-[60%] flex-wrap justify-end gap-1">
-                {item.values.length ? (
-                  item.values.map((v) => (
-                    <OptionChip key={v} label={v} small disabled={!onRun} onClick={() => onRun?.(`/config ${item.key}=${v}`)} />
-                  ))
-                ) : (
-                  <code className="font-mono text-[11.5px] text-fg3">/config {item.key}=…</code>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )
     case 'text':
       return view.markdown ? <Markdown text={view.text} /> : <Pre text={view.text} />
     case 'line':
@@ -196,4 +177,40 @@ function ActionButton({ onClick, icon, label }: { onClick(): void; icon: ReactNo
       {label}
     </button>
   )
+}
+
+function ConfigRows({ items, cwd, onRun }: { items: Extract<CommandView, { kind: 'config' }>['items']; cwd: string; onRun?(command: string): void }) {
+  const { snapshot } = useClaudeConfig(cwd)
+  return (
+<div className="-mx-3.5 -my-3.5 max-h-[380px] divide-y divide-line overflow-y-auto">
+          {items.map(item => {
+            const current = snapshot?.items.find(entry => entry.key === item.key)
+            const disabled = !onRun || !!current?.locked
+            const value = current?.value ?? ''
+            const toggle = item.values.length === 2 && item.values.includes('true') && item.values.includes('false') && ['true', 'false'].includes(value)
+            return (
+            <label key={item.key} className="flex items-center justify-between gap-4 px-4 py-2.5 text-[13px]">
+              <span title={item.key}>{CONFIG_LABELS[item.key] ?? item.key}</span>
+              {toggle ? <button type="button" role="switch" aria-checked={value === 'true'} aria-label={CONFIG_LABELS[item.key] ?? item.key}
+                disabled={disabled} title={current?.locked}
+                onClick={() => onRun?.(`/config ${item.key}=${value !== 'true'}`)}
+                className={`relative h-6 w-10 shrink-0 rounded-full disabled:opacity-50 ${value === 'true' ? 'bg-accent' : 'bg-line-strong'}`}>
+                <span className={`absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow-sm ${value === 'true' ? 'translate-x-4' : ''}`} />
+              </button> : item.values.length ? (
+                <select aria-label={CONFIG_LABELS[item.key] ?? item.key} disabled={disabled} value={value}
+                  onChange={e => onRun?.(`/config ${item.key}=${e.target.value}`)}
+                  className="h-8 max-w-[55%] rounded-lg border border-line bg-bg px-2">
+                  <option value="" disabled>选择值</option>
+                  {value && !item.values.includes(value) && <option value={value}>{VALUE_LABELS[value] ?? value}</option>}
+                  {item.values.map(value => <option key={value} value={value}>{VALUE_LABELS[value] ?? value}</option>)}
+                </select>
+              ) : <input key={value} defaultValue={value} disabled={disabled} placeholder="输入值，回车应用" className="h-8 w-40 max-w-[55%] rounded-lg border border-line bg-bg px-2"
+                onKeyDown={e => {
+                  const value = e.currentTarget.value.trim()
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing && value) onRun?.(`/config ${item.key}=${value}`)
+                }} />}
+            </label>
+          )})}
+        </div>
+      )
 }

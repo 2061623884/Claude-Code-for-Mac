@@ -33,6 +33,7 @@ export interface ModelOption {
   value: string
   label: string
   /** 该模型支持的思考程度，空数组表示不支持调节 */
+  resolvedModel?: string
   efforts: EffortLevel[]
 }
 
@@ -41,7 +42,7 @@ export interface Settings {
   defaultModel: string
   defaultPermissionMode: PermissionMode
   /** null 表示使用模型默认的思考程度 */
-  defaultEffort: EffortLevel
+  defaultEffort: EffortLevel | null
   claudePath: string | null
   allowBypass: boolean
   autoScroll?: boolean
@@ -174,7 +175,8 @@ export interface DeskApi {
     set(patch: Partial<Settings>): Promise<Settings>
   }
   meta: {
-    get(): Promise<MetaInfo>
+    get(projectPath?: string): Promise<MetaInfo>
+    cachedModels(projectPath?: string): Promise<ModelOption[] | null>
     commands(projectPath: string, force?: boolean): Promise<CommandCatalogSnapshot>
     onCommands(listener: (snapshot: CommandCatalogSnapshot) => void): () => void
     /** 套餐用量（和终端里 /usage 看到的一样），不消耗额度 */
@@ -215,6 +217,12 @@ export interface DeskApi {
     interrupt(sessionId: string): Promise<void>
     setMode(sessionId: string, mode: PermissionMode): Promise<void>
     setModel(sessionId: string, model: string | null): Promise<void>
+    control(sessionId: string, path: string, operation: string, value?: string): Promise<any>
+    setWorkflows(sessionId: string, enabled: boolean): Promise<void>
+    prepareControls(sessionId: string, projectPath: string): Promise<void>
+    setFastMode(sessionId: string, enabled: boolean): Promise<void>
+    setUltracode(sessionId: string, enabled: boolean): Promise<void>
+    refreshRuntime(sessionId: string): Promise<void>
     setEffort(sessionId: string, effort: EffortLevel | null): Promise<void>
     respond(sessionId: string, requestId: string, decision: Decision): Promise<void>
     /** 会话是否在别处（终端、VS Code）有了新消息 */

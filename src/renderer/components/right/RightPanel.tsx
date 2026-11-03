@@ -14,11 +14,12 @@ import { FileContext } from '../files/FileLink'
 import { StartPane } from './StartPane'
 import { TerminalPane } from './TerminalPane'
 import { BrowserPane } from './BrowserPane'
+import { SessionControlsPane } from './SessionControlsPane'
 import { SummaryDetail } from '../summary/SessionSummary'
 import { SUMMARY_LABELS } from '@shared/sessionSummary'
 
-const LABELS = { start: '开始', files: '工作区文件', terminal: '终端', browser: '浏览器', summary: '摘要', chat: '侧边聊天' }
-const ICONS = { start: Compass, files: FolderOpen, terminal: Terminal, browser: Globe, summary: ListTree, chat: MessageCircleQuestion }
+const LABELS = { controls: '会话控制', start: '开始', files: '工作区文件', terminal: '终端', browser: '浏览器', summary: '摘要', chat: '侧边聊天' }
+const ICONS = { controls: ListTree, start: Compass, files: FolderOpen, terminal: Terminal, browser: Globe, summary: ListTree, chat: MessageCircleQuestion }
 
 export function RightPanel({ sessionId, projectId }: { sessionId: string; projectId: string }) {
   const layout = useLayout()
@@ -105,6 +106,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId: string; projec
                 <div key={page.id} hidden={page.id !== rightTab} className={page.id === rightTab ? 'h-full' : 'hidden'}>
                   {page.kind === 'summary' && page.sessionId && page.projectId && page.section && <SummaryDetail sessionId={page.sessionId} projectId={page.projectId} section={page.section} />}
                   {page.kind === 'chat' && options && <BtwPane pageId={page.id} sessionId={sessionId} cwd={page.cwd ?? cwd} options={options} active={active} />}
+                  {page.kind === 'controls' && cwd && <SessionControlsPane sessionId={sessionId} cwd={cwd} active={active} turnDiff={page.turnDiff} />}
                   {page.kind === 'start' && <StartPane hasProject={Boolean(page.cwd ?? cwd)} onSelect={(kind) => choose(page, kind)} />}
                   {page.kind === 'files' && <ProjectFilesPane cwd={page.cwd ?? cwd} refreshKey={0} />}
                   {page.kind === 'terminal' && <TerminalPane id={page.id} cwd={page.cwd ?? cwd} active={active} />}

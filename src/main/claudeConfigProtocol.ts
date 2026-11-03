@@ -2,6 +2,7 @@ import type { Query } from '@anthropic-ai/claude-agent-sdk'
 
 export type ConfigRecord = Record<string, unknown>
 export interface ConfigState {
+  applied?: ConfigRecord
   effective: ConfigRecord
   sources: { source: string; settings: ConfigRecord }[]
 }
@@ -28,5 +29,5 @@ export async function readConfigState(query: Query): Promise<ConfigState> {
     }
     return { source: entry.source, settings: entry.settings }
   })
-  return { effective: state.effective, sources }
+  return { effective: state.effective, sources, applied: isConfigRecord(state.applied) ? state.applied : undefined }
 }

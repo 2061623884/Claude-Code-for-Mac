@@ -66,6 +66,22 @@ export interface SessionOptions {
   model: string | null
   mode: PermissionMode
   effort: EffortLevel | null
+  ultracode?: boolean
+  workflows?: boolean
+  fastMode?: boolean
+}
+export interface RuntimeSettings {
+  model?: string
+  effort?: EffortLevel | null
+  ultracode?: boolean
+  fastMode?: string
+  fastModeReason?: string
+  ultracodeRequested?: boolean
+  workflowAction?: boolean
+  ultraReason?: string
+  ultracodeAvailable?: boolean
+  error?: string
+  effortSource?: string
 }
 
 export interface QueuedMessage {
@@ -85,6 +101,7 @@ export interface ApprovalRequest {
   toolName: string
   input: Record<string, unknown>
   /** 是否可以「始终允许」 */
+  grants?: string[]
   canAlwaysAllow: boolean
   reason?: string
 }
@@ -99,6 +116,7 @@ export type Decision =
 
 export type ChatEvent = (
   | { kind: 'options'; options: SessionOptions; optionsSaved?: boolean; optionsSaveError?: string | null }
+  | { kind: 'runtime'; runtime: RuntimeSettings }
   | { kind: 'queue'; queue: SessionQueue }
   | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
@@ -125,6 +143,7 @@ export interface ContextUsage {
 }
 
 export interface ChatSnapshot {
+  runtime?: RuntimeSettings
   /** 与实时事件共享的会话版本，用于拒绝过期快照。 */
   revision?: number
   optionsSaved?: boolean
