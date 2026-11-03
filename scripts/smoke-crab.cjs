@@ -7,7 +7,7 @@ const { buildSync } = require('esbuild')
 const scratch = mkdtempSync(join(tmpdir(), 'claude-thinking-'))
 const project = join(scratch, 'project'), userdata = join(scratch, 'userdata')
 mkdirSync(project); mkdirSync(userdata)
-writeFileSync(join(userdata, 'claude-desk.json'), JSON.stringify({ version: 1, projects: [{ id: 'p', name: '动效验证', path: project, addedAt: 0, collapsed: false }], archived: {}, settings: { theme: 'light' }, seededFromHistory: true }))
+writeFileSync(join(userdata, 'claude-desk.json'), JSON.stringify({ version: 1, projects: [{ id: 'p', name: '动效验证', path: project, addedAt: 0, collapsed: false }], archived: {}, settings: { theme: 'light', executionLanguage: 'en' }, seededFromHistory: true }))
 process.env.CLAUDE_DESK_USERDATA = userdata
 buildSync({ entryPoints: [resolve('src/main/transcript.ts'), resolve('src/main/live/TurnActivity.ts')], outdir: join(scratch, 'code'), outbase: resolve('src/main'), outExtension: { '.js': '.cjs' }, bundle: true, platform: 'node', format: 'cjs' })
 const { Transcript } = require(join(scratch, 'code/transcript.cjs'))
@@ -59,6 +59,18 @@ app.on('browser-window-created', (_event, win) => {
     const setState = value => { state=value;win.webContents.send('chat:event','a',{kind:'state',state}) }
 
     const pose = value => wait(`document.querySelector('[data-crab-pose]')?.dataset.crabPose===${JSON.stringify(value)}`)
+    const status = value => wait(`document.querySelector('[data-composer-crab] [role="status"]')?.textContent===${JSON.stringify(value)}`)
+    const checkGesture = async () => {
+      const result = await js(`(() => {
+        const crab = document.querySelector('[data-crab-pose]')
+        const gesture = crab.dataset.crabGesture
+        const pose = crab.dataset.crabPose
+        const expected = gesture === 'thinking' ? 'thinking' : 'working'
+        const props = { thinking: '.crab-bulb', cooking: '.crab-prop', making: '.crab-wrench', sorting: '.crab-prop', growing: '.crab-sprout', exploring: '.crab-glass', playing: '.crab-star' }
+        return { gesture, pose, expected, prop: !!props[gesture] && !!crab.querySelector(props[gesture]) }
+      })()`)
+      if (!result.gesture || result.pose !== result.expected || !result.prop) throw Error('Gesture rendering mismatch: ' + JSON.stringify(result))
+    }
     const type = async text => {
       win.focus()
       await js(`(()=>{const e=document.querySelector('[data-composer]');e.focus();document.execCommand('selectAll')})()`)
@@ -71,30 +83,40 @@ app.on('browser-window-created', (_event, win) => {
       await wait(`!!document.querySelector('[data-composer-crab]')`)
       await shot('crab-home')
       await type('准备一个新任务'); await pose('look'); await shot('crab-home-draft')
-      await open('a'); await pose('thinking'); await shot('crab-thinking-light')
       const crabRect=await js(`(()=>{const r=document.querySelector('.crab').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`)
       win.webContents.sendInputEvent({type:'mouseMove',x:Math.round(crabRect.x+30),y:Math.round(crabRect.y+30)})
       await wait(`getComputedStyle(document.querySelector('.crab-claw-l')).animationName==='crab-greet-claw'`)
       await shot('crab-hover')
-      const hoverCheck=await js(`(()=>{const c=document.querySelector('.crab'),r=c.getBoundingClientRect(),b=c.querySelector('.crab-bulb').getBoundingClientRect(),body=c.querySelector('.crab-body').getBoundingClientRect();return {x:r.x,y:r.y,bulbRight:b.x>body.x+body.width/2,bulbAbove:b.bottom<=body.top,onlyVerb:document.querySelector('.composer-crab-label').textContent===document.querySelector('.composer-crab-verb').textContent}})()`)
+      const hoverCheck=await js(`(()=>{const c=document.querySelector('.crab'),r=c.getBoundingClientRect(),bulb=c.querySelector('.crab-bulb'),b=bulb?.getBoundingClientRect(),body=c.querySelector('.crab-body').getBoundingClientRect();return {x:r.x,y:r.y,bulbRight:!b||b.x>body.x+body.width/2,bulbAbove:!b||b.bottom<=body.top,onlyVerb:!document.querySelector('.composer-crab-verb')||document.querySelector('.composer-crab-label').textContent===document.querySelector('.composer-crab-verb').textContent}})()`)
       if(hoverCheck.x!==crabRect.x||hoverCheck.y!==crabRect.y||!hoverCheck.bulbRight||!hoverCheck.bulbAbove||!hoverCheck.onlyVerb)throw Error('Hover position, bulb placement or verb-only label failed: '+JSON.stringify(hoverCheck))
       win.webContents.sendInputEvent({type:'mouseMove',x:10,y:10})
       const aligned = await js(`(()=>{const c=document.querySelector('.crab').getBoundingClientRect(), box=document.querySelector('[data-composer]').parentElement.getBoundingClientRect();return Math.abs(c.bottom-box.top)<2})()`)
       if(!aligned) throw Error('Crab feet are not on the input edge')
-      const separated=await js(`document.querySelector('[aria-label="消息队列"]').getBoundingClientRect().bottom < document.querySelector('.crab').getBoundingClientRect().top`)
-      if(!separated)throw Error('Queue overlaps crab accessories')
+      await open('a'); await status('Thinking'); await checkGesture(); await shot('crab-thinking-light')
+      const checkQueueSpacing = async () => {
+        const overlaps = await js(`(() => {
+          const queue = document.querySelector('[aria-label="消息队列"]').getBoundingClientRect()
+          const targets = [...document.querySelectorAll('.crab-body, .crab-bulb, .crab-prop, .crab-glass, .crab-star, .composer-crab-label')]
+          return targets.filter(element => {
+            const rect = element.getBoundingClientRect()
+            return rect.width && rect.height && rect.left < queue.right && rect.right > queue.left && rect.top < queue.bottom && rect.bottom > queue.top
+          }).map(element => element.getAttribute('class'))
+        })()`)
+        if (overlaps.length) throw Error('Queue overlaps crab or activity text: ' + overlaps.join(', '))
+      }
+      await checkQueueSpacing()
       nativeTheme.themeSource='dark'; await new Promise(r=>setTimeout(r,200)); await shot('crab-thinking-dark');nativeTheme.themeSource='light'; await new Promise(r=>setTimeout(r,200))
-      await type('下一条排队任务'); await pose('thinking')
-      send(event({type:'content_block_start',index:1,content_block:{type:'text',text:''}})); await pose('writing'); await shot('crab-writing')
+      await type('下一条排队任务'); await status('Thinking'); await checkGesture()
+      send(event({type:'content_block_start',index:1,content_block:{type:'text',text:''}})); await status('Responding'); await checkGesture(); await checkQueueSpacing(); await shot('crab-writing')
       send({type:'assistant',uuid:'tool-final',message:{id:'tool-message',content:[{type:'tool_use',id:'write',name:'Write',input:{file_path:join(project,'README.md'),content:'example'}}]}})
       await wait(`document.querySelector('[data-composer-crab] [role="status"]')?.textContent==='Writing'`)
-      await click('编辑'); await wait(`document.body.innerText.includes('正在编辑排队消息')`); await pose('writing'); await shot('crab-queue-edit'); await click('取消编辑')
+      await click('编辑'); await wait(`document.body.innerText.includes('正在编辑排队消息')`); await status('Writing'); await checkGesture(); await shot('crab-queue-edit'); await click('取消编辑')
       setState('awaiting'); await pose('waiting'); await shot('crab-waiting')
       setState('running');activity.stop();flush(); await wait(`document.querySelector('.composer-crab-state')?.textContent==='Stopping…'`)
       setState('error');await pose('error');await shot('crab-error')
       activity.finish();flush();setState('idle'); await pose('look')
       await open('b');await pose('idle');await open('a');await pose('look')
-      activity.start();flush();setState('running');send({type:'tool_progress',tool_use_id:'bash',tool_name:'Bash'});await pose('working');win.setMinimumSize(500,600);win.setSize(600,720);await new Promise(r=>setTimeout(r,200));await shot('crab-narrow')
+      activity.start();flush();setState('running');send({type:'tool_progress',tool_use_id:'bash',tool_name:'Bash'});await status('Running command');await checkGesture();win.setMinimumSize(500,600);win.setSize(600,720);await new Promise(r=>setTimeout(r,200));await checkQueueSpacing();await shot('crab-narrow')
       const fits=await js(`(()=>{const r=document.querySelector('[data-composer-crab]').getBoundingClientRect();return r.right<=innerWidth})()`)
       if(!fits)throw Error('Crab overflows narrow window')
       win.setSize(1100,820);activity.finish();flush();setState('idle')

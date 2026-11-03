@@ -292,11 +292,11 @@ button {
 }
 
 /* Queue rises from the composer edge, with room on either side. */
-.composer-queue-panel { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); width: calc(100% - clamp(160px, 40%, 280px)); max-width: 480px; z-index: 20; }
-.composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { max-width: 70px; overflow: hidden; }
+.composer-queue-panel { position: absolute; bottom: 100%; right: 0; width: calc(100% - 200px); max-width: 480px; z-index: 20; }
+.composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { max-width: max(90px, calc(100cqw - 590px)); overflow: hidden; }
 @container (max-width: 420px) {
-  .composer-queue-panel { width: calc(100% - 120px); }
-  .composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { visibility: hidden; }
+  .composer-queue-panel { bottom: calc(100% + 54px); right: 0; width: 100%; }
+  .composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { max-width: none; }
 }
 
 /* First-send handoff uses measured viewport coordinates; never blocks the live UI. */
