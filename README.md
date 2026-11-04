@@ -6,11 +6,11 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.40-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.40-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.41-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.41-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
-当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。v0.3.40 的桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
+当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
 
 首次使用需要在本机配置有效的 Claude Code 登录或 API 认证。安装包不包含账号、API Key 或聊天记录。
 
@@ -59,6 +59,12 @@ macOS 红色关闭按钮和 `Command-W` 仅隐藏窗口，聊天、草稿、终�
 | VI | 葡萄紫 `#826394` | 狄俄尼索斯的葡萄酒 |
 
 这是借用希腊神话意象的现代配色，并非古代规定的对应关系。深色主题使用同色系的较亮版本，保持标记清晰。意象参考 [Theoi Greek Mythology](https://www.theoi.com/greek-mythology/olympian-gods.html)。
+
+## v0.3.41 更新
+
+- 修复 SDK 子进程未继承 macOS 手动 HTTP/HTTPS 代理而直连失败的问题。显式代理环境变量优先，后续启动的会话会重新读取系统配置。
+- 自动代理脚本 PAC 和仅 SOCKS 的配置暂不转换为 CLI 环境变量。使用这些配置时需为 CLI 显式提供受支持的代理环境。
+- 类型检查、453 项测试及真实 Sonnet 请求通过。
 
 ## v0.3.40 更新
 
