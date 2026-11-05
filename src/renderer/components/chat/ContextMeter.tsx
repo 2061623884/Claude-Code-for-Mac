@@ -89,7 +89,7 @@ export function ContextBreakdown({ usage, title = '当前上下文' }: { usage: 
         自动压缩：{usage.autoCompactEnabled === false ? '已关闭' : usage.autoCompactEnabled === true ? '已开启' : '状态未知'}
         {usage.autoCompactEnabled === true && <div>触发阈值：{usage.autoCompactThreshold !== undefined ? `${formatTokens(usage.autoCompactThreshold)} tokens` : '未知'}</div>}
       </div>
-      <p className="mt-1 text-[11px] text-fg3">统计窗口可能受压缩设置限制，不代表模型硬上限。当前占用为估算值。</p>
+      <p className="mt-1 text-[11px] text-fg3">当前占用为估算值。统计窗口可能受自动压缩设置限制。</p>
 
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-chip">
         <div className="animate-bar-grow context-meter-bar flex h-full">

@@ -33,7 +33,7 @@ interface ChatStore {
   interrupt(sessionId: string): Promise<void>
   setOptions(sessionId: string, patch: Partial<SessionOptions>): Promise<void>
   respond(sessionId: string, requestId: string, decision: Decision): Promise<void>
-  handle(sessionId: string, event: ChatEvent): void
+  handle(sessionId: string, event: ChatEvent): boolean
 }
 
 let eventRevision = 0
@@ -190,17 +190,16 @@ export const useChat = create<ChatStore>((set, get) => {
         set({ chats: { ...get().chats, [sessionId]: blank('') } })
       }
       const current = get().chats[sessionId]
-      if (staleChatEvent(current, event)) return
+      if (staleChatEvent(current, event)) return false
       patch(sessionId, c => applyChatEvent(c, event, ++eventRevision))
       if (event.kind === 'result') {
         const lastMessage = current.messages.at(-1)
         const completionKey = `${sessionId}:${event.resultId ?? `${lastMessage?.id ?? ''}:${current.activity?.revision ?? 0}`}`
-        if (!completed.has(completionKey)) {
-          completed.add(completionKey)
-          useSessionMarks.getState().complete(sessionId)
-        }
-        if (current.projectId) void useDesk.getState().refreshSessions(current.projectId)
+        if (completed.has(completionKey)) return false
+        completed.add(completionKey)
+        useSessionMarks.getState().complete(sessionId)
       }
+      return true
     }
   }
 })

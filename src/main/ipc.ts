@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { app, BrowserWindow, ipcMain, Notification, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import type { BtwTurn, ChatEvent, Decision, QueueAction, SessionOptions } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
 import { SessionManager } from './live/SessionManager'
@@ -24,6 +24,7 @@ import { readMetadata } from './metadataQuery'
 import { activityRepository } from './activityRepository'
 import { createSessionPreferencesRepository } from './sessionPreferences'
 import { createHumanSubmissionRepository } from './humanSubmissionRepository'
+import { registerAppNotifications } from './appNotifications'
 
 function str(value: unknown, name: string): string {
   if (typeof value !== 'string' || value === '') throw new Error(`参数 ${name} 无效`)
@@ -84,30 +85,7 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     ipcMain.handle(channel, (_e, ...args) => fn(...args))
   }
 
-  handle('app:openNotificationSettings', async () => {
-    if (process.platform === 'darwin') await shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension')
-    else if (process.platform === 'win32') await shell.openExternal('ms-settings:notifications')
-    else throw new Error('请在系统设置中打开通知设置')
-  })
-
-  const notices = new Set<Notification>()
-  ipcMain.handle('app:notify', (event, title: string, body: string, silent: boolean, sessionId?: string) => {
-    if (!Notification.isSupported()) throw new Error('系统不支持通知')
-    const notice = new Notification({ title: str(title, 'title'), body: typeof body === 'string' ? body : '', silent: silent === true })
-    notices.add(notice)
-    notice.once('close', () => notices.delete(notice))
-    notice.once('click', () => {
-      focusWindow?.()
-      if (!event.sender.isDestroyed()) event.sender.send('app:notificationClick', sessionId)
-      notices.delete(notice)
-    })
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => { notices.delete(notice); reject(new Error('系统未确认通知投递，请检查系统通知权限')) }, 10000)
-      notice.once('show', () => { clearTimeout(timeout); resolve() })
-      notice.once('failed', (_event, error) => { clearTimeout(timeout); notices.delete(notice); reject(new Error(error)) })
-      notice.show()
-    })
-  })
+  registerAppNotifications(focusWindow)
   handle('app:state', () => {
     let username: string | null = null
     try { username = userInfo().username } catch { /* greeting may omit the name */ }

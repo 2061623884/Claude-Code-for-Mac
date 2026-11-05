@@ -51,6 +51,13 @@ interface DeskState {
 }
 
 const desk = (): Window['desk'] => window.desk
+const sessionRefreshes = new Map<string, object>()
+
+export function refreshSessionsInBackground(projectId?: string): void {
+  void useDesk.getState().refreshSessions(projectId).catch(error => {
+    useDesk.setState({ actionError: `会话列表刷新失败：${errorText(error)}` })
+  })
+}
 
 function chooseGreeting(state: DeskState): string {
   const { overview, error } = useUsage.getState()
@@ -105,8 +112,20 @@ export const useDesk = create<DeskState>((set, get) => ({
 
   async refreshSessions(projectId) {
     const targets = get().projects.filter((p) => !projectId || p.id === projectId)
-    const entries = await Promise.all(targets.map(async (p) => [p.id, await desk().sessions.list(p.path)] as const))
-    set({ sessions: { ...get().sessions, ...Object.fromEntries(entries) } })
+    await Promise.all(targets.map(async ({ id, path }) => {
+      const request = {}
+      sessionRefreshes.set(id, request)
+      try {
+        const list = await desk().sessions.list(path)
+        if (sessionRefreshes.get(id) === request) {
+          set(state => ({ sessions: { ...state.sessions, [id]: list } }))
+        }
+      } catch (error) {
+        if (sessionRefreshes.get(id) === request) throw error
+      } finally {
+        if (sessionRefreshes.get(id) === request) sessionRefreshes.delete(id)
+      }
+    }))
   },
 
   setView(view) {
@@ -143,6 +162,7 @@ export const useDesk = create<DeskState>((set, get) => ({
 
   async removeProject(id) {
     const projects = await desk().projects.remove(id)
+    sessionRefreshes.delete(id)
     projectRemoved(id)
     const sessions = { ...get().sessions }
     delete sessions[id]

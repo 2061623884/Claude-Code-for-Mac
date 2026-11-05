@@ -5,6 +5,8 @@ import { useSessionMarks } from '../src/renderer/sessionMarks'
 import { Sidebar } from '../src/renderer/components/sidebar/Sidebar'
 import { useDesk } from '../src/renderer/store'
 import { useChat } from '../src/renderer/chatStore'
+import { connectSessionSignals } from '../src/renderer/sessionSignals'
+import type { ChatEvent } from '../src/shared/chat'
 
 vi.hoisted(() => {
   const data = new Map<string, string>()
@@ -67,4 +69,46 @@ it('keeps the unread dot and approval label visible beside row actions', () => {
   render(<Sidebar width={260} />)
   expect(screen.getByLabelText('有未读回复').className).not.toContain('hidden')
   expect(screen.getByText('待确认').className).not.toContain('hidden')
+})
+
+it('only badges reachable unarchived sessions and only notifies for accepted events', () => {
+  let receive!: (id: string, event: ChatEvent) => void
+  let click!: (id: string) => void
+  const stopEvents = vi.fn()
+  const stopClick = vi.fn()
+  const notify = vi.fn().mockResolvedValue(undefined)
+  const setDockUnread = vi.fn().mockResolvedValue(undefined)
+  window.desk = {
+    app: { notify, setDockUnread, onNotificationClick: (listener: typeof click) => { click = listener; return stopClick } },
+    chat: { onEvent: (listener: typeof receive) => { receive = listener; return stopEvents } }
+  } as unknown as Window['desk']
+  useDesk.setState({ settings: null })
+  useSessionMarks.getState().complete('missing')
+  const stop = connectSessionSignals()
+  try {
+    expect(setDockUnread.mock.calls).toEqual([[false]])
+    click('a')
+    expect(useDesk.getState().view).toEqual({ kind: 'session', projectId: 'p', sessionId: 'a' })
+    const result = { kind: 'result', resultId: 'dock-result', durationMs: 10, error: null, revision: 3 } as const
+    receive('a', result)
+    expect(setDockUnread.mock.calls).toEqual([[false], [true]])
+    useSessionMarks.getState().markRead('a')
+    receive('a', { ...result, revision: 4 })
+    receive('a', { ...result, resultId: 'stale', revision: 2 })
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect(setDockUnread.mock.calls).toEqual([[false], [true], [false]])
+
+    useSessionMarks.getState().complete('a')
+    const sessions = useDesk.getState().sessions
+    useDesk.setState({ sessions: { p: sessions.p.map(row => ({ ...row, archived: row.id === 'a' })) } })
+    expect(setDockUnread).toHaveBeenLastCalledWith(false)
+    useDesk.setState({ sessions })
+    expect(setDockUnread).toHaveBeenLastCalledWith(true)
+    useDesk.setState({ projects: [] })
+    expect(setDockUnread).toHaveBeenLastCalledWith(false)
+  } finally {
+    stop()
+  }
+  expect(stopEvents).toHaveBeenCalledOnce()
+  expect(stopClick).toHaveBeenCalledOnce()
 })

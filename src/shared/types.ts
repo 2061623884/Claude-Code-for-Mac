@@ -152,6 +152,7 @@ export interface DeskApi {
   }
   app: {
     notify(title: string, body: string, silent: boolean, sessionId?: string): Promise<void>
+    setDockUnread(unread: boolean): Promise<void>
     openNotificationSettings(): Promise<void>
     onNotificationClick(listener: (sessionId: string) => void): () => void
     state(): Promise<AppState>

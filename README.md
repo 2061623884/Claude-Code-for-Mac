@@ -6,13 +6,19 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.44-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.44-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.45-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.45-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
 
 首次使用需要在本机配置有效的 Claude Code 登录或 API 认证。安装包不包含账号、API Key 或聊天记录。
+
+## v0.3.45 更新
+
+- Dock 为当前项目列表中的未归档会话显示未读角标。打开并阅读最后一条未读会话后清除。
+- 过期事件和重复完成事件不会再次触发系统通知。点击会话通知可从当前列表定位会话。
+- 会话列表按项目处理并发刷新，忽略过期结果和已移除项目的响应。
 
 ## v0.3.44 更新
 

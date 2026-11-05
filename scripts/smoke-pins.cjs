@@ -14,8 +14,10 @@ ipcMain.handle = (name, handler) => handle(name, ({
   'sessions:list': () => ['a','b'].map(id=>({id,title:`会话 ${id}`,cwd:project,lastModified:Date.now(),archived:false})),
   'chat:open': (_e,id) => id === 'b' ? new Promise(resolve=>{releaseOpen=()=>resolve({messages:[],state:'idle',approvals:[],live:false})}) : ({messages:[],state:'idle',approvals:[],live:false}),
   'chat:context':()=>null, 'chat:checkExternal':()=>false,
+  'app:notify':()=>{},
   'meta:get':()=>({models:[],subscriptionType:null,claudeVersion:'fixture'}),
   'meta:usage':()=>({available:false,windows:[]}),
+  'usage:overview':()=>({account:{key:'fixture',email:null,organization:null,subscriptionType:null},profile:{name:'角标验证',avatar:null},usage:{available:false,windows:[]},updatedAt:Date.now()}),
   'meta:commands':(_e,cwd)=>({cwd,revision:1,commands:[],status:'ready',updatedAt:Date.now()})
 })[name] || handler)
 const timeout=setTimeout(()=>{console.error('Timed out');app.exit(1)},45000)
@@ -24,6 +26,7 @@ app.on('browser-window-created',(_e,win)=>{
   win.webContents.once('did-finish-load',async()=>{
     const js=code=>win.webContents.executeJavaScript(code,true)
     const wait=async code=>{for(let i=0;i<100;i++){if(await js(code))return;await new Promise(r=>setTimeout(r,50))}throw Error(code)}
+    const badge=async expected=>{for(let i=0;i<100;i++){if(app.dock.getBadge()===expected)return;await new Promise(r=>setTimeout(r,50))}throw Error('Dock badge did not match '+JSON.stringify(expected))}
     const row=id=>`[...document.querySelectorAll('[role="button"]')].find(e=>e.title==='会话 ${id}')`
     try{
       win.show();win.focus()
@@ -39,26 +42,30 @@ app.on('browser-window-created',(_e,win)=>{
       const result={kind:'result',resultId:'r1',durationMs:10,error:null}
       win.webContents.send('chat:event','b',result)
       await wait(`!!${row('b')}.querySelector('[aria-label="有未读回复"]')`)
+      await badge(' ')
       // 未加载完成不能清除；加载完成并实际打开后清除。
       await js(`${row('b')}.click()`)
       await new Promise(r=>setTimeout(r,150))
       if(!await js(`!!${row('b')}.querySelector('[aria-label="有未读回复"]')`))throw Error('Read before loading')
       releaseOpen()
       await wait(`!${row('b')}.querySelector('[aria-label="有未读回复"]')`)
+      await badge('')
       win.webContents.send('chat:event','b',result)
       await new Promise(r=>setTimeout(r,100))
       if(await js(`!!${row('b')}.querySelector('[aria-label="有未读回复"]')`))throw Error('Duplicate completion')
       win.hide()
       win.webContents.send('chat:event','b',{...result,resultId:'r2'})
       await wait(`!!${row('b')}.querySelector('[aria-label="有未读回复"]')`)
+      await badge(' ')
       win.show();win.focus()
       await wait(`!${row('b')}.querySelector('[aria-label="有未读回复"]')`)
+      await badge('')
       await js(`${row('a')}.click()`)
       win.webContents.send('chat:event','b',{...result,resultId:'r3'})
       await wait(`!!${row('b')}.querySelector('[aria-label="有未读回复"]')`)
       const output=resolve('dist/build-check');mkdirSync(output,{recursive:true})
       writeFileSync(join(output,'pins-unread.png'),(await win.capturePage()).toPNG())
-      console.log('PASS: direct pin/unpin, no duplicate, deferred read, completion dedup, hidden window unread/focus read')
+      console.log('PASS: direct pin/unpin, no duplicate, deferred read, completion dedup, hidden window unread/focus read and native Dock badge')
       clearTimeout(timeout);app.quit()
     }catch(error){console.error(error);clearTimeout(timeout);app.exit(1)}
   })

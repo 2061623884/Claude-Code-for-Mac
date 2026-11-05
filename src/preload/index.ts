@@ -24,7 +24,14 @@ const api: DeskApi = {
     open: call('browser:open'), navigate: call('browser:navigate'), bounds: call('browser:bounds'), action: call('browser:action'), close: call('browser:close'),
     onState: (listener) => subscribe('browser:state', listener)
   },
-  app: { notify: call('app:notify'), openNotificationSettings: call('app:openNotificationSettings'), onNotificationClick: (listener) => { const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id); ipcRenderer.on('app:notificationClick', handler); return () => ipcRenderer.removeListener('app:notificationClick', handler) }, state: call('app:state'), focus: call('app:focus') },
+  app: {
+    notify: call('app:notify'),
+    setDockUnread: call('app:setDockUnread'),
+    openNotificationSettings: call('app:openNotificationSettings'),
+    onNotificationClick: (listener) => subscribe('app:notificationClick', listener),
+    state: call('app:state'),
+    focus: call('app:focus')
+  },
   projects: {
     list: call('projects:list'),
     pickFolder: call('projects:pickFolder'),

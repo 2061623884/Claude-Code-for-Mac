@@ -5,7 +5,8 @@ import { notificationPreview } from '@shared/notificationPreview'
 import { useDesk } from './store'
 
 export function notifyIfAway(sessionId: string, event: ChatEvent): void {
-  if (document.hasFocus() && event.kind !== 'result') return
+  if (event.kind !== 'approval' && event.kind !== 'result') return
+  if (event.kind === 'approval' && document.hasFocus()) return
   const settings = useDesk.getState().settings
   if (event.kind === 'approval' && settings?.notifyApproval === false) return
   if (event.kind === 'result' && settings?.notifyCompletion === false) return

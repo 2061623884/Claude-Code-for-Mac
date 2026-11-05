@@ -11,7 +11,7 @@ beforeEach(() => {
   useDesk.setState({ view: { kind: 'new' }, projects: [{ id: 'p', path: '/a', name: 'P', addedAt: 0, collapsed: false }], actionError: null })
   useLayout.setState({ activeSessionId: null, sessions: {}, pages: [], openFiles: [], rightTab: null, rightOpen: false, expanded: false })
   useBtw.setState({ threads: {}, drafts: {} })
-  window.desk = { sessions: { setArchived: vi.fn().mockResolvedValue(undefined), list: vi.fn().mockResolvedValue([]) }, workspace: { closePage: vi.fn().mockResolvedValue(undefined) }, chat: { btw: vi.fn().mockResolvedValue('answer') } } as unknown as Window['desk']
+  window.desk = { projects: { remove: vi.fn().mockResolvedValue([]) }, sessions: { setArchived: vi.fn().mockResolvedValue(undefined), list: vi.fn().mockResolvedValue([]) }, workspace: { closePage: vi.fn().mockResolvedValue(undefined) }, chat: { btw: vi.fn().mockResolvedValue('answer') } } as unknown as Window['desk']
 })
 it('blocks all sidebar creation on home and lazily opens a start page in a conversation', () => {
   const state = useLayout.getState()
@@ -60,6 +60,26 @@ it('preserves the view and reports archive failure', async () => {
   await useDesk.getState().setArchived(session, 'p', true)
   expect(useDesk.getState().view).toMatchObject({ sessionId: 'a' })
   expect(useDesk.getState().actionError).toContain('disk failure')
+})
+it('keeps the latest refresh when an earlier project list finishes later', async () => {
+  let finish!: (rows: SessionSummary[]) => void
+  const list = vi.mocked(window.desk.sessions.list)
+  list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  list.mockResolvedValueOnce([{ ...session, archived: true }])
+  const earlier = useDesk.getState().refreshSessions()
+  await useDesk.getState().refreshSessions('p')
+  finish([session])
+  await earlier
+  expect(useDesk.getState().sessions.p).toEqual([{ ...session, archived: true }])
+})
+it('does not reinsert sessions from a refresh that outlives project removal', async () => {
+  let finish!: (rows: SessionSummary[]) => void
+  vi.mocked(window.desk.sessions.list).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const pending = useDesk.getState().refreshSessions('p')
+  await useDesk.getState().removeProject('p')
+  finish([session])
+  await pending
+  expect(useDesk.getState().sessions.p).toBeUndefined()
 })
 it('isolates drafts and histories across side chats, with no focus stealing from replies', async () => {
   enter('a'); const a = useLayout.getState().newPage('/a', 'chat')!, b = useLayout.getState().newPage('/a', 'chat')!

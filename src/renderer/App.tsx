@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { PanelLeft, SquarePen } from 'lucide-react'
 import { cancelFirstSend, isFirstSendTarget, syncFirstSend } from './motion/firstSend'
-import { useDesk } from './store'
+import { refreshSessionsInBackground, useDesk } from './store'
 import { useChat } from './chatStore'
 import { usePanel } from './panelStore'
 import { LEFT, useLayout } from './layoutStore'
-import { notifyIfAway } from './notify'
+import { connectSessionSignals } from './sessionSignals'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { IconButton } from './components/sidebar/SessionRow'
 import { NewSessionPage } from './components/newSession/NewSessionPage'
@@ -21,17 +21,14 @@ import { SearchDialog } from './components/dialogs/SearchDialog'
 import { SessionSummary } from './components/summary/SessionSummary'
 
 export function App() {
-  const { actionError, clearActionError, ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, refreshSessions, setSearchOpen } =
+  const { actionError, clearActionError, ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, setSearchOpen } =
     useDesk()
 
   const reduceMotion = useDesk(s => s.settings?.reduceMotion ?? false)
   useLayoutEffect(() => {
     syncFirstSend(view.kind === 'session' ? view.sessionId : undefined)
   }, [view])
-  useEffect(() => window.desk.app.onNotificationClick(sessionId => {
-    const projectId = useChat.getState().chats[sessionId]?.projectId
-    if (projectId) useDesk.getState().setView({ kind: 'session', sessionId, projectId })
-  }), [])
+  useEffect(connectSessionSignals, [])
   useEffect(() => cancelFirstSend, [])
   useEffect(() => {
     if (reduceMotion) cancelFirstSend()
@@ -42,15 +39,6 @@ export function App() {
   useEffect(() => {
     void init()
   }, [init])
-
-  useEffect(
-    () =>
-      window.desk.chat.onEvent((sessionId, event) => {
-        useChat.getState().handle(sessionId, event)
-        notifyIfAway(sessionId, event)
-      }),
-    []
-  )
 
   // 开发截图用：自动打开会话或自动发送消息（等会话列表加载后执行一次）
   useEffect(() => ready ? startUsagePolling() : undefined, [ready])
@@ -98,10 +86,10 @@ export function App() {
 
   // 回到窗口时刷新会话列表（可能在终端或 VS Code 里有新对话）
   useEffect(() => {
-    const onFocus = (): void => void refreshSessions()
+    const onFocus = (): void => refreshSessionsInBackground()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [refreshSessions])
+  }, [])
 
   const { leftWidth, resizing, setLeftWidth, rightOpen, expanded } = useLayout()
 
