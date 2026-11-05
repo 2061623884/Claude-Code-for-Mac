@@ -1,4 +1,4 @@
-import type { ClaudeConfigSnapshot } from './claudeConfig'
+import type { ClaudeConfigChange, ClaudeConfigSnapshot } from './claudeConfig'
 import type { UsageAnalytics, UsageOverview, UsageProfile } from './usageAnalytics'
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
@@ -151,6 +151,9 @@ export interface DeskApi {
     onState(listener: (id: string, state: BrowserState) => void): () => void
   }
   app: {
+    notify(title: string, body: string, silent: boolean, sessionId?: string): Promise<void>
+    openNotificationSettings(): Promise<void>
+    onNotificationClick(listener: (sessionId: string) => void): () => void
     state(): Promise<AppState>
     /** 把窗口带到最前面（点系统通知时） */
     focus(): Promise<void>
@@ -184,10 +187,12 @@ export interface DeskApi {
     /** 执行 /config：不带参数返回设置清单，带 key=value 修改一项（临时会话，不写入任何对话） */
     config(projectPath: string, setting?: string): Promise<string>
     configSnapshot(projectPath: string): Promise<ClaudeConfigSnapshot>
+    onConfigChanged(listener: (change: ClaudeConfigChange) => void): () => void
   }
   files: {
     /** Electron 44 不再在 File 对象上暴露 path，需要通过 webUtils 转换 */
     pathFor(file: File): string
+    saveImage(bytes: Uint8Array, mime: string): Promise<string>
     /** 校验路径并返回普通文件信息；目录、缺失和不可读文件会被过滤 */
     describe(paths: string[]): Promise<FileInfo[]>
     search(projectPath: string, query: string): Promise<string[]>

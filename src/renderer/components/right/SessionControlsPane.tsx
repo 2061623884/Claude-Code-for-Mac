@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useComposerDrafts } from '../../composerDraftStore'
 
 import { Trash2 } from 'lucide-react'
 
+const taskStates: Record<string, string> = { running: '运行中', queued: '等待中', pending: '等待中', done: '已完成', completed: '已完成', failed: '失败', error: '失败', stopped: '已停止', cancelled: '已停止', canceled: '已停止', ended: '已结束' }
+const taskTypes: Record<string, string> = { local_workflow: '工作流', local_agent: '子代理', local_bash: '后台命令', local_monitor: '监控任务' }
 const behaviors: Record<string, string> = { allow: '允许', ask: '询问', deny: '拒绝' }
 const scopes: Record<string, string> = { userSettings: '用户', localSettings: '本地项目', projectSettings: '共享项目', policySettings: '组织策略', flagSettings: '启动参数' }
 
@@ -11,6 +13,7 @@ interface Task {
   task_type?: string
   description?: string
   status?: string
+  agents?: { id: string; label?: string; state?: string; tokens?: number }[]
 }
 interface Rule {
   rule: string
@@ -34,6 +37,8 @@ export function SessionControlsPane({ sessionId, cwd, active, turnDiff, initialT
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
   const [output, setOutput] = useState('')
+  const actionVersion = useRef(0)
+  useEffect(() => { actionVersion.current++; setOutput(''); setBusy(false) }, [sessionId, cwd, tab])
 
   useEffect(() => {
     if (!active) return
@@ -59,14 +64,16 @@ export function SessionControlsPane({ sessionId, cwd, active, turnDiff, initialT
   }, [sessionId, cwd, tab, source, revision, active, turnDiff])
 
   async function taskAction(operation: string, id: string) {
+    const version = ++actionVersion.current
     setBusy(true)
     setError('')
     try {
       const value = await window.desk.chat.control(sessionId, cwd, operation, id)
-      if (operation === 'taskOutput') setOutput(value?.output ?? value?.response?.output ?? '暂无输出')
+      if (version !== actionVersion.current) return
+      if (operation === 'taskOutput') setOutput(formatTaskOutput(value?.output ?? value?.response?.output ?? '暂无输出'))
       setRevision(r => r + 1)
-    } catch (e) { setError(String(e)) }
-    finally { setBusy(false) }
+    } catch (e) { if (version === actionVersion.current) setError(String(e)) }
+    finally { if (version === actionVersion.current) setBusy(false) }
   }
 
   async function changeRule(change: Record<string, unknown>) {
@@ -116,7 +123,8 @@ export function SessionControlsPane({ sessionId, cwd, active, turnDiff, initialT
       {!tasks.length && <p className="p-3 text-fg3">暂无任务</p>}
       {tasks.map(task => <div key={task.task_id} className="p-3">
         <div>{task.description ?? task.task_id}</div>
-        <div className="my-2 text-[12px] text-fg3">{task.task_type} · {task.status}</div>
+        <div className="my-2 text-[12px] text-fg3">{taskTypes[task.task_type ?? ''] ?? task.task_type} · {taskStates[task.status ?? ''] ?? task.status}</div>
+        {!!task.agents?.length && <ul className="mb-3 space-y-1" aria-label="子代理进度">{task.agents.map(agent => <li key={agent.id} className="flex justify-between gap-3 text-[12px]"><span>{agent.label ?? agent.id}</span><span className="text-fg2">{taskStates[agent.state ?? ''] ?? agent.state ?? '等待中'}</span></li>)}</ul>}
         <button disabled={busy} onClick={() => void taskAction('taskOutput', task.task_id)} className={buttonStyle}>查看输出</button>
         {task.status === 'running' && <button disabled={busy} onClick={() => void taskAction('stopTask', task.task_id)}
           className={buttonStyle + ' ml-2 text-danger'}>停止此任务</button>}
@@ -158,4 +166,18 @@ export function SessionControlsPane({ sessionId, cwd, active, turnDiff, initialT
       </div>
     </>}
   </div>
+}
+
+
+export function formatTaskOutput(output: string): string {
+  try {
+    const value = JSON.parse(output)
+    if (typeof value.agentCount !== 'number' || !('result' in value)) return output
+    const agents = Array.isArray(value.workflowProgress) ? value.workflowProgress.filter((item: any) => item.type === 'workflow_agent') : []
+    const render = (result: unknown) => typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+    const results = Array.isArray(value.result)
+      ? value.result.map((result: unknown, index: number) => `${agents[index]?.label ?? `子代理 ${index + 1}`}\n${render(result)}`).join('\n\n')
+      : render(value.result)
+    return [value.summary, results, Array.isArray(value.logs) && value.logs.length ? `执行日志\n${value.logs.join('\n')}` : ''].filter(Boolean).join('\n\n')
+  } catch { return output }
 }

@@ -124,7 +124,7 @@ export type ChatEvent = (
   | { kind: 'state'; state: ChatState }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'approvalDone'; requestId: string }
-  | { kind: 'result'; resultId?: string; durationMs: number; error: string | null; diagnostic?: { subtype: string; errors: string[]; terminalReason?: string; userMessageIds: string[]; userStopped: boolean } }
+  | { kind: 'result'; resultId?: string; replyPreview?: string; durationMs: number; error: string | null; diagnostic?: { subtype: string; errors: string[]; terminalReason?: string; userMessageIds: string[]; userStopped: boolean } }
   | { kind: 'notice'; text: string }
 ) & { revision?: number }
 

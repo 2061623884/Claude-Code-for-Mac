@@ -1,3 +1,6 @@
+import { refreshSessionRuntime } from '../../refreshSessionRuntime'
+import { parseDesktopCommand } from '@shared/sessionCommand'
+import { errorText } from '../../ipcError'
 import { ModePicker } from '../newSession/ModePicker'
 import { Fragment, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
@@ -124,7 +127,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
     <Message
       key={message.id}
       message={message}
-      indicator={anchorExists && message.id === chat.activity?.messageId ? liveIndicator : null}
+      indicator={null}
       activeBlock={chat.activity?.blockIndex}
       running={running}
       cwd={cwd}
@@ -195,7 +198,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   )}
                 </Fragment>
               ))}
-              {!anchorExists && liveIndicator}
+              {liveIndicator}
               {chat.error && (
                 <div className="my-3 rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-[13px] text-danger select-text">
                   {chat.error}
@@ -264,12 +267,13 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   stick.current = true
                   try {
                     if (editing) {
+                      if (parseDesktopCommand(prompt)) throw new Error('不能把设置指令保存到消息队列，请取消编辑后执行。')
                       setEditBusy(true)
                       await queueAction(sessionId, { type: 'edit', id: editing.id, text: prompt, attachments: [...new Set([...editing.originalPaths, ...files.map(f => f.path)])] })
                       useComposerDrafts.getState().finishEdit(sessionId)
                     } else await send(sessionId, prompt, files.map(f => f.path))
                   } catch (err) {
-                    setSendError(err instanceof Error ? err.message : String(err))
+                    setSendError(errorText(err))
                     throw err
                   } finally { setEditBusy(false) }
                 }}
@@ -281,7 +285,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 }
                 chips={editing ? <span className="px-2 text-[12px] text-fg3">沿用原队列配置</span> :
                   <>
-                    <ModePicker live options={chat.options} runtime={chat.runtime} cwd={cwd} busy={chat.optionsUpdating} onChange={panelCtx.setOptions} onRetry={() => void window.desk.chat.refreshRuntime(sessionId)} />
+                    <ModePicker live options={chat.options} runtime={chat.runtime} cwd={cwd} busy={chat.optionsUpdating} onChange={panelCtx.setOptions} onRetry={() => refreshSessionRuntime(sessionId, cwd)} />
                     <PermissionChip placement="top" value={chat.options.mode} onChange={(mode) => void setOptions(sessionId, { mode }).catch(() => {})} />
                   </>
                 }

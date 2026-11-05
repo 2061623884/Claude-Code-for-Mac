@@ -151,6 +151,7 @@ export interface EditorHandle {
 }
 
 interface EditorProps {
+  onFiles?(files: File[]): void
   value: string
   /** 内容或光标变化：value 是导出字符串，text/caret 用来识别 / 命令和 @ 补全 */
   onChange(value: string, text: string, caret: number): void
@@ -179,11 +180,11 @@ export function ComposerEditor(props: EditorProps) {
   )
 }
 
-function Editor({ value, onChange, onKey, placeholder, rows, autoFocus, cwd, home, editorRef }: EditorProps) {
+function Editor({ onFiles, value, onChange, onKey, placeholder, rows, autoFocus, cwd, home, editorRef }: EditorProps) {
   const [editor] = useLexicalComposerContext()
   const emitted = useRef(value)
-  const latest = useRef({ onChange, onKey, cwd, home })
-  latest.current = { onChange, onKey, cwd, home }
+  const latest = useRef({ onChange, onKey, cwd, home, onFiles })
+  latest.current = { onChange, onKey, cwd, home, onFiles }
 
   const fileNode = (path: string): FileNode => new FileNode(path, referenceFor(path, latest.current.cwd))
 
@@ -246,6 +247,11 @@ function Editor({ value, onChange, onKey, placeholder, rows, autoFocus, cwd, hom
     const offPaste = editor.registerCommand(
       PASTE_COMMAND,
       (event) => {
+        if (event instanceof ClipboardEvent && event.clipboardData?.files.length && latest.current.onFiles) {
+          event.preventDefault()
+          latest.current.onFiles(Array.from(event.clipboardData.files))
+          return true
+        }
         const text = event instanceof ClipboardEvent ? event.clipboardData?.getData('text/plain')?.trim() : ''
         if (!text) return false
         const paths = text.split(/\r?\n/).map((line) => {

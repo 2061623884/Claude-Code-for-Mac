@@ -57,3 +57,10 @@ it('keeps explicit overrides after a failed start so retry uses the same choices
   await useChat.getState().start('retry')
   expect(window.desk.chat.start).toHaveBeenLastCalledWith('/tmp', 'retry', { model: null, effort: 'medium', mode: 'plan' })
 })
+
+it('drops a stale bypass draft after the permission option is disabled', async () => {
+  useDesk.setState({ settings: { ...settings, allowBypass: true }, draftOverrides: { mode: 'bypassPermissions' } })
+  await useDesk.getState().updateSettings({ allowBypass: false })
+  await useChat.getState().start('task')
+  expect(window.desk.chat.start).toHaveBeenCalledWith('/tmp', 'task', expect.objectContaining({ mode: 'default' }))
+})

@@ -6,13 +6,23 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.41-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.41-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.43-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.43-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
 
 首次使用需要在本机配置有效的 Claude Code 登录或 API 认证。安装包不包含账号、API Key 或聊天记录。
+
+## v0.3.43 更新
+
+- 设置统一为桌面交互，移除终端专用选项。回复语言提供常用语言选择和自定义入口，保存后核对实际读取值。
+- 模型与思考程度选择器精简重复状态文案；历史对话显示已保存选择，重试会先准备会话再读取状态。
+- 工作流开关明确持久化；后台任务显示子代理进度、停止状态和可读结果。
+- 完成通知使用对话标题和本次回复的文字预览；通知设置增加投递反馈和系统设置入口。系统勿扰、共享屏幕限制仍由 macOS 控制。
+- 改进配置变更监听、会话控制指令和草稿状态同步；用量统计支持按模型查看。
+
+验证：类型检查、521 项自动化测试和生产构建通过。隔离真实任务覆盖语言与输出风格、自动压缩、两子代理工作流、重启及停止；这些验证不会随安装自动执行。
 
 ## 功能
 

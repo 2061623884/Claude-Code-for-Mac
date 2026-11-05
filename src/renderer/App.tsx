@@ -28,6 +28,10 @@ export function App() {
   useLayoutEffect(() => {
     syncFirstSend(view.kind === 'session' ? view.sessionId : undefined)
   }, [view])
+  useEffect(() => window.desk.app.onNotificationClick(sessionId => {
+    const projectId = useChat.getState().chats[sessionId]?.projectId
+    if (projectId) useDesk.getState().setView({ kind: 'session', sessionId, projectId })
+  }), [])
   useEffect(() => cancelFirstSend, [])
   useEffect(() => {
     if (reduceMotion) cancelFirstSend()

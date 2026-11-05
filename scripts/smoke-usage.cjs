@@ -13,7 +13,7 @@ const entries = []
 for (let i = 0; i < 365; i++) {
   const date = new Date(); date.setHours(12, 0, 0, 0); date.setDate(date.getDate() - i)
   if (i % 7 === 0 || i > 70 && i < 170) continue
-  entries.push({ type: 'assistant', uuid: 'fixture-' + i, timestamp: date.toISOString(), message: { id: 'response-' + i, usage: { input_tokens: 1000 * (i % 9 + 1), output_tokens: 1200, cache_read_input_tokens: 25000 * (i % 13), cache_creation_input_tokens: 4000 } } })
+  entries.push({ type: 'assistant', uuid: 'fixture-' + i, timestamp: date.toISOString(), message: { id: 'response-' + i, model: ['claude-fable-5', 'claude-opus-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5'][i % 4], usage: { input_tokens: 1000 * (i % 9 + 1), output_tokens: 1200, cache_read_input_tokens: 25000 * (i % 13), cache_creation_input_tokens: 4000 } } })
 }
 entries.push({ type: 'system', subtype: 'turn_duration', durationMs: 6540000 })
 writeFileSync(join(config, 'projects/fixture/session.jsonl'), entries.map(e => JSON.stringify(e)).join('\n'))
@@ -52,6 +52,15 @@ app.on('browser-window-created', (_e, win) => {
       if(await js(`document.querySelector('main').innerText.includes('更新于')||document.querySelector('main').innerText.includes('每格代表')`))throw Error('Persistent helper text'); await shot('usage-daily-light'); await js(`document.querySelector('[aria-label="Token 活动"]').scrollIntoView({block:'center'})`); await shot('usage-heatmap')
       await click('每周'); await wait(`!!document.querySelector('[aria-label="每周 Token 方格图"]')`); await js(`document.querySelector('[aria-label="每周 Token 方格图"] button:last-child').focus()`); await wait(`!!document.querySelector('[aria-label="用量明细"]')`); await shot('usage-weekly')
       await click('累计'); await wait(`!!document.querySelector('[aria-label="累计 Token 方格图"]')`); await shot('usage-cumulative')
+      for (const model of ['fable', 'opus', 'sonnet', 'haiku']) {
+        const expectedModel = entries.filter(e => e.message?.model?.includes(model)).reduce((n, e) => n + Object.values(e.message.usage).reduce((a, b) => a + b, 0), 0)
+        const actualModel = stats.days.reduce((n, day) => n + Object.values(day.byModel?.[model] || {}).reduce((a, b) => a + b, 0), 0)
+        if (actualModel !== expectedModel) throw Error(`${model} worker total ${actualModel} != ${expectedModel}`)
+        await click(model[0].toUpperCase() + model.slice(1))
+        const formatted = expectedModel >= 100000000 ? `${Number((expectedModel / 100000000).toFixed(1))} 亿` : expectedModel >= 10000 ? `${Number((expectedModel / 10000).toFixed(1))} 万` : expectedModel.toLocaleString('zh-CN')
+        await wait(`document.querySelector('[data-usage-metric="累计 Token"]').lastElementChild.textContent===${JSON.stringify(formatted)}`)
+      }
+      await shot('usage-model-filter'); await click('Total')
       await js(`document.querySelector('main > div:last-child').scrollTop=0`); await click('编辑个人展示资料')
       await js(`(async()=>{const canvas=document.createElement('canvas');canvas.width=300;canvas.height=180;const c=canvas.getContext('2d');c.fillStyle='#dd7755';c.fillRect(0,0,300,180);const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));const data=new DataTransfer();data.items.add(new File([blob],'avatar.png',{type:'image/png'}));const input=document.querySelector('input[type="file"]');input.files=data.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`)
       await wait(`!!document.querySelector('img[alt="头像预览"]')`)

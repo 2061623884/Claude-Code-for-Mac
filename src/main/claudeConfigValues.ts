@@ -14,6 +14,9 @@ const LEGACY: Record<string, [string, string | boolean, boolean?]> = {
   progressBar: ['terminalProgressBarEnabled', true, true], theme: ['theme', 'dark', true],
   turnDuration: ['showTurnDuration', true, true], verbose: ['verbose', false, true]
 }
+// Only these legacy preferences may invalidate a settings view; counters and auth caches must not.
+export const LEGACY_CONFIG_KEYS = [...Object.values(LEGACY).map(rule => rule[0]), 'remoteControlAtStartup', 'workflowSizeGuideline']
+
 const SETTINGS: Record<string, [string, string | boolean]> = {
   language: ['language', 'default'], outputStyle: ['outputStyle', 'default'],
   permissionMode: ['permissions.defaultMode', 'default'], promptSuggestionEnabled: ['promptSuggestionEnabled', true],

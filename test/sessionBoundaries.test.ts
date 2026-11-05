@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { LiveSession } from '../src/main/live/LiveSession'
 import { SessionManager } from '../src/main/live/SessionManager'
 import { PushQueue } from '../src/main/live/PushQueue'
 import type { ChatEvent } from '../src/shared/chat'
@@ -53,16 +54,17 @@ it('shares one runtime between concurrent side questions and main sends', async 
   expect(sdk.query.mock.results[0].value.close).toHaveBeenCalledOnce()
 })
 
-it.each(['interrupt', 'pause'] as const)('%s cancels dispatch awaiting SDK options without losing the queued message', async action => {
+it.each(['interrupt', 'pause'] as const)('%s cancels dispatch awaiting SDK readiness without losing the queued message', async action => {
   const { id, output, first, input } = await start()
   const changing = deferred<void>()
-  output.setModel.mockReturnValue(changing.promise)
-  await manager.send(id, '/tmp', 'second', { ...options, model: 'other' })
+  await manager.send(id, '/tmp', 'second', options)
+  const readiness = vi.spyOn(LiveSession.prototype, 'readyForControls').mockImplementationOnce(() => changing.promise)
   output.push({ type: 'result', subtype: 'success', is_error: false, result: 'done', user_message_uuid: first.uuid, duration_ms: 1, queued_turn_count: 0 })
-  await vi.waitFor(() => expect(output.setModel).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(readiness).toHaveBeenCalledOnce())
   if (action === 'interrupt') await manager.interrupt(id)
   else await manager.queueAction(id, '/tmp', { type: 'pause' })
   changing.resolve()
+  readiness.mockRestore()
   // 同一会话后续命令完成，说明此前的派发已经退出。
   await manager.setEffort(id, null)
   const snapshot = await manager.open(id, '/tmp')

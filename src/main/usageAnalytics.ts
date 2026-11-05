@@ -4,11 +4,11 @@ import { join, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setImmediate } from 'node:timers/promises'
 import type { TokenUsage } from '../shared/chat'
-import { dateKey, EMPTY_ANALYTICS, streaks, type DailyUsage, type UsageAnalytics } from '../shared/usageAnalytics'
+import { dateKey, EMPTY_ANALYTICS, streaks, usageModel, type DailyUsage, type UsageAnalytics, type UsageModel } from '../shared/usageAnalytics'
 
-type RecordUsage = { id: string; time: number; usage: TokenUsage }
+type RecordUsage = { id: string; time: number; model: UsageModel | null; usage: TokenUsage }
 type FileIndex = { size: number; mtime: number; records: RecordUsage[]; longestTaskMs: number | null; issues: number }
-type Cache = { version: 1; root: string; files: Record<string, FileIndex>; longestRecordedTaskMs: number | null }
+type Cache = { version: 2; root: string; files: Record<string, FileIndex>; longestRecordedTaskMs: number | null }
 const validNumber = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0
 
 /** Version-bound JSONL adapter. Only extract usage metadata; never retain conversation text. */
@@ -22,7 +22,7 @@ export function extractUsage(entry: any): { record?: RecordUsage; duration?: num
   const fields = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']
   if (!id || !Number.isFinite(time) || fields.some(k => raw[k] !== undefined && !validNumber(raw[k]))) return { invalid: true }
   const [input, output, cacheRead, cacheWrite] = fields.map(k => raw[k] ?? 0)
-  return { record: { id, time, usage: { input, output, cacheRead, cacheWrite } } }
+  return { record: { id, time, model: usageModel(entry.message.model), usage: { input, output, cacheRead, cacheWrite } } }
 }
 export function aggregateUsage(files: FileIndex[], now = new Date()): UsageAnalytics {
   const unique = new Map<string, RecordUsage>()
@@ -35,16 +35,21 @@ export function aggregateUsage(files: FileIndex[], now = new Date()): UsageAnaly
       if (!previous) unique.set(record.id, { ...record, usage: { ...record.usage } })
       else {
         previous.time = Math.min(previous.time, record.time)
+        previous.model ??= record.model
         for (const k of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) previous.usage[k] = Math.max(previous.usage[k], record.usage[k])
       }
     }
   }
   const daily = new Map<string, DailyUsage>()
-  for (const { time, usage } of unique.values()) {
+  for (const { time, usage, model } of unique.values()) {
     const date = dateKey(new Date(time))
     if (date > dateKey(now)) { issues++; continue }
-    const day = daily.get(date) ?? { date, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+    const day: DailyUsage = daily.get(date) ?? { date, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, byModel: {} }
     for (const k of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) { day[k] += usage[k]; day.total += usage[k] }
+    if (model) {
+      const counters = day.byModel![model] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      for (const k of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) counters[k] += usage[k]
+    }
     daily.set(date, day)
   }
   const days = [...daily.values()].sort((a, b) => a.date.localeCompare(b.date))
@@ -55,7 +60,7 @@ export class UsageIndexer {
   private loaded = false
   private pending: Promise<UsageAnalytics> | null = null
   private snapshot: UsageAnalytics = { ...EMPTY_ANALYTICS }
-  constructor(private root: string, private cachePath: string) { this.cache = { version: 1, root, files: {}, longestRecordedTaskMs: null } }
+  constructor(private root: string, private cachePath: string) { this.cache = { version: 2, root, files: {}, longestRecordedTaskMs: null } }
   async recordDuration(duration: number): Promise<void> {
     if (!validNumber(duration)) return
     await this.load()
@@ -68,7 +73,11 @@ export class UsageIndexer {
     return this.loadPromise ??= (async () => {
       try {
         const c = JSON.parse(await readFile(this.cachePath, 'utf8'))
-        if (c.version === 1 && c.root === this.root && c.files && typeof c.files === 'object') this.cache = c
+        if (c.root === this.root) {
+          if (c.version === 2 && c.files && typeof c.files === 'object') this.cache = c
+          // Re-read transcripts from the old index to recover model metadata.
+          else if (c.version === 1 && validNumber(c.longestRecordedTaskMs)) this.cache.longestRecordedTaskMs = c.longestRecordedTaskMs
+        }
       } catch { /* Derived cache can always be rebuilt. */ }
       this.loaded = true
     })()

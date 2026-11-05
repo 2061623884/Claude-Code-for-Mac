@@ -24,7 +24,7 @@ const api: DeskApi = {
     open: call('browser:open'), navigate: call('browser:navigate'), bounds: call('browser:bounds'), action: call('browser:action'), close: call('browser:close'),
     onState: (listener) => subscribe('browser:state', listener)
   },
-  app: { state: call('app:state'), focus: call('app:focus') },
+  app: { notify: call('app:notify'), openNotificationSettings: call('app:openNotificationSettings'), onNotificationClick: (listener) => { const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id); ipcRenderer.on('app:notificationClick', handler); return () => ipcRenderer.removeListener('app:notificationClick', handler) }, state: call('app:state'), focus: call('app:focus') },
   projects: {
     list: call('projects:list'),
     pickFolder: call('projects:pickFolder'),
@@ -41,8 +41,9 @@ const api: DeskApi = {
     setArchived: call('sessions:setArchived')
   },
   settings: { get: call('settings:get'), set: call('settings:set') },
-  meta: { get: call('meta:get'), cachedModels: call('meta:cachedModels'), commands: call('meta:commands'), onCommands: (listener) => subscribe('meta:commands', listener), usage: call('meta:usage'), config: call('meta:config'), configSnapshot: call('meta:configSnapshot') },
+  meta: { get: call('meta:get'), cachedModels: call('meta:cachedModels'), commands: call('meta:commands'), onCommands: (listener) => subscribe('meta:commands', listener), usage: call('meta:usage'), config: call('meta:config'), configSnapshot: call('meta:configSnapshot'), onConfigChanged: (listener) => subscribe('meta:configChanged', listener) },
   files: {
+    saveImage: call('files:saveImage'),
     pathFor: (file) => webUtils.getPathForFile(file),
     describe: call('files:describe'),
     search: call('files:search'),

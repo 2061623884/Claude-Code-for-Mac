@@ -1,7 +1,18 @@
 import type { TokenUsage } from './chat'
 import type { PlanUsage } from './types'
 
-export interface DailyUsage extends TokenUsage { date: string; total: number }
+export const USAGE_MODELS = ['fable', 'opus', 'sonnet', 'haiku'] as const
+export type UsageModel = typeof USAGE_MODELS[number]
+export type UsageModelFilter = 'total' | UsageModel
+export interface DailyUsage extends TokenUsage {
+  date: string
+  total: number
+  byModel?: Partial<Record<UsageModel, TokenUsage>>
+}
+export function usageModel(model: unknown): UsageModel | null {
+  if (typeof model !== 'string') return null
+  return USAGE_MODELS.find(name => new RegExp(`(?:^|[^a-z])${name}(?:$|[^a-z])`, 'i').test(model)) ?? null
+}
 export interface UsageAnalytics {
   days: DailyUsage[]
   total: number
@@ -66,11 +77,13 @@ export function formatUsageTokens(n: number): string {
 }
 
 /** Aggregate raw counters first so cache hit rate is token-weighted. Input includes cache reads/writes. */
-export function usageInRange(days: DailyUsage[], start?: string, end?: string) {
+export function usageInRange(days: DailyUsage[], start?: string, end?: string, model: UsageModelFilter = 'total') {
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
   for (const day of days) {
     if (start && day.date < start || end && day.date > end) continue
-    for (const key of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) usage[key] += day[key]
+    const counters = model === 'total' ? day : day.byModel?.[model]
+    if (!counters) continue
+    for (const key of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) usage[key] += counters[key]
   }
   const input = usage.input + usage.cacheRead + usage.cacheWrite
   return { ...usage, input, total: input + usage.output, hitRate: input ? Math.round(usage.cacheRead / input * 1000) / 10 : null }

@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { app } from 'electron'
+import { closeClaudeConfigWatchers } from './claudeConfigChanges'
 import { closeTemporaryQueries } from './temporaryQuery'
 import { AppWindow } from './appWindow'
 import type { DemoState } from '../shared/types'
@@ -32,7 +33,7 @@ if (process.argv.includes('--probe')) {
 } else {
   if (app.isPackaged) void adoptLoginShellPath()
   const window = new AppWindow(() => {
-    for (const cleanup of [() => commandCatalog.close(), closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
+    for (const cleanup of [() => commandCatalog.close(), closeClaudeConfigWatchers, closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
       try { cleanup() } catch (error) { console.error('退出清理失败', error) }
     }
   })

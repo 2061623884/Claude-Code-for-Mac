@@ -1,6 +1,8 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification, nativeTheme, shell } from 'electron'
 import type { BtwTurn, ChatEvent, Decision, QueueAction, SessionOptions } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
 import { SessionManager } from './live/SessionManager'
@@ -11,6 +13,7 @@ import { withIdleQuery } from './sdk'
 import { UsageWorkerClient } from './usageWorkerClient'
 import { UsageProfiles, usageAccount } from './usageProfile'
 import type { UsageOverview } from '../shared/usageAnalytics'
+import { onClaudeConfigChanged, watchClaudeConfig } from './claudeConfigChanges'
 import { readClaudeConfig } from './claudeConfigSnapshot'
 import { runLocalCommand } from './localCommand'
 import * as projects from './projects'
@@ -59,6 +62,10 @@ function broadcast(sessionId: string, event: ChatEvent): void {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send('chat:event', sessionId, event)
 }
 
+onClaudeConfigChanged(change => {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('meta:configChanged', change)
+})
+
 const commandConfiguration = (): string => JSON.stringify([store.read().settings.claudePath ?? null, app.getVersion()])
 export const commandCatalog: CommandCatalog = new CommandCatalog({
   directory: () => join(app.getPath('userData'), 'command-catalog'),
@@ -77,6 +84,30 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     ipcMain.handle(channel, (_e, ...args) => fn(...args))
   }
 
+  handle('app:openNotificationSettings', async () => {
+    if (process.platform === 'darwin') await shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension')
+    else if (process.platform === 'win32') await shell.openExternal('ms-settings:notifications')
+    else throw new Error('请在系统设置中打开通知设置')
+  })
+
+  const notices = new Set<Notification>()
+  ipcMain.handle('app:notify', (event, title: string, body: string, silent: boolean, sessionId?: string) => {
+    if (!Notification.isSupported()) throw new Error('系统不支持通知')
+    const notice = new Notification({ title: str(title, 'title'), body: typeof body === 'string' ? body : '', silent: silent === true })
+    notices.add(notice)
+    notice.once('close', () => notices.delete(notice))
+    notice.once('click', () => {
+      focusWindow?.()
+      if (!event.sender.isDestroyed()) event.sender.send('app:notificationClick', sessionId)
+      notices.delete(notice)
+    })
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => { notices.delete(notice); reject(new Error('系统未确认通知投递，请检查系统通知权限')) }, 10000)
+      notice.once('show', () => { clearTimeout(timeout); resolve() })
+      notice.once('failed', (_event, error) => { clearTimeout(timeout); notices.delete(notice); reject(new Error(error)) })
+      notice.show()
+    })
+  })
   handle('app:state', () => {
     let username: string | null = null
     try { username = userInfo().username } catch { /* greeting may omit the name */ }
@@ -129,10 +160,20 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     if (key !== activeAccountKey) throw new Error('账户信息已变化，请刷新后重试')
     return profiles().save(str(key, 'accountKey'), profile)
   })
-  handle('meta:configSnapshot', path => readClaudeConfig(str(path, 'path')))
+  handle('meta:configSnapshot', path => { const cwd = str(path, 'path'); watchClaudeConfig(cwd); return readClaudeConfig(cwd) })
   handle('meta:config', (path, setting) =>
     runLocalCommand(str(path, 'path'), typeof setting === 'string' && setting ? `/config ${setting}` : '/config')
   )
+  handle('files:saveImage', async (bytes, mime) => {
+    const extensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }
+    const ext = extensions[String(mime)]
+    if (!ext || !(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 25 * 1024 * 1024) throw new Error('图片格式不支持或超过 25 MB')
+    const directory = join(app.getPath('userData'), 'pasted-images')
+    await mkdir(directory, { recursive: true })
+    const path = join(directory, `${randomUUID()}.${ext}`)
+    await writeFile(path, bytes)
+    return path
+  })
   handle('files:search', (path, query) => files.search(str(path, 'path'), typeof query === 'string' ? query : ''))
   handle('files:list', (projectPath, directory) =>
     files.listProjectDirectory(str(projectPath, 'projectPath'), str(directory, 'directory'))

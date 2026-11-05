@@ -1,5 +1,5 @@
 import { ModePicker } from '../newSession/ModePicker'
-import { sessionCommand } from '@shared/sessionCommand'
+import { parseDesktopCommand, sessionCommand } from '@shared/sessionCommand'
 import { useEffect, useRef, useState } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { attachmentTitle, type ComposerAttachment } from '@shared/attachments'
@@ -25,6 +25,7 @@ export function NewSessionPage() {
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [configStatus, setConfigStatus] = useState<string | null>(null)
   const project = projects.find((p) => p.id === selectedProjectId)
   const panelOpen = usePanel((s) => s.panel !== null)
 
@@ -84,6 +85,18 @@ export function NewSessionPage() {
             return openAppPanel(name, args)
           }}
           onSubmit={async ({ text: body, prompt, attachments: submitted }) => {
+            const command = parseDesktopCommand(body)
+            if (command?.kind === 'config') {
+              setSending(true); setError(null); setConfigStatus(null)
+              try { await window.desk.meta.config(project!.path, command.setting); setConfigStatus('已保存 · 后续会话读取设置') }
+              catch (err) { setError(err instanceof Error ? err.message : String(err)); throw err }
+              finally { setSending(false) }
+              return
+            }
+            if (command?.kind === 'session') {
+              const err = new Error('此指令需要已有会话，请先开始对话。')
+              setError(err.message); throw err
+            }
             transition.current = captureFirstSend(composerRoot.current)
             setSending(true)
             setError(null)
@@ -107,6 +120,7 @@ export function NewSessionPage() {
             </>
           }
         />
+        {configStatus && <p role="status" className="mt-2 text-[12.5px] text-fg3">{configStatus}</p>}
         {error && <p className="mt-2 text-[12.5px] text-danger">发送失败：{error}</p>}
       </div>
     </Centered>

@@ -1,3 +1,4 @@
+import { parseDesktopCommand } from '@shared/sessionCommand'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUp,
@@ -105,6 +106,7 @@ export function Composer({
   const [cursor, setCursor] = useState({ text: value, caret: value.length })
   const [dragging, setDragging] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [commandError, setCommandError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [burst, setBurst] = useState(0)
   const valueRef = useRef(value)
@@ -119,7 +121,7 @@ export function Composer({
     if (!trigger) return
     // 应用自己处理的命令：选中即执行，把命令从输入框里拿掉
     const length = cursor.caret - trigger.start
-    if (trigger.kind === '/' && onCommand?.(item.key, '')) {
+    if (trigger.kind === '/' && !attachments.length && onCommand?.(item.key, '')) {
       editor.current?.replaceBeforeCaret(length, { text: '' })
       return
     }
@@ -167,13 +169,12 @@ export function Composer({
       if (files.length === 0) return
       setAdding(true)
       try {
-        const paths = [
-          ...new Set(
-            files
-              .map((file) => window.desk.files.pathFor(file))
-              .filter((path) => path !== '')
-          )
-        ]
+        const paths = [...new Set(await Promise.all(files.map(async file => {
+          const path = window.desk.files.pathFor(file)
+          if (path) return path
+          if (!file.type.startsWith('image/')) return ''
+          return window.desk.files.saveImage(new Uint8Array(await file.arrayBuffer()), file.type)
+        })))].filter(Boolean)
         if (paths.length === 0) return
         const infos = await window.desk.files.describe(paths)
         if (infos.length === 0) return
@@ -248,16 +249,26 @@ export function Composer({
 
   const submit = async (): Promise<void> => {
     if (!canSend) return
-    const cmd = attachments.length === 0 ? /^\/(\S+)\s*([\s\S]*)$/.exec(value.trim()) : null
-    if (cmd && onCommand?.(cmd[1], cmd[2].trim())) {
-      valueRef.current = ''
-      historyIndex.current = -1
-      onChange('')
+    let command: ReturnType<typeof parseDesktopCommand>
+    try {
+      command = parseDesktopCommand(value.trim())
+      if (command && attachments.length) throw new Error('设置指令不能附带文件，请先移除附件。')
+      if (command && !onCommand) throw new Error('不能把设置指令保存到消息队列，请取消编辑后执行。')
+      setCommandError(null)
+      const cmd = /^\/(\S+)\s*([\s\S]*)$/.exec(value.trim())
+      if (cmd && onCommand?.(cmd[1], cmd[2].trim())) {
+        valueRef.current = ''
+        historyIndex.current = -1
+        onChange('')
+        return
+      }
+    } catch (error) {
+      setCommandError(error instanceof Error ? error.message : String(error))
       return
     }
     const submission: ComposerSubmission = {
       text: value.trim(),
-      prompt: buildPrompt(value, attachments, cwd),
+      prompt: command ? value.trim() : buildPrompt(value, attachments, cwd),
       attachments
     }
     setSubmitting(true)
@@ -302,6 +313,7 @@ export function Composer({
           />
         )}
         <ComposerEditor
+          onFiles={files => { void addFiles(files) }}
           editorRef={editor}
           value={value}
           rows={rows}
@@ -392,6 +404,7 @@ export function Composer({
           </div>
         )}
       </div>
+      {commandError && <p role="alert" className="mt-1 text-[12px] text-danger">{commandError}</p>}
       {adding && <div className="pointer-events-none absolute bottom-2 left-11 text-[11px] text-fg3">正在读取文件…</div>}
     </div>
   )

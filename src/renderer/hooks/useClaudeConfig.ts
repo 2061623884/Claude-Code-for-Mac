@@ -18,10 +18,20 @@ export function useClaudeConfig(cwd: string) {
   const [revision, setRevision] = useState(0)
   const request = useRef(0)
   const busy = useRef(false)
+  const needsRefresh = useRef(false)
+
+  useEffect(() => window.desk.meta.onConfigChanged?.(change => {
+    if (change.scope === 'project' && change.cwd !== cwd) return
+    if (busy.current) { needsRefresh.current = true; return }
+    request.current++
+    setState(empty(cwd))
+    setRevision(value => value + 1)
+  }), [cwd])
 
   useEffect(() => {
     const id = ++request.current
     busy.current = false
+    needsRefresh.current = false
     setState(empty(cwd))
     void window.desk.meta.configSnapshot(cwd).then(
       snapshot => { if (request.current === id) setState({ ...empty(cwd), snapshot }) },
@@ -35,20 +45,27 @@ export function useClaudeConfig(cwd: string) {
     busy.current = true
     const id = ++request.current
     setState(previous => ({ ...previous, saving: key }))
+    const route = useDesk.getState().view
     let written = false
     try {
       await window.desk.meta.config(cwd, `${key}=${value}`)
       written = true
       if (request.current !== id) return
+      needsRefresh.current = false
+      const snapshot = await window.desk.meta.configSnapshot(cwd)
+      if (request.current !== id) return
+      const confirmed = snapshot.items.find(item => item.key === key)
+      if (confirmed?.value !== value) {
+        setState(previous => ({ ...previous, snapshot, results: { ...previous.results, [key]: { error: `已写入，但读取结果与所选值不一致，可能被其他配置覆盖。当前读取值：${confirmed?.value ?? '未知'}` } } }))
+        return
+      }
       let status = '已保存 · 后续启动生效'
-      const route = useDesk.getState().view
       if (route.kind === 'settings' && route.sessionId && ['outputStyle', 'language', 'thinking'].includes(key)) {
         try {
           await window.desk.chat.control(route.sessionId, cwd, 'applySetting', JSON.stringify({ key, value }))
-          status = '已保存 · 当前会话已应用'
-        } catch (e) { status = '已保存 · 当前会话应用失败，请重载：' + errorText(e) }
+          status = '已保存 · 当前对话配置已确认'
+        } catch (e) { status = '已保存 · 当前对话应用失败，请重载：' + errorText(e) }
       }
-      const snapshot = await window.desk.meta.configSnapshot(cwd)
       if (request.current === id) setState(previous => ({ ...previous, snapshot, results: { ...previous.results, [key]: { status } } }))
     } catch (error) {
       if (request.current === id) setState(previous => ({
@@ -63,6 +80,7 @@ export function useClaudeConfig(cwd: string) {
       if (request.current === id) {
         busy.current = false
         setState(previous => ({ ...previous, saving: null }))
+        if (needsRefresh.current) refresh()
       }
     }
   }

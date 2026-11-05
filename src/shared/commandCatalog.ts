@@ -1,7 +1,11 @@
 export interface CommandInfo { name: string; description: string; argumentHint: string }
 
-export type AppPanelName = 'usage' | 'context' | 'model' | 'effort' | 'config' | 'mcp'
+export type AppPanelName = 'usage' | 'context' | 'model' | 'effort' | 'config' | 'mcp' | 'fast'
 export const APP_COMMANDS: (CommandInfo & { panel: AppPanelName })[] = [
+  { name: 'fast', description: '快速模式', argumentHint: '[on|off]', panel: 'fast' },
+  { name: 'settings', description: '查看设置', argumentHint: '[key=value]', panel: 'config' },
+  { name: 'output-style', description: '输出风格', argumentHint: '[style]', panel: 'config' },
+  { name: 'autocompact', description: '自动压缩窗口', argumentHint: '[auto|tokens]', panel: 'context' },
   { name: 'usage', description: '查看套餐用量', argumentHint: '', panel: 'usage' },
   { name: 'cost', description: '查看用量', argumentHint: '', panel: 'usage' },
   { name: 'stats', description: '查看用量统计', argumentHint: '', panel: 'usage' },

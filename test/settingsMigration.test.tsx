@@ -75,7 +75,7 @@ it('routes config and MCP to settings, preserving the originating session and pr
 it('renders every returned option, searches labels and saves enumerated and free values', async () => {
   render(<ClaudeConfigSettings cwd="/project" />)
   await screen.findByLabelText('futureOption')
-  expect(screen.getAllByRole('combobox')).toHaveLength(2)
+  expect(screen.getAllByRole('combobox')).toHaveLength(3)
   expect(screen.getByRole('switch', { name: '自动压缩对话' }).getAttribute('aria-checked')).toBe('true')
   expect((screen.getByLabelText('回复语言') as HTMLInputElement).value).toBe('English')
   fireEvent.click(screen.getByRole('switch', { name: '自动压缩对话' }))
@@ -83,7 +83,6 @@ it('renders every returned option, searches labels and saves enumerated and free
   expect(screen.getByRole('switch', { name: '自动压缩对话' }).getAttribute('aria-checked')).toBe('false')
   expect(window.desk.meta.config).toHaveBeenCalledWith('/project', 'autoCompact=false')
   fireEvent.change(screen.getByLabelText('回复语言'), { target: { value: '简体中文' } })
-  fireEvent.click(screen.getByRole('button', { name: '保存' }))
   await waitFor(() => expect((screen.getByLabelText('回复语言') as HTMLInputElement).value).toBe('简体中文'))
   expect(window.desk.meta.config).toHaveBeenCalledWith('/project', 'language=简体中文')
   fireEvent.change(screen.getByLabelText('搜索 Claude Code 设置'), { target: { value: '语言' } })
@@ -127,15 +126,14 @@ it('reads persisted values when reopening and surfaces read errors instead of in
   expect(screen.queryByRole('switch')).toBeNull()
 })
 
-it('keeps desktop defaults separate from native defaults and does not repeat the catalog', async () => {
+it('shows only desktop model defaults while retaining context settings', async () => {
   useDesk.setState({ view: { kind: 'settings', tab: 'models' } })
   render(<SettingsPage />)
   expect(screen.getByText('新对话默认值')).toBeTruthy()
   expect(window.desk.meta.configSnapshot).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: '终端默认值' }))
-  await screen.findByLabelText('安全检查标记消息时切换模型')
-  expect(screen.queryByLabelText('自动压缩对话')).toBeNull()
-  expect(screen.queryByText('新对话默认值')).toBeNull()
+  expect(screen.queryByRole('button', { name: '终端默认值' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '桌面新对话' })).toBeNull()
+  expect(screen.queryByLabelText('项目')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '上下文' }))
   await screen.findByLabelText('自动压缩对话')
   expect(screen.queryByLabelText('安全检查标记消息时切换模型')).toBeNull()
@@ -162,7 +160,7 @@ it('shows account and CLI version when advanced settings are opened', async () =
   useDesk.setState({ view: { kind: 'settings', tab: 'advanced' } })
   render(<SettingsPage />)
   await screen.findByText('pro')
-  expect(screen.getByText('SDK 内置 v2.1.301')).toBeTruthy()
+  expect(screen.getByText('应用内置 v2.1.301')).toBeTruthy()
 })
 it('does not offer Fast in desktop default model selection', async () => {
   vi.mocked(window.desk.meta.get).mockResolvedValue({ models: [{ value: 'sonnet', label: 'Sonnet', efforts: ['low'] }], claudeVersion: null, subscriptionType: null })
@@ -171,4 +169,122 @@ it('does not offer Fast in desktop default model selection', async () => {
   fireEvent.click(screen.getByRole('button', { name: '选择模型' }))
   await screen.findByRole('button', { name: 'Sonnet' })
   expect(screen.queryByRole('checkbox', { name: 'Fast' })).toBeNull()
+})
+
+it.each(['config', 'mcp'])('preserves the draft project for /%s and falls back only without a selection', name => {
+  useDesk.setState({ view: { kind: 'new' }, selectedProjectId: 'p' })
+  openAppPanel(name, '')
+  expect(useDesk.getState().view).toMatchObject({ kind: 'settings', projectId: 'p' })
+  expect(useDesk.getState().view).toMatchObject({ sessionId: null })
+  useDesk.setState({ view: { kind: 'new' }, selectedProjectId: null })
+  openAppPanel(name, '')
+  expect(useDesk.getState().view).toMatchObject({ kind: 'settings', projectId: null })
+})
+
+it('refreshes matching project changes, all user changes, and ignores late results after switching project', async () => {
+  type Change = Parameters<Parameters<Window['desk']['meta']['onConfigChanged']>[0]>[0]
+  const listeners = new Set<(change: Change) => void>()
+  window.desk.meta.onConfigChanged = listener => { listeners.add(listener); return () => { listeners.delete(listener) } }
+  const notify = (change: Change) => act(() => { for (const listener of listeners) listener(change) })
+  const view = render(<ClaudeConfigSettings cwd="/project" />)
+  await screen.findByLabelText('回复语言')
+  const reads = vi.mocked(window.desk.meta.configSnapshot).mock.calls.length
+  notify({ cwd: '/other', scope: 'project' })
+  expect(window.desk.meta.configSnapshot).toHaveBeenCalledTimes(reads)
+  values.language = 'Global update'
+  notify({ cwd: '/other', scope: 'user' })
+  await waitFor(() => expect((screen.getByLabelText('回复语言') as HTMLInputElement).value).toBe('Global update'))
+  let late!: (value: ClaudeConfigSnapshot) => void
+  vi.mocked(window.desk.meta.configSnapshot).mockImplementationOnce(() => new Promise(resolve => { late = resolve }))
+  notify({ cwd: '/project', scope: 'project' })
+  expect(screen.queryByLabelText('回复语言')).toBeNull()
+  values.language = 'Current project'
+  view.rerender(<ClaudeConfigSettings cwd="/other" />)
+  await waitFor(() => expect((screen.getByLabelText('回复语言') as HTMLInputElement).value).toBe('Current project'))
+  values.language = 'Old project'
+  await act(async () => late(snapshot()))
+  expect((screen.getByLabelText('回复语言') as HTMLInputElement).value).toBe('Current project')
+  view.unmount()
+  expect(listeners.size).toBe(0)
+})
+
+it('does not cancel the save or claim live application when receiving its own invalidation', async () => {
+  let notify!: Parameters<Window['desk']['meta']['onConfigChanged']>[0]
+  window.desk.meta.onConfigChanged = listener => { notify = listener; return () => {} }
+  vi.mocked(window.desk.meta.config).mockImplementation(async () => {
+    values.autoCompact = 'false'
+    notify({ cwd: '/project', scope: 'user' })
+    return 'Set autoCompact to false'
+  })
+  render(<ClaudeConfigSettings cwd="/project" />)
+  fireEvent.click(await screen.findByRole('switch', { name: '自动压缩对话' }))
+  await screen.findByText('已保存 · 后续启动生效')
+  expect(window.desk.chat.control).not.toHaveBeenCalled()
+  expect(screen.getByRole('switch', { name: '自动压缩对话' }).getAttribute('aria-checked')).toBe('false')
+})
+
+
+it('keeps desktop execution and workflow controls but hides terminal and unknown options', async () => {
+  const keys = ['workflows', 'workflowKeywordTriggerEnabled', 'workflowSizeGuideline', 'worktreeBaseRef', 'thinking', 'useAutoModeDuringPlan', 'switchModelsOnFlag', 'theme', 'autoScroll', 'reduceMotion', 'copyOnSelect', 'copyFullResponse', 'editor', 'defaultToAgentsView', 'leftArrowOpensAgents', 'prStatus', 'progressBar', 'promptSuggestionEnabled', 'recap', 'timeFormat', 'tips', 'turnDuration', 'verbose', 'autoConnectIde', 'externalEditorContext', 'agentPushNotifEnabled', 'inputNeededNotifEnabled', 'notifChannel', 'remoteControl', 'checkpoints', 'futureOption']
+  vi.mocked(window.desk.meta.configSnapshot).mockResolvedValue({ cliVersion: '2.1.301', items: keys.map(key => ({ key, values: ['true', 'false'], value: 'true', source: 'saved' })) })
+  useDesk.setState({ view: { kind: 'settings', tab: 'advanced', projectId: 'p' } })
+  render(<SettingsPage />)
+  const workflows = await screen.findByRole('switch', { name: '工作流' })
+  expect(screen.getAllByRole('switch')).toHaveLength(6)
+  expect(screen.queryByText('终端主题')).toBeNull()
+  expect(screen.queryByText('futureOption')).toBeNull()
+  expect(screen.queryByRole('switch', { name: /检查点/ })).toBeNull()
+  expect(screen.getByText('文件检查点')).toBeTruthy()
+  fireEvent.click(workflows)
+  await waitFor(() => expect(window.desk.meta.config).toHaveBeenCalledWith('/project', 'workflows=false'))
+})
+
+it('keeps file filtering informational and reports reload errors in the desktop context page', async () => {
+  useDesk.setState({ view: { kind: 'settings', tab: 'context', sessionId: 's', projectId: 'p' } })
+  window.desk.chat.control = vi.fn().mockRejectedValue(new Error('请等待当前任务结束后重载'))
+  render(<SettingsPage />)
+  await screen.findByRole('switch', { name: '自动压缩对话' })
+  expect(screen.getByText('遵循 .gitignore')).toBeTruthy()
+  expect(screen.queryByRole('switch', { name: '遵循 .gitignore' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '重新加载当前对话设置' }))
+  expect((await screen.findByRole('alert')).textContent).toContain('请等待当前任务结束后重载')
+  expect(window.desk.chat.control).toHaveBeenCalledWith('s', '/project', 'reloadConfiguration')
+})
+
+
+it('does not claim success or apply a value to the current session when reread disagrees', async () => {
+  useDesk.setState({ view: { kind: 'settings', tab: 'context', sessionId: 's', projectId: 'p' } })
+  window.desk.meta.config = vi.fn().mockResolvedValue('Saved')
+  render(<SettingsPage />)
+  const input = await screen.findByLabelText('回复语言')
+  fireEvent.change(input, { target: { value: 'Japanese' } })
+  expect((await screen.findByRole('alert')).textContent).toContain('读取结果与所选值不一致')
+  expect(window.desk.chat.control).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert').textContent).toContain('当前读取值：English')
+  expect((screen.getByLabelText('回复语言') as HTMLSelectElement).value).toBe('English')
+})
+
+it('confirms immediate language application only after persisted value agrees', async () => {
+  useDesk.setState({ view: { kind: 'settings', tab: 'context', sessionId: 's', projectId: 'p' } })
+  render(<SettingsPage />)
+  fireEvent.change(await screen.findByLabelText('回复语言'), { target: { value: 'Japanese' } })
+  await screen.findByText('已保存 · 当前对话配置已确认')
+  expect(window.desk.chat.control).toHaveBeenCalledWith('s', '/project', 'applySetting', JSON.stringify({ key: 'language', value: 'Japanese' }))
+})
+
+it('reports native test delivery and provides a system-settings shortcut', async () => {
+  let deliver!: () => void
+  const notify = vi.fn(() => new Promise<void>(resolve => { deliver = resolve }))
+  const openNotificationSettings = vi.fn().mockResolvedValue(undefined)
+  window.desk.app = { notify, openNotificationSettings } as unknown as Window['desk']['app']
+  useDesk.setState({ view: { kind: 'settings', tab: 'notifications' } })
+  render(<SettingsPage />)
+  fireEvent.click(screen.getByRole('button', { name: '发送测试通知' }))
+  expect((screen.getByRole('button', { name: '正在发送…' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(screen.queryByRole('status')).toBeNull()
+  await act(async () => deliver())
+  expect(screen.getByRole('status').textContent).toContain('系统已接收')
+  expect(screen.getByRole('status').textContent).toContain('共享屏幕')
+  fireEvent.click(screen.getByRole('button', { name: '打开系统设置' }))
+  expect(openNotificationSettings).toHaveBeenCalledOnce()
 })

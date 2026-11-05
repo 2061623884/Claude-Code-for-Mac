@@ -1,4 +1,6 @@
-import { sessionCommand } from '../../shared/sessionCommand'
+import { backgroundTaskView } from '../backgroundTasks'
+import { parseDesktopCommand, assertChatPrompt, type DesktopCommand } from '../../shared/sessionCommand'
+import { runLocalCommand } from '../localCommand'
 import { changeRule } from '../permissionRules'
 import { gitDiff } from '../gitDiff'
 import { access } from 'node:fs/promises'
@@ -94,6 +96,7 @@ export class SessionManager {
   }
 
   start(projectPath: string, text: string, options: SessionOptions): string {
+    assertChatPrompt(text)
     const sessionId = randomUUID()
     const transcript = new Transcript(projectPath)
     this.transcripts.set(sessionId, transcript)
@@ -106,6 +109,7 @@ export class SessionManager {
    * 编辑历史消息：从源会话的 at（主链条目 uuid）之后分叉出一个新会话，发出改过的消息。原会话不变
    */
   async fork(sourceId: string, projectPath: string, at: string, text: string, options: SessionOptions): Promise<string> {
+    assertChatPrompt(text)
     const sdk = await loadSdk()
     const sessionId = randomUUID()
     const transcript = new Transcript(projectPath, undefined, this.submissionStore?.load(sourceId))
@@ -125,8 +129,12 @@ export class SessionManager {
 
   async send(sessionId: string, projectPath: string, text: string, options: SessionOptions, attachments: string[] = []): Promise<void> {
     return this.lock(sessionId, async () => {
-      const control = sessionCommand(text)
-      if (control) { await this.applyOptions(sessionId, control); return }
+      const control = parseDesktopCommand(text)
+      if (control) {
+        if (attachments.length) throw new Error('设置指令不能附带文件，请移除附件后执行')
+        await this.executeDesktopCommand(sessionId, projectPath, control)
+        return
+      }
       for (const path of attachments) await access(path)
       const prefs = this.prefs(sessionId)
       const session = this.live.get(sessionId)
@@ -134,7 +142,7 @@ export class SessionManager {
       const hasWaiting = prefs.queue.items.some(item => item.editing || ['queued', 'failed'].includes(item.status))
       // 提交历史/未知交付记录不是待发消息，也不能把新的手动输入锁进旧队列。
       if (busy || hasWaiting) {
-        this.updatePrefs(sessionId, p => { p.queue.items.push({ id: randomUUID(), text, options: { ...options }, attachments, status: 'queued' }) })
+        this.updatePrefs(sessionId, p => { p.queue.items.push({ id: randomUUID(), text, options: { ...(prefs.options ?? options) }, attachments, status: 'queued' }) })
         if (!busy) await this.dispatch(sessionId, projectPath)
         return
       }
@@ -201,6 +209,7 @@ export class SessionManager {
       if (action.type === 'edit') {
         if (!item.editing) throw new Error('请先进入编辑模式')
         if (!action.text.trim()) throw new Error('消息不能为空')
+        assertChatPrompt(action.text)
         const paths = action.attachments ?? item.attachments ?? []
         for (const path of paths) await access(path)
         this.updatePrefs(sessionId, p => {
@@ -243,7 +252,7 @@ export class SessionManager {
   }
 
   setMode(sessionId: string, mode: SessionOptions['mode']): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { mode })) }
-  setModel(sessionId: string, model: string | null): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { model })) }
+  setModel(sessionId: string, model: string | null): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { model }, true)) }
   setWorkflows(sessionId: string, workflows: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { workflows })) }
   setFastMode(sessionId: string, enabled: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { fastMode: enabled }, true)) }
 
@@ -251,7 +260,7 @@ export class SessionManager {
     return this.lock(sessionId, async () => {
       if (operation === 'diff') return gitDiff(path, value ?? 'working')
       const live = await this.ensureLive(sessionId, path, this.options(sessionId))
-      if (operation === 'tasks') return [...live.tasks.values()].map(t => ({ task_id: t.task_id, task_type: t.task_type, description: t.description, status: t.status, summary: t.summary }))
+      if (operation === 'tasks') return [...live.tasks.values()].map(backgroundTaskView)
       if (operation === 'applySetting') {
         const patch = JSON.parse(value ?? '{}')
         if (typeof patch.key !== 'string' || typeof patch.value !== 'string') throw new Error('无效设置')
@@ -273,11 +282,12 @@ export class SessionManager {
         if (live.state !== 'idle') throw new Error('请等待当前任务结束后重载')
         this.closeSession(sessionId)
         const replacement = await this.ensureLive(sessionId, path, this.options(sessionId))
+        await replacement.readyForControls()
         await replacement.refreshRuntime()
         return
       }
       if (operation === 'rules') return live.control({ subtype: 'list_permission_rules' })
-      if (operation === 'taskOutput') return live.control({ subtype: 'get_task_output', task_id: value })
+      if (operation === 'taskOutput') return live.taskOutput(value!)
       if (operation === 'stopTask') { await live.stopTask(value!); return }
       if (operation === 'rewindPreview') return live.rewind(value!, true)
       if (operation === 'restoreConversation') {
@@ -308,9 +318,9 @@ export class SessionManager {
     })
   }
 
-  refreshRuntime(sessionId: string): Promise<void> { return this.lock(sessionId, async () => { await this.live.get(sessionId)?.refreshRuntime() }) }
+  refreshRuntime(sessionId: string): Promise<void> { return this.lock(sessionId, async () => { await this.live.get(sessionId)?.reloadSettings() }) }
   setUltracode(sessionId: string, enabled: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { ultracode: enabled })) }
-  setEffort(sessionId: string, effort: SessionOptions['effort']): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { effort })) }
+  setEffort(sessionId: string, effort: SessionOptions['effort']): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { effort }, true)) }
 
   async respond(sessionId: string, requestId: string, decision: Decision): Promise<void> {
     return this.lock(sessionId, async () => {
@@ -435,7 +445,8 @@ export class SessionManager {
 
   private options(id: string): SessionOptions {
     const defaults = store.read().settings
-    return this.prefs(id).options ?? { model: defaults.defaultModel ?? null, mode: defaults.defaultPermissionMode ?? 'default', effort: defaults.defaultEffort ?? null }
+    const options = this.prefs(id).options ?? { model: defaults.defaultModel ?? null, mode: defaults.defaultPermissionMode ?? 'default', effort: defaults.defaultEffort ?? null }
+    return !this.live.get(id) && !defaults.allowBypass && options.mode === 'bypassPermissions' ? { ...options, mode: 'default' } : options
   }
 
   private updatePrefs(id: string, update: (prefs: SessionPreferences) => void, commit: 'durable' | 'applied' = 'durable'): void {
@@ -462,7 +473,40 @@ export class SessionManager {
     return next
   }
 
+  private async executeDesktopCommand(id: string, cwd: string, command: DesktopCommand): Promise<void> {
+    if (command.kind === 'panel') throw new Error('请在桌面输入框打开对应设置面板')
+    if (command.kind === 'options') {
+      if (command.patch.fastMode !== undefined || command.patch.ultracode !== undefined || command.patch.workflows !== undefined) {
+        await (await this.ensureLive(id, cwd, this.options(id))).readyForControls()
+      }
+      await this.applyOptions(id, command.patch, true)
+      return
+    }
+    if (command.kind === 'session' && command.name !== 'output-style') {
+      const live = await this.ensureLive(id, cwd, this.options(id))
+      await live.readyForControls()
+      if (command.name === 'autocompact') await live.autoCompact(command.args)
+      else {
+        const [operation, target = 'all'] = command.args.split(/\s+/)
+        await live.mcpCommand(operation as 'enable' | 'disable' | 'reconnect', target)
+      }
+      return
+    }
+    const setting = command.kind === 'config' ? command.setting : `outputStyle=${command.args}`
+    const equal = setting.indexOf('=')
+    const key = setting.slice(0, equal), value = setting.slice(equal + 1)
+    await runLocalCommand(cwd, `/config ${setting}`)
+    try {
+      if (key === 'model') await this.applyOptions(id, { model: ['auto', 'default'].includes(value) ? null : value }, true)
+      else if (['outputStyle', 'language', 'thinking'].includes(key)) {
+        const live = this.live.get(id)
+        if (live) { await live.applySetting(key, value); await live.refreshRuntime() }
+      }
+    } catch (error) { throw new Error(`设置已保存，但当前会话应用失败：${error instanceof Error ? error.message : String(error)}`) }
+  }
+
   private async applyOptions(id: string, patch: Partial<SessionOptions>, force = false): Promise<void> {
+    if (patch.mode === 'bypassPermissions' && !store.read().settings.allowBypass) throw new Error('请先在设置中允许选择跳过权限模式')
     // 初始配置完成后再接受修改，避免启动时的默认值覆盖用户刚选的设置。
     const existing = this.live.get(id)
     if (existing) await existing.readyForControls()
@@ -478,11 +522,11 @@ export class SessionManager {
         if (key === 'model') await live.setModel(patch.model!)
         if (key === 'effort') await live.setEffort(patch.effort!, patch.ultracode ?? this.options(id).ultracode)
         if (key === 'workflows') await live.setWorkflows(patch.workflows!)
-        if (key === 'fastMode') await live.setFastMode(patch.fastMode!)
+        if (key === 'fastMode') await live.setFastMode(patch.fastMode!, this.options(id).fastMode)
         if (key === 'ultracode') await live.setUltracode(patch.ultracode!)
         if (key === 'mode') await live.setMode(patch.mode!)
       }
-      this.updatePrefs(id, p => { p.options = { ...this.options(id), [key]: patch[key] } }, live ? 'applied' : 'durable')
+      this.updatePrefs(id, p => { p.options = { ...this.options(id), [key]: patch[key] }; for (const item of p.queue.items) if (['queued', 'failed'].includes(item.status)) item.options = { ...p.options } }, live ? 'applied' : 'durable')
     }
     await this.live.get(id)?.refreshRuntime()
   }
@@ -500,15 +544,17 @@ export class SessionManager {
     const epoch = this.dispatchEpochs.get(id) ?? 0
     const cancelled = (): boolean => this.shuttingDown || epoch !== (this.dispatchEpochs.get(id) ?? 0)
     try {
+      assertChatPrompt(item.text)
       for (const path of item.attachments ?? []) await access(path)
       if (cancelled()) return
-      const live = await this.ensureLive(id, cwd, item.options)
+      const currentOptions = this.prefs(id).options ?? item.options
+      const live = await this.ensureLive(id, cwd, currentOptions)
+      await live.readyForControls()
       if (cancelled()) return
-      if (!insert) await this.applyOptions(id, item.options)
       if (cancelled()) return
       if (insert && (live.state !== 'running' || live.activity.snapshot().phase === 'stopping')) throw new Error('当前会话不可插入，请使用继续队列')
       if (!insert && (this.prefs(id).queue.paused || live.state !== 'idle')) return
-      this.updatePrefs(id, p => { const target = p.queue.items.find(i => i.id === item.id)!; target.status = 'submitting'; if (insert) target.options = { ...this.options(id) }; delete target.error })
+      this.updatePrefs(id, p => { const target = p.queue.items.find(i => i.id === item.id)!; target.status = 'submitting'; target.options = { ...this.options(id) }; delete target.error })
       // 进入发送调用后，异常也不能证明消息未交付；保守标记未知，避免重发。
       handedOff = true
       live.send(item.text, item.id)

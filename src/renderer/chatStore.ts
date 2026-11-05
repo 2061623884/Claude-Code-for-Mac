@@ -1,4 +1,5 @@
-import { sessionCommand } from '@shared/sessionCommand'
+import { parseDesktopCommand, sessionCommand } from '@shared/sessionCommand'
+import { openAppPanel } from './panelStore'
 import { create } from 'zustand'
 import { applyChatEvent, mergeChatSnapshot, staleChatEvent, type ChatProjection } from './chatSync'
 import { emptySessionSummary } from '@shared/sessionSummary'
@@ -140,6 +141,9 @@ export const useChat = create<ChatStore>((set, get) => {
       await optionChanges.get(sessionId)
       const c = get().chats[sessionId]
       if (!c) return
+      const parsed = parseDesktopCommand(text)
+      if (parsed && attachments?.length) throw new Error('设置指令不能附带文件，请先移除附件。')
+      if (parsed?.kind === 'panel') { const match = /^\/(\S+)/.exec(text.trim()); if (match) openAppPanel(match[1], ''); return }
       const control = sessionCommand(text)
       if (control) { await get().setOptions(sessionId, control); return }
       patch(sessionId, () => ({ error: null }))

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { aggregateUsage, extractUsage, UsageIndexer } from '../src/main/usageAnalytics'
-import { chartDays, chartWeeks, dateKey, shiftDay, streaks, remaining, formatUsageTokens, type DailyUsage } from '../src/shared/usageAnalytics'
+import { chartDays, chartWeeks, dateKey, shiftDay, streaks, remaining, formatUsageTokens, usageInRange, type DailyUsage } from '../src/shared/usageAnalytics'
 import { usageAccount, UsageProfiles } from '../src/main/usageProfile'
 
 const paths: string[] = []
@@ -13,6 +13,31 @@ const day = (date: string, total: number): DailyUsage => ({ date, total, input: 
 async function fixture() { const root = await mkdtemp(join(tmpdir(), 'usage-test-')); paths.push(root); await mkdir(join(root, 'projects', 'project', 'subagents'), { recursive: true }); return { root, path: join(root, 'projects', 'project', 'main.jsonl'), cache: join(root, 'index.json') } }
 
 describe('usage adapter and index', () => {
+  it('groups model versions after deduplication and keeps unknown models in total only', () => {
+    const withModel = (id: string, model: unknown, output = 5) => { const e = entry(id, undefined, output); return { ...e, message: { ...e.message, model } } }
+    const records = [
+      withModel('o', 'claude-opus-4-6'), withModel('o', 'claude-opus-4-6', 9),
+      withModel('s', 'claude-sonnet-4-5-20250929'), withModel('h', 'claude-haiku-4-5'),
+      withModel('f', 'Fable'), withModel('f2', 'claude-fable-5'),
+      withModel('unknown', 'custom-model'), withModel('missing', undefined),
+      withModel('lookalike', 'notopus'), withModel('invalid', {})
+    ].map(e => extractUsage(e).record!)
+    const result = aggregateUsage([{ size: 0, mtime: 0, records, longestTaskMs: null, issues: 0 }], new Date('2026-11-01T12:00:00'))
+    expect(result.total).toBe(589)
+    expect(usageInRange(result.days, undefined, undefined, 'opus')).toMatchObject({ input: 60, output: 9, cacheRead: 20, cacheWrite: 30, total: 69, hitRate: 33.3 })
+    expect(usageInRange(result.days, undefined, undefined, 'fable').total).toBe(130)
+    expect(usageInRange(result.days, undefined, undefined, 'sonnet').total).toBe(65)
+    expect(usageInRange(result.days, undefined, undefined, 'haiku').total).toBe(65)
+    expect(usageInRange(result.days).total).toBe(result.total)
+    expect(usageInRange(result.days, '2026-10-31', '2026-11-01', 'opus')).toMatchObject({ total: 0, hitRate: null })
+  })
+  it('recovers a model from another snapshot of the same response without counting it twice', () => {
+    const e = entry('one')
+    const records = [e, { ...e, message: { ...e.message, model: 'opus' } }].map(e => extractUsage(e).record!)
+    const result = aggregateUsage([{ size: 0, mtime: 0, records, longestTaskMs: null, issues: 0 }], new Date('2026-11-01T12:00:00'))
+    expect(usageInRange(result.days, undefined, undefined, 'opus').total).toBe(65)
+    expect(result.total).toBe(65)
+  })
   it('deduplicates response snapshots across blocks, forks and subagents; never adds session totals', () => {
     const records = [entry('one'), entry('one', undefined, 9), { ...entry('one'), uuid: 'fork-copy' }, entry('two')].map(e => extractUsage(e).record!)
     const result = aggregateUsage([{ size: 0, mtime: 0, records, longestTaskMs: 5000, issues: 0 }], new Date('2026-11-01T12:00:00'))
@@ -51,6 +76,21 @@ describe('usage adapter and index', () => {
   it('rebuilds a corrupt cache, reports empty history without inventing duration', async () => {
     const f = await fixture(); await writeFile(f.cache, 'bad json')
     expect(await new UsageIndexer(f.root, f.cache).refresh()).toMatchObject({ total: 0, longestTaskMs: null, firstDate: null })
+  })
+  it('rebuilds the old cache even for unchanged files and preserves recorded task duration', async () => {
+    const f = await fixture(), e = entry('one')
+    await writeFile(f.path, JSON.stringify({ ...e, message: { ...e.message, model: 'claude-opus-4-6' } }) + '\n')
+    await new UsageIndexer(f.root, f.cache).refresh()
+    const old = JSON.parse(await readFile(f.cache, 'utf8'))
+    old.version = 1; old.longestRecordedTaskMs = 20000
+    for (const file of Object.values(old.files) as any[]) for (const record of file.records) delete record.model
+    await writeFile(f.cache, JSON.stringify(old))
+    const rebuilt = await new UsageIndexer(f.root, f.cache).refresh()
+    expect(rebuilt.longestTaskMs).toBe(20000)
+    expect(usageInRange(rebuilt.days, undefined, undefined, 'opus').total).toBe(65)
+    expect(JSON.parse(await readFile(f.cache, 'utf8')).version).toBe(2)
+    const restored = await new UsageIndexer(f.root, f.cache).refresh()
+    expect(restored.days).toEqual(rebuilt.days)
   })
 })
 describe('calendar and charts', () => {

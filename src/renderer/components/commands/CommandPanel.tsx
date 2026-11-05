@@ -1,3 +1,4 @@
+import { refreshSessionRuntime } from '../../refreshSessionRuntime'
 import { ModePicker } from '../newSession/ModePicker'
 import type { RuntimeSettings } from '@shared/chat'
 import { ClaudeConfigSettings } from '../settings/ClaudeConfigSettings'
@@ -5,7 +6,7 @@ import { McpSettings } from '../settings/McpSettings'
 // 输入框上方的命令浮层：/usage、/context、/model、/effort、/config、/mcp 由应用直接处理，不发任何消息；
 // 交给 Claude Code 执行的本地命令（/output-style…）的输出也显示在这里。Esc、× 或点外面关闭。
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Check, RefreshCw, SquareTerminal, X } from 'lucide-react'
+import { RefreshCw, SquareTerminal, X } from 'lucide-react'
 import type { CommandBlock, ContextUsage, SessionOptions, TokenUsage } from '@shared/chat'
 import { commandText, commandTitle,  parseCommandOutput } from '@shared/commands'
 import { EFFORT_LEVELS, resetTimeZh } from '@shared/format'
@@ -34,6 +35,7 @@ export interface PanelContext {
 }
 
 const TITLES: Record<AppPanel, string> = {
+  fast: '快速模式',
   usage: '套餐用量',
   context: '上下文窗口',
   model: '切换模型',
@@ -109,7 +111,7 @@ function Toast({ text, onDone, ref }: { text: string; onDone(): void; ref: React
   return (
     <div ref={ref} className="absolute bottom-full left-0 z-40 mb-2 flex max-w-full">
       <div className="animate-pop-in flex items-start gap-2 rounded-xl border border-line bg-card px-3.5 py-2 text-[13px] shadow-pop [transform-origin:bottom_left]">
-        <Check size={14} className="mt-[3px] shrink-0 text-accent" />
+        <SquareTerminal size={14} className="mt-[3px] shrink-0 text-fg3" />
         <span className="min-w-0 text-fg2 select-text">
           <InlineCode text={text} />
         </span>
@@ -124,6 +126,8 @@ function OutputBody({ block, ctx }: { block: CommandBlock; ctx: PanelContext }) 
 
 function AppBody({ name, ctx, onDone }: { name: AppPanel; ctx: PanelContext; onDone(): void }) {
   switch (name) {
+    case 'fast':
+      return <ModePicker inline="fast" options={ctx.options} cwd={ctx.cwd} live={!!ctx.sessionId} runtime={ctx.runtime} busy={ctx.optionsUpdating} onChange={ctx.setOptions} onRetry={() => ctx.sessionId ? refreshSessionRuntime(ctx.sessionId, ctx.cwd) : undefined} />
     case 'usage':
       return <UsageBody session={ctx.sessionUsage} />
     case 'context':
@@ -209,5 +213,5 @@ function ContextBody({ ctx }: { ctx: PanelContext }) {
 
 function PickerBody({ ctx, kind, onDone }: { onDone(): void; ctx: PanelContext; kind: 'effort' | 'model' }) {
   return <ModePicker inline={kind} options={ctx.options} cwd={ctx.cwd} live={!!ctx.sessionId} runtime={ctx.runtime}
-    busy={ctx.optionsUpdating} onChange={patch => { ctx.setOptions(patch); if (patch.model !== undefined || patch.effort !== undefined) onDone() }} onRetry={() => {if(ctx.sessionId) void window.desk.chat.refreshRuntime(ctx.sessionId)}} />
+    busy={ctx.optionsUpdating} onChange={patch => { ctx.setOptions(patch); if (patch.model !== undefined || patch.effort !== undefined) onDone() }} onRetry={() => ctx.sessionId ? refreshSessionRuntime(ctx.sessionId, ctx.cwd) : undefined} />
 }

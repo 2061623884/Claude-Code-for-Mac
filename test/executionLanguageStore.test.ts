@@ -22,3 +22,13 @@ it('recovers an unsupported saved language to Chinese', async () => {
  vi.resetModules()
  expect((await import('../src/main/store')).read().settings.executionLanguage).toBe('zh')
 })
+
+it('persists every desktop preference across a fresh store instance', async () => {
+  runtime.directory = mkdtempSync(join(tmpdir(), 'desktop-settings-'))
+  vi.resetModules()
+  const store = await import('../src/main/store')
+  const settings = { theme: 'dark' as const, autoScroll: false, reduceMotion: true, executionLanguage: 'en' as const, defaultModel: 'sonnet', defaultEffort: 'high' as const, defaultPermissionMode: 'plan' as const, allowBypass: true, notifyCompletion: false, notifyApproval: false, notificationSound: false, claudePath: null }
+  store.update(d => { d.settings = settings })
+  vi.resetModules()
+  expect((await import('../src/main/store')).read().settings).toEqual(settings)
+})

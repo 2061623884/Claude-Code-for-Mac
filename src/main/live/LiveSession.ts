@@ -1,5 +1,9 @@
+import { notificationPreview } from '../../shared/notificationPreview'
 // 一个常驻的 claude 进程，对应一个打开着的会话（流式输入模式，可随时追加消息、中断、切换模式）。
 import type { CanUseTool, HookCallback, McpServerStatus, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { observeClaudeConfig, isConfigMutation } from '../claudeConfigChanges'
+import { runLocalCommand } from '../localCommand'
+import { readTrackedTaskOutput } from '../taskOutput'
 import { readConfigState } from '../claudeConfigProtocol'
 import type { RuntimeSettings } from '../../shared/chat'
 import { randomUUID } from 'node:crypto'
@@ -66,6 +70,9 @@ export class LiveSession {
   private abort = new AbortController()
   private q: Query | null = null
   private closed = false
+  private bypassAllowed = false
+  private configCommands = new Set<string>()
+  private configChanged: (fallback?: boolean) => void
   private commandsChanged = false
   private runtimeRequest = 0
   private outstandingInputs = new Set<string>()
@@ -80,6 +87,7 @@ export class LiveSession {
   })
 
   constructor(private init: LiveSessionInit) {
+    this.configChanged = observeClaudeConfig(init.cwd)
     this.started.catch(() => {}) // 启动失败由 start() 提示，这里只防止未处理的 rejection
   }
 
@@ -92,6 +100,7 @@ export class LiveSession {
       const sdk = await loadSdk()
       if (this.closed) return
       const { sessionId, cwd, resume, fork, options } = this.init
+      this.bypassAllowed = store.read().settings.allowBypass
       this.q = sdk.query({
         prompt: this.configuredInput(),
         options: {
@@ -102,7 +111,7 @@ export class LiveSession {
               ? { resume: sessionId }
               : { sessionId }),
           model: options.model ?? undefined,
-          permissionMode: options.mode,
+          permissionMode: options.mode === 'bypassPermissions' && !this.bypassAllowed ? 'default' : options.mode,
           effort: options.effort ?? undefined,
           settings: { ...(options.workflows !== undefined ? { enableWorkflows: options.workflows } : {}), ...(options.ultracode !== undefined ? { ultracode: options.ultracode } : {}), ...(options.fastMode !== undefined ? { fastMode: options.fastMode } : {}) },
           enableFileCheckpointing: true,
@@ -115,7 +124,7 @@ export class LiveSession {
             DirectoryAdded: [{ hooks: [this.observeDirectory] }]
           },
           canUseTool: this.canUseTool,
-          allowDangerouslySkipPermissions: store.read().settings.allowBypass,
+          allowDangerouslySkipPermissions: this.bypassAllowed,
           pathToClaudeCodeExecutable: claudeExecutable(),
           abortController: this.abort,
           stderr: (data) => console.error('[claude]', data.trimEnd())
@@ -168,6 +177,7 @@ export class LiveSession {
     this.init.onSubmit?.(submission)
     if (this.state !== 'running' && this.state !== 'awaiting') this.activity.start()
     this.init.transcript.addUser(text, submission.uuid, submission.time)
+    if (isConfigMutation(text)) this.configCommands.add(submission.uuid)
     this.outstandingInputs.add(submission.uuid)
     this.flush()
     this.input.push({ type: 'user', uuid: submission.uuid as SDKUserMessage['uuid'], message: { role: 'user', content: text }, parent_tool_use_id: null, origin: { kind: 'human' } })
@@ -188,6 +198,10 @@ export class LiveSession {
   }
 
   async setMode(mode: SessionOptions['mode']): Promise<void> {
+    if (mode === 'bypassPermissions') {
+      if (!store.read().settings.allowBypass) throw new Error('请先在设置中允许选择跳过权限模式')
+      if (!this.bypassAllowed) throw new Error('此对话启动时未启用跳过权限，请在高级设置中重新加载当前对话设置')
+    }
     await (await this.query()).setPermissionMode(mode)
   }
 
@@ -205,15 +219,30 @@ export class LiveSession {
     await (await this.query()).applyFlagSettings({ enableWorkflows })
   }
 
-  async setFastMode(fastMode: boolean): Promise<void> {
+  async setFastMode(fastMode: boolean, previousRequested?: boolean): Promise<void> {
     const q = await this.query()
-    await q.applyFlagSettings({ fastMode })
-    const init = await q.reinitialize()
-    this.runtime.fastMode = init.fast_mode_state
-    this.runtime.fastModeReason = init.fast_mode_disabled_reason
-    if (fastMode && init.fast_mode_state === 'off') {
-      await this.refreshRuntime()
-      throw new Error(init.fast_mode_disabled_reason === 'extra_usage_disabled' ? '快速模式未开启：账号未启用额外用量' : '快速模式未生效：' + (init.fast_mode_disabled_reason ?? 'CLI 未提供原因'))
+    const previous = previousRequested ?? (this.runtime.fastMode === 'on' || this.runtime.fastMode === 'cooldown')
+    try {
+      await q.applyFlagSettings({ fastMode })
+      const init = await q.reinitialize()
+      this.runtime.fastMode = init.fast_mode_state
+      this.runtime.fastModeReason = init.fast_mode_disabled_reason
+      if (!init.fast_mode_state || (fastMode ? init.fast_mode_state === 'off' : init.fast_mode_state !== 'off')) {
+        throw new Error(init.fast_mode_disabled_reason === 'extra_usage_disabled' ? '快速模式未开启：账号未启用额外用量' : '快速模式未生效：' + (init.fast_mode_disabled_reason ?? 'CLI 未确认状态'))
+      }
+    } catch (error) {
+      // A rejected flag may still have changed CLI settings. Restore before reporting failure.
+      try {
+        await q.applyFlagSettings({ fastMode: previous })
+        const restored = await q.reinitialize()
+        this.runtime.fastMode = restored.fast_mode_state
+        this.runtime.fastModeReason = restored.fast_mode_disabled_reason
+        await this.refreshRuntime()
+      } catch (rollback) {
+        this.runtime = { error: `快速模式恢复失败：${String(rollback)}` }
+        this.init.emit({ kind: 'runtime', runtime: this.runtime })
+      }
+      throw error
     }
   }
 
@@ -223,15 +252,57 @@ export class LiveSession {
     return bridge.request(request)
   }
 
+  async taskOutput(taskId: string): Promise<{ output: string }> {
+    const task = this.tasks.get(taskId)
+    if (task?.task_type === 'local_workflow') {
+      const empty = ['stopped', 'killed'].includes(String(task.status)) ? '工作流已停止，尚未生成结果。'
+        : task.status === 'failed' ? '工作流失败，未生成结果。' : '工作流尚未生成输出，请稍后刷新。'
+      if (typeof task.output_file !== 'string') return { output: empty }
+      try { return { output: (await readTrackedTaskOutput(task.output_file)) || empty } }
+      catch (error: any) { if (error.code === 'ENOENT' && ['stopped', 'killed'].includes(String(task.status))) return { output: empty }; throw error }
+    }
+    return this.control({ subtype: 'get_task_output', task_id: taskId })
+  }
+
   async applySetting(key: string, value: string): Promise<void> {
     const settings: Record<string, unknown> = {}
     if (key === 'outputStyle' || key === 'language') settings[key] = value
     else if (key === 'thinking') settings.alwaysThinkingEnabled = value === 'true'
     else throw new Error('此选项需要重载会话')
-    await (await this.query()).applyFlagSettings(settings)
+    const q = await this.query()
+    await q.applyFlagSettings(settings)
+    const state = await readConfigState(q)
+    const [setting, expected] = Object.entries(settings)[0]
+    if (state.effective[setting] !== expected) throw new Error('设置被其他配置覆盖或无法确认，请检查策略')
   }
 
-  async refreshConfiguration() { await (await this.query()).reinitialize() }
+  async autoCompact(args: string): Promise<void> {
+    await runLocalCommand(this.init.cwd, '/autocompact ' + args, this.runtime.model ?? this.init.options.model)
+    await this.reloadSettings()
+  }
+
+  async mcpCommand(operation: 'enable' | 'disable' | 'reconnect', target: string): Promise<void> {
+    const q = await this.query()
+    const servers = await q.mcpServerStatus()
+    const selected = target === 'all' ? servers : servers.filter(server => server.name === target)
+    if (!selected.length) throw new Error('没有找到 MCP 服务：' + target)
+    for (const server of selected) {
+      if (operation === 'reconnect') await q.reconnectMcpServer(server.name)
+      else await q.toggleMcpServer(server.name, operation === 'enable')
+    }
+    this.publishCommands(await q.supportedCommands())
+  }
+
+  async reloadSettings(): Promise<void> {
+    await this.refreshConfiguration()
+    await this.refreshRuntime()
+  }
+
+  async refreshConfiguration() {
+    const fresh = await (await this.query()).reinitialize()
+    this.runtime.fastMode = fresh.fast_mode_state
+    this.runtime.fastModeReason = fresh.fast_mode_disabled_reason
+  }
 
   async rewind(target: string, dryRun: boolean) { return (await this.query()).rewindFiles(target, { dryRun }) }
   async stopTask(taskId: string) { await (await this.query()).stopTask(taskId) }
@@ -269,7 +340,7 @@ export class LiveSession {
         ultraReason: restriction ?? (workflowOff ? '当前会话尚未启用工作流' : 'CLI 未提供具体限制原因'),
         effortSource: environmentEffort !== undefined ? 'CLAUDE_CODE_EFFORT_LEVEL 环境变量' : undefined,
         fastMode: this.runtime.fastMode ?? init?.fast_mode_state,
-        fastModeReason: this.runtime.fastModeReason ?? init?.fast_mode_disabled_reason,
+        fastModeReason: this.runtime.fastMode !== undefined ? this.runtime.fastModeReason : init?.fast_mode_disabled_reason,
         model: typeof a.model === 'string' ? a.model : undefined,
         effort: a.effort as RuntimeSettings['effort'],
         ultracode: typeof a.ultracode === 'boolean' ? a.ultracode : undefined,
@@ -307,6 +378,8 @@ export class LiveSession {
       pending.resolve({ behavior: 'deny', message: '会话已结束' })
     }
     this.pending.clear()
+    this.configChanged()
+    this.configCommands.clear()
     this.releaseInput()
     this.input.end()
     this.activity.finish()
@@ -418,6 +491,7 @@ export class LiveSession {
     this.scheduleFlush()
     if ((m.type === 'result' || (m.type === 'system' && m.subtype === 'init')) && m.fast_mode_state) {
       this.runtime.fastMode = m.fast_mode_state
+      this.runtime.fastModeReason = m.fast_mode_disabled_reason
     }
     if (m.type === 'result') {
       void this.refreshRuntime()
@@ -427,13 +501,16 @@ export class LiveSession {
       const userStopped = (m.terminal_reason === 'aborted_streaming' || m.terminal_reason === 'aborted_tools') && ids.some(id => this.stopTargets?.has(id))
       const errors = m.subtype === 'success' ? (m.is_error && m.result ? [m.result] : []) : (m.errors ?? [])
       const failed = m.subtype !== 'success' || m.is_error
+      const completed = ids.length ? ids : (m.queued_turn_count ?? 0) === 0 ? [...this.configCommands] : []
+      this.configChanged(!failed && completed.some(id => this.configCommands.has(id)))
+      for (const id of completed) this.configCommands.delete(id)
       const error = failed
         ? [userStopped ? '已按用户请求停止' : `运行结束：${m.subtype}`, ...errors, ...(m.terminal_reason ? [`结束原因：${m.terminal_reason}`] : [])].join('\n')
         : null
       this.stopTargets = undefined
       for (const id of ids) this.outstandingInputs.delete(id)
       if (m.queued_turn_count === 0) this.outstandingInputs.clear()
-      this.init.emit({ kind: 'result', resultId: m.uuid, durationMs: m.duration_ms, error, diagnostic: { subtype: m.subtype, errors, terminalReason: m.terminal_reason, userMessageIds: ids, userStopped } })
+      this.init.emit({ kind: 'result', resultId: m.uuid, replyPreview: !failed && typeof m.result === 'string' ? notificationPreview(m.result) : undefined, durationMs: m.duration_ms, error, diagnostic: { subtype: m.subtype, errors, terminalReason: m.terminal_reason, userMessageIds: ids, userStopped } })
       if ((m.queued_turn_count ?? 0) > 0) { this.activity.start(); this.setState('running') }
       else this.setState(this.pending.size > 0 ? 'awaiting' : 'idle')
     }

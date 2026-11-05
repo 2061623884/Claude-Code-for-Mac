@@ -76,7 +76,7 @@ it('shows a cache that arrives after live failure and retains the retry', async 
   await screen.findByRole('button', { name: /读取失败/ })
   await act(async () => cache.resolve([opus]))
   expect(screen.getByRole('button', { name: '高' })).toBeTruthy()
-  expect(screen.getByText('显示上次结果')).toBeTruthy()
+  expect(screen.queryByText('显示上次结果')).toBeNull()
 })
 it('allows retry after an empty response', async () => {
   vi.mocked(window.desk.meta.cachedModels).mockResolvedValue(null)
@@ -96,4 +96,63 @@ it('discards an old CLI response when the executable changes', async () => {
   await screen.findByRole('button', { name: '低' })
   await act(async () => old.resolve(meta([opus])))
   expect(screen.queryByRole('button', { name: '高' })).toBeNull()
+})
+
+it('shows resolved live values while keeping the requested automatic effort selected', async () => {
+  const models = [{ ...opus, resolvedModel: 'claude-opus-resolved' }]
+  vi.mocked(window.desk.meta.cachedModels).mockResolvedValue(models)
+  vi.mocked(window.desk.meta.get).mockResolvedValue(meta(models))
+  render(<ModePicker live options={{ model: 'opus', mode: 'default', effort: null }} runtime={{ model: 'claude-opus-resolved', effort: 'high' }} onChange={vi.fn()} />)
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择模型' }).textContent).toContain('Opus'))
+  expect(screen.getByRole('button', { name: '选择思考程度' }).textContent).toContain('自动')
+  fireEvent.click(screen.getByRole('button', { name: '选择思考程度' }))
+  expect(screen.queryByText('实际思考程度：高')).toBeNull()
+  expect(screen.queryByText(/当前使用/)).toBeNull()
+  expect(screen.getByRole('button', { name: '自动' }).getAttribute('aria-pressed')).toBe('true')
+})
+it('explains environment overrides and does not show stale values as confirmed after an error', async () => {
+  const onRetry = vi.fn()
+  const props = { live: true, options: { model: 'opus', mode: 'default' as const, effort: 'low' as const }, onChange: vi.fn(), onRetry }
+  const view = render(<ModePicker {...props} runtime={{ model: 'opus', effort: 'high', effortSource: 'CLAUDE_CODE_EFFORT_LEVEL 环境变量' }} />)
+  fireEvent.click(screen.getByRole('button', { name: '选择思考程度' }))
+  expect((await screen.findByText('当前使用：高（已选：低）')).getAttribute('title')).toContain('CLAUDE_CODE_EFFORT_LEVEL')
+  view.rerender(<ModePicker {...props} runtime={{ model: 'opus', effort: 'high', error: 'read failed' }} />)
+  expect(screen.getByRole('button', { name: '选择模型' }).textContent).toContain('Opus')
+  expect(screen.getByRole('button', { name: '选择思考程度' }).textContent).toContain('低')
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  expect(onRetry).toHaveBeenCalledOnce()
+})
+it('shows a requested model separately when the engine uses a different model', async () => {
+  render(<ModePicker live inline="model" options={{ model: 'opus', mode: 'default', effort: null }} runtime={{ model: 'other-model', effort: 'high' }} onChange={vi.fn()} />)
+  await screen.findByText('当前使用：other-model（已选：Opus）')
+  expect(screen.getByRole('button', { name: 'Opus' }).getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByText('当前使用：other-model（已选：Opus）')).toBeTruthy()
+})
+
+it('keeps Fast enabled during cooldown and lets the user turn it off', async () => {
+  const onChange = vi.fn()
+  render(<ModePicker live inline="model" options={{ model: 'opus', mode: 'default', effort: null, fastMode: true }} runtime={{ model: 'opus', effort: 'high', fastMode: 'cooldown' }} onChange={onChange} />)
+  await screen.findByText('快速模式已开启，限流冷却中')
+  const fast = screen.getByRole('checkbox', { name: 'Fast' }) as HTMLInputElement
+  expect(fast.checked).toBe(true)
+  fireEvent.click(fast)
+  expect(onChange).toHaveBeenCalledWith({ fastMode: false })
+})
+
+it('shows saved choices and supported effort levels for a conversation without a running process', async () => {
+  render(<ModePicker live options={{ model: 'opus', effort: 'high', mode: 'default' }} onChange={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: '选择思考程度' }))
+  await screen.findByRole('button', { name: '高' })
+  expect(screen.getByRole('button', { name: '选择模型' }).textContent).toContain('Opus')
+  expect(screen.getByRole('button', { name: '选择思考程度' }).textContent).toContain('高')
+  expect(screen.queryByText(/状态未确认|无法读取会话状态/)).toBeNull()
+  expect((screen.getByRole('checkbox', { name: 'Ultracode' }) as HTMLInputElement).disabled).toBe(false)
+})
+it('keeps retry failures visible in one message without rejecting into the UI', async () => {
+  const retry = vi.fn().mockRejectedValue(new Error('offline'))
+  render(<ModePicker live inline="effort" runtime={{ error: 'read failed' }} options={{ model: 'opus', effort: 'high', mode: 'default' }} onChange={vi.fn()} onRetry={retry} />)
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await waitFor(() => expect(screen.getByText(/暂时无法读取/).parentElement?.title).toBe('offline'))
+  expect(screen.getAllByRole('button', { name: '重试' })).toHaveLength(1)
+  await screen.findByRole('button', { name: '高' })
 })

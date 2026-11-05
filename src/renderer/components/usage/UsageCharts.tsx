@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { UsageIcon } from './UsageIcon'
-import { chartDays, chartWeeks, dateKey, parseDay, shiftDay, type DailyUsage, formatUsageTokens, usageInRange } from '@shared/usageAnalytics'
+import { chartDays, chartWeeks, dateKey, parseDay, shiftDay, type DailyUsage, formatUsageTokens, usageInRange, USAGE_MODELS, type UsageModelFilter } from '@shared/usageAnalytics'
 
 const COLORS = ['var(--chip)', '#ffd0b7', '#ffab80', '#ee7845', '#bd471b']
 type Selection = { start: string; end: string }
 export function UsageCharts({ days }: { days: DailyUsage[] }) {
   const [mode, setMode] = useState<'daily' | 'weekly' | 'total'>('daily')
   const [selection, setSelection] = useState<Selection | null>(null)
+  const [model, setModel] = useState<UsageModelFilter>('total')
   const today = dateKey(new Date()), start = shiftDay(today, -364)
   const points = chartDays(days, start, today), weeks = chartWeeks(points)
   const cumulative = new Map(points.map(p => [p.date, p.cumulative]))
@@ -17,7 +18,7 @@ export function UsageCharts({ days }: { days: DailyUsage[] }) {
   const max = Math.max(1, ...values)
   const firstDate = days[0]?.date ?? today
   const range = selection ?? (mode === 'daily' ? { start: today, end: today } : { start: mode === 'total' ? firstDate : weeks.at(-1)!.start, end: today })
-  const detail = usageInRange(days, range.start, range.end)
+  const detail = usageInRange(days, range.start, range.end, model)
   const dateLabel = (date: string): string => { const d = parseDay(date); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日` }
   const heading = mode === 'daily' ? dateLabel(range.end) : `${dateLabel(range.start)} 至 ${dateLabel(range.end)}`
   const activate = (start: string, end: string) => ({ onMouseEnter: () => setSelection({ start, end }), onFocus: () => setSelection({ start, end }) })
@@ -50,6 +51,9 @@ export function UsageCharts({ days }: { days: DailyUsage[] }) {
     <div aria-label="用量明细" className="mt-5 rounded-2xl border border-line bg-bg p-5">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
         <span className="font-serif text-[17px] leading-relaxed" data-usage-range>{heading}</span>
+        <div role="group" aria-label="用量模型" className="ml-auto flex flex-wrap items-center gap-1">
+          {(['total', ...USAGE_MODELS] as const).map(value => <button key={value} type="button" aria-pressed={model === value} onClick={() => setModel(value)} className={`rounded-md px-2 py-1 text-[12px] outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent ${model === value ? 'bg-chip text-fg' : 'text-fg3 hover:bg-hover hover:text-fg'}`}>{value[0].toUpperCase() + value.slice(1)}</button>)}
+        </div>
       </div>
       <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6">
         <Metric label="累计 Token" value={formatUsageTokens(detail.total)} icon={<UsageIcon kind="total" />} />
