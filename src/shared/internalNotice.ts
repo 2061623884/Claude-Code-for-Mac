@@ -25,3 +25,10 @@ export function groupTechnicalNotices(messages: UiMessage[]): DisplayEntry[] {
   }
   return entries
 }
+
+/** Normalize SDK interruption notices for display without changing stored provenance. */
+export function isInterruptionNotice(message: UiMessage): boolean {
+  if (message.role !== 'notice' || message.source === 'human' || message.source === 'external' || message.startsTurn) return false
+  return message.blocks.length === 1 && message.blocks[0].kind === 'text'
+    && /^\[Request interrupted by user(?: for tool use)?\]$/.test(message.blocks[0].text.trim())
+}

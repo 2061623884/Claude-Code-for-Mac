@@ -7,7 +7,7 @@ import { RefreshCw } from 'lucide-react'
 import type { ComposerAttachment } from '@shared/attachments'
 import type { UiBlock, UiMessage } from '@shared/chat'
 import type { CommandInfo } from '@shared/types'
-import { groupTechnicalNotices } from '@shared/internalNotice'
+import { groupTechnicalNotices, isInterruptionNotice } from '@shared/internalNotice'
 import { InternalNotice, TechnicalRecords } from './InternalNotice'
 import { turnsOf } from '@shared/fileChanges'
 import { sumUsage, totalTokens } from '@shared/usageStats'
@@ -35,6 +35,7 @@ import { ActivityIndicator } from '../ui/ActivityIndicator'
 import { activityLabel, ThinkingSummary } from './ThinkingSummary'
 import { useComposerDrafts, EMPTY_DRAFT } from '../../composerDraftStore'
 import { UsagePill } from './UsageStats'
+import { ChatError } from './ChatError'
 
 // SDK 里没有 /btw，由应用自己实现，补进命令菜单
 const EXTRA_COMMANDS: CommandInfo[] = [
@@ -122,13 +123,20 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
   const sessionUsage = sumUsage(chat.messages)
   const approval = chat.approvals[0]
   const liveIndicator = running ? <ActivityIndicator iconOnly label={activityLabel(chat.state, chat.activity)} active={chat.state === 'running' && chat.activity?.phase !== 'stopping'} /> : null
-  const anchorExists = chat.messages.some(m => m.id === chat.activity?.messageId && !m.parentToolUseId && m.role === 'assistant' && m.blocks[chat.activity.blockIndex ?? -1])
+  const activeIndex = chat.activity?.blockIndex
+  const anchor = running && activeIndex !== undefined
+    ? chat.messages.find(m => m.id === chat.activity?.messageId && !m.parentToolUseId && m.role === 'assistant' && m.blocks[activeIndex])
+    : undefined
+  const activeBlock = anchor && activeIndex !== undefined ? {
+    index: activeIndex,
+    thinking: chat.state === 'running' && chat.activity?.phase === 'thinking',
+    indicator: liveIndicator
+  } : undefined
   const renderMessage = (message: UiMessage) => (
     <Message
       key={message.id}
       message={message}
-      indicator={null}
-      activeBlock={chat.activity?.blockIndex}
+      activeBlock={anchor === message ? activeBlock : undefined}
       running={running}
       cwd={cwd}
       // 编辑历史消息：会话空闲时才能改
@@ -163,7 +171,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
             <div className="mx-auto max-w-[760px] pt-2 pb-6">
               {external && (
                 <div className="sticky top-0 z-10 mb-2 flex items-center gap-3 rounded-xl border border-line bg-card px-4 py-2.5 text-[13px] shadow-card">
-                  <span className="min-w-0 flex-1 text-fg2">这个会话在其他地方（终端或 VS Code）有了新内容</span>
+                  <span className="min-w-0 flex-1 text-fg2">会话有更新</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -174,7 +182,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                     className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium hover:bg-hover"
                   >
                     <RefreshCw size={13} />
-                    载入最新内容
+                    更新
                   </button>
                 </div>
               )}
@@ -184,13 +192,12 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   {turn
                     .filter((m) => m.role === 'user' && !m.parentToolUseId && !hidden.has(m.id))
                     .map(renderMessage)}
-                  <ThinkingSummary showActivity={false} messages={turn} state={(anchorExists ? turn.some(m => m.id === chat.activity?.messageId) : i === turns.length - 1) ? chat.state : 'idle'} activity={(anchorExists ? turn.some(m => m.id === chat.activity?.messageId) : i === turns.length - 1) ? chat.activity : undefined} />
                   {groupTechnicalNotices(turn.filter((m) => m.role !== 'user' && !m.parentToolUseId && !hidden.has(m.id)))
                     .map(entry => entry.kind === 'technical'
                       ? <TechnicalRecords key={entry.messages[0]!.id} messages={entry.messages} />
                       : renderMessage(entry.message))}
                   {/* 每轮结束后列出这一轮改过的文件，点开在右栏看对比 */}
-                  {!(running && (anchorExists ? turn.some(m => m.id === chat.activity?.messageId) : i === turns.length - 1)) && (
+                  {!(running && (anchor ? turn.includes(anchor) : i === turns.length - 1)) && (
                     <>
                       <TurnFiles messages={turn} cwd={cwd} />
                       <AssistantActions turn={turn} />
@@ -198,12 +205,8 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                   )}
                 </Fragment>
               ))}
-              {liveIndicator}
-              {chat.error && (
-                <div className="my-3 rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-[13px] text-danger select-text">
-                  {chat.error}
-                </div>
-              )}
+              {!activeBlock && liveIndicator}
+              {chat.error && <ChatError error={chat.error} />}
             </div>
           </div>
 
@@ -219,7 +222,6 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 />
               )}
               {chat.optionsSaveError && <div role="alert" className="text-[12px] text-danger">{chat.optionsSaveError}</div>}
-              {chat.optionsSaved === false && !chat.optionsSaveError && <div className="text-[11px] text-fg3">此旧会话没有已保存配置；当前选择将用于下次执行。</div>}
 
               <Composer fast={chat.runtime?.fastMode ? chat.runtime.fastMode === 'on' : undefined} rainbow={chat.runtime ? chat.runtime.ultracode === true : chat.state !== 'error' && chat.firstSendUltracode && !chat.sync?.fields.runtime}
                 queuePanel={<MessageQueue key={`queue-${sessionId}`} queue={chat.queue} canInsert={chat.state === 'running' && chat.activity?.phase !== 'stopping' && !approval} onAction={action => queueAction(sessionId, action)} editingId={editing?.id} onEdit={async item => {
@@ -233,7 +235,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 key={`${sessionId}:${editing?.id ?? 'draft'}`}
                 clearOnSubmit={!editing}
                 submitLabel={editing ? '保存到队列' : undefined}
-                header={editing && <div className="flex items-center justify-between gap-3 px-3 pt-3 text-[12px] text-fg3"><span>正在编辑排队消息 · 保留原排队位置</span><button type="button" disabled={editBusy} className="hover:text-fg disabled:opacity-40" onClick={async () => {
+                header={editing && <div className="flex items-center justify-between gap-3 px-3 pt-3 text-[12px] text-fg3"><span>编辑排队消息</span><button type="button" disabled={editBusy} className="hover:text-fg disabled:opacity-40" onClick={async () => {
                   setEditBusy(true); setSendError(null)
                   try { await queueAction(sessionId, { type: 'cancelEdit', id: editing.id }); useComposerDrafts.getState().finishEdit(sessionId) }
                   catch (e) { setSendError(e instanceof Error ? e.message : String(e)) }
@@ -247,7 +249,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 rows={2}
                 autoFocus
                 cwd={cwd}
-                placeholder={editing ? '编辑这条排队消息…' : approval ? '处理上方请求后继续' : running ? '输入下一条任务，发送后加入队列' : '回复 Claude…'}
+                placeholder={editing ? '编辑这条排队消息…' : approval ? '处理上方请求后继续' : running ? '发送下一条任务…' : '回复 Claude…'}
                 running={running && !editing}
                 onStop={() => void interrupt(sessionId)}
                 canSubmit={Boolean(chat.loaded && (editing || !approval) && !editBusy)}
@@ -283,7 +285,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                     {context && <ContextMeter usage={context} />}
                   </>
                 }
-                chips={editing ? <span className="px-2 text-[12px] text-fg3">沿用原队列配置</span> :
+                chips={editing ? null :
                   <>
                     <ModePicker live options={chat.options} runtime={chat.runtime} cwd={cwd} busy={chat.optionsUpdating} onChange={panelCtx.setOptions} onRetry={() => refreshSessionRuntime(sessionId, cwd)} />
                     <PermissionChip placement="top" value={chat.options.mode} onChange={(mode) => void setOptions(sessionId, { mode }).catch(() => {})} />
@@ -304,21 +306,20 @@ function Message({
   running,
   cwd,
   onEdit,
-  indicator,
   activeBlock
 }: {
   message: UiMessage
-  indicator?: ReactNode
-  activeBlock?: number
+  activeBlock?: { index: number; thinking: boolean; indicator: ReactNode }
   running: boolean
   cwd?: string
   onEdit?(text: string): Promise<void>
 }) {
   if (message.role === 'notice') {
+    if (isInterruptionNotice(message)) return <div className="my-3 text-[13px] text-fg3">已停止</div>
     if (message.source === 'internal') return <InternalNotice message={message} />
     if (message.source) {
       const label = message.source === 'unknown' ? (message.startsTurn ? '历史消息 · 来源未确认，按旧记录分组' : '消息 · 来源未确认') : message.originKind === 'task-notification' ? '任务通知' : message.originKind === 'peer' ? 'Agent 消息' : message.originKind === 'channel' ? '通道消息' : '外部消息'
-      return <div className="my-3 text-[12px] text-fg3"><div>{label}</div><div className="mt-1 whitespace-pre-wrap break-words select-text">{blockText(message.blocks)}</div></div>
+      return <div title={label} className="my-3 whitespace-pre-wrap break-words text-[13px] text-fg2 select-text">{blockText(message.blocks)}</div>
     }
     return <div className="my-3 text-center text-[12px] text-fg3">— {blockText(message.blocks)} —</div>
   }
@@ -327,11 +328,12 @@ function Message({
     <div className="my-3">
       {message.blocks.map((b, i) => {
         if (!b) return null
+        const activity = activeBlock?.index === i ? activeBlock : undefined
         const body = b.kind === 'text' ? (b.text ? <Markdown text={b.text} /> : null)
-          : b.kind === 'thinking' ? null
+          : b.kind === 'thinking' ? <ThinkingSummary text={b.text} streaming={activity?.thinking} />
           : b.kind === 'command' ? <CommandRecord block={b} onOpen={() => usePanel.getState().open({ kind: 'output', block: b })} />
           : <ToolCard block={b} running={running} cwd={cwd} />
-        return <Fragment key={i}>{body}{i === activeBlock && indicator}</Fragment>
+        return <Fragment key={i}>{body}{activity?.indicator}</Fragment>
       })}
     </div>
   )

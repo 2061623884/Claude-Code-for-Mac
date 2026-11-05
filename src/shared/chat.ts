@@ -121,6 +121,7 @@ export type ChatEvent = (
   | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
   | { kind: 'upsert'; messages: UiMessage[] }
+  | { kind: 'replaceHistory'; snapshot: ChatSnapshot }
   | { kind: 'state'; state: ChatState }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'approvalDone'; requestId: string }

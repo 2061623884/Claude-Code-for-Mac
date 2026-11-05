@@ -21,7 +21,7 @@ beforeEach(() => {
   useDesk.setState({ projects: [{ id: 'p', path: '/tmp', name: 'p', addedAt: 0, collapsed: false }], sessions: {}, view: { kind: 'new' } })
   useChat.setState({ chats: {} })
   window.desk = {
-    chat: { open: vi.fn(), reload: vi.fn(), fork: vi.fn().mockResolvedValue('fork'), setMode: vi.fn() },
+    chat: { open: vi.fn(), reload: vi.fn(), edit: vi.fn().mockResolvedValue(undefined), setMode: vi.fn() },
     sessions: { list: vi.fn().mockResolvedValue([]) }
   } as unknown as Window['desk']
 })
@@ -76,17 +76,26 @@ it('does not let an earlier open replace a later reload', async () => {
   expect(useChat.getState().chats.s.messages).toEqual([message('fresh', 'fresh')])
 })
 
-it('uses the same snapshot merge for a fork created by editing history', async () => {
-  useChat.setState({ chats: { s: { ...snapshot({ messages: [{ ...message('user', 'old'), role: 'user', forkFrom: 'point' }] }), options, projectId: 'p', loaded: true, error: null } } })
+it('replaces edited history without adding a sidebar row or switching sessions', async () => {
+  const view = { kind: 'session', sessionId: 's', projectId: 'p' } as const
+  const sessions = { p: [{ id: 's', title: 'Current chat', cwd: '/tmp', lastModified: 1, archived: false }] }
+  useDesk.setState({ view, sessions })
+  useChat.setState({ chats: { s: { ...snapshot({ messages: [message('old-reply', 'old reply')] }), options, projectId: 'p', loaded: true, error: null } } })
   const pending = deferred<ChatSnapshot>()
-  vi.mocked(window.desk.chat.open).mockReturnValue(pending.promise)
-  const editing = useChat.getState().edit('s', 'user', 'edited')
-  await vi.waitFor(() => expect(window.desk.chat.open).toHaveBeenCalledWith('fork', '/tmp'))
-  useChat.getState().handle('fork', { kind: 'queue', queue, revision: 11 })
-  useChat.getState().handle('fork', { kind: 'upsert', messages: [message('reply', 'streaming reply')], revision: 12 })
-  pending.resolve(snapshot())
-  await editing
-  expect(useChat.getState().chats.fork).toMatchObject({ queue, messages: [message('reply', 'streaming reply')], projectId: 'p', loaded: true })
+  vi.mocked(window.desk.chat.reload).mockReturnValue(pending.promise)
+  const reloading = useChat.getState().reload('s')
+  const edited = { ...message('edited', 'edited text'), role: 'user' as const }
+  vi.mocked(window.desk.chat.edit).mockImplementationOnce(async () => {
+    useChat.getState().handle('s', { kind: 'replaceHistory', snapshot: snapshot({ messages: [edited] }), revision: 11 })
+    useChat.getState().handle('s', { kind: 'upsert', messages: [message('reply', 'streaming reply')], revision: 12 })
+  })
+  await useChat.getState().edit('s', 'original', 'edited text')
+  pending.resolve(snapshot({ messages: [message('old-reply', 'old reply')] }))
+  await reloading
+  expect(window.desk.chat.edit).toHaveBeenCalledExactlyOnceWith('s', '/tmp', 'original', 'edited text')
+  expect(useDesk.getState()).toMatchObject({ view, sessions })
+  expect(Object.keys(useChat.getState().chats)).toEqual(['s'])
+  expect(useChat.getState().chats.s.messages).toEqual([edited, message('reply', 'streaming reply')])
 })
 
 it('retains confirmed options when the command rejects only because persistence failed', async () => {

@@ -400,7 +400,6 @@ export function Composer({
               <FilePlus2 size={18} />
             </span>
             <span className="mt-2 text-[13px] font-medium">松开以添加文件</span>
-            <span className="mt-0.5 text-[11.5px] text-fg3">支持多选，文件将作为路径引用</span>
           </div>
         )}
       </div>

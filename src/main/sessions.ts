@@ -3,18 +3,37 @@ import { sessionTitle } from '../shared/format'
 import { loadSdk } from './sdk'
 import * as store from './store'
 
+/** Desktop IDs stay stable while Claude stores each edited history separately. */
+export function historyIds(id: string): string[] {
+  return [id, ...(store.read().sessionEdits?.[id] ?? [])]
+}
+
+export function recordEdit(id: string, historyId: string): void {
+  store.update(d => { d.sessionEdits[id] = [...(d.sessionEdits[id] ?? []), historyId] })
+}
+
 export async function list(projectPath: string): Promise<SessionSummary[]> {
   const sdk = await loadSdk()
-  const archived = store.read().archived
   const infos = await sdk.listSessions({ dir: projectPath })
-  return infos
-    .map((s) => ({
-      id: s.sessionId,
-      title: sessionTitle(s),
-      cwd: s.cwd ?? projectPath,
-      lastModified: s.lastModified,
-      archived: archived[s.sessionId] === true
-    }))
+  const { archived, sessionEdits = {} } = store.read()
+  const rows = new Map(infos.map(info => [info.sessionId, info]))
+  const editedHistories = new Set(Object.values(sessionEdits).flat())
+  const ids = new Set([...rows.keys(), ...Object.keys(sessionEdits)])
+  return [...ids].flatMap(id => {
+    if (editedHistories.has(id)) return []
+    const latest = (sessionEdits[id] ?? []).findLast(historyId => rows.has(historyId))
+    const original = rows.get(id)
+    const active = latest ? rows.get(latest) : original
+    const session = original ?? active
+    if (!session) return []
+    return [{
+      id,
+      title: sessionTitle(session),
+      cwd: session.cwd ?? projectPath,
+      lastModified: active?.lastModified ?? session.lastModified,
+      archived: archived[id] === true
+    }]
+  })
     .sort((a, b) => b.lastModified - a.lastModified)
 }
 

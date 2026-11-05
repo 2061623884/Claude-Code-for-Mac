@@ -37,9 +37,9 @@ it('recognizes bare fast as a panel and rejects malformed controls instead of fo
   for (const command of ['/fast invalid', '/effort invalid', '/model one two', '/config invalid']) expect(() => parseDesktopCommand(command)).toThrow()
   expect(parseDesktopCommand('/code-review branch')).toBeNull()
 })
-it('blocks controls at start, fork, and queue editing without creating prompt records', async () => {
+it('blocks controls at start, history editing, and queue editing without creating prompt records', async () => {
   expect(() => manager.start('/tmp', '/fast', options)).toThrow('设置指令')
-  await expect(manager.fork('source', '/tmp', 'at', '/model opus', options)).rejects.toThrow('设置指令')
+  await expect(manager.edit('source', '/tmp', 'at', '/model opus')).rejects.toThrow('设置指令')
   const { id } = await start()
   await manager.send(id, '/tmp', 'pending', options)
   const pending = (await manager.open(id, '/tmp')).queue!.items[0]

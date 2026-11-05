@@ -5,6 +5,7 @@ import { changeRule } from '../permissionRules'
 import { gitDiff } from '../gitDiff'
 import { access } from 'node:fs/promises'
 import * as store from '../store'
+import { historyIds, recordEdit } from '../sessions'
 import type { SessionPreferences, SessionPreferencesRepository } from '../sessionPreferences'
 import { randomUUID } from 'node:crypto'
 import type { CommandInfo } from '../../shared/types'
@@ -32,6 +33,7 @@ export class SessionManager {
   private live = new SessionRuntimes()
   private commandConfigurations = new WeakMap<LiveSession, string>()
   private transcripts = new Map<string, Transcript>()
+  private activeHistoryIds = new Map<string, string>()
   private transcriptLoads = new Map<string, Promise<Transcript>>()
   /** 最近一次和会话文件同步时，文件里的消息条数；用来发现别处（终端、VS Code）续写了这个会话 */
   private seen = new Map<string, number>()
@@ -78,6 +80,10 @@ export class SessionManager {
 
   async open(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
     const transcript = await this.transcript(sessionId, projectPath)
+    return this.snapshot(sessionId, this.transcripts.get(sessionId) ?? transcript)
+  }
+
+  private snapshot(sessionId: string, transcript: Transcript): ChatSnapshot {
     const session = this.live.get(sessionId)
     const prefs = this.prefs(sessionId)
     return {
@@ -105,26 +111,44 @@ export class SessionManager {
     return sessionId
   }
 
-  /**
-   * 编辑历史消息：从源会话的 at（主链条目 uuid）之后分叉出一个新会话，发出改过的消息。原会话不变
-   */
-  async fork(sourceId: string, projectPath: string, at: string, text: string, options: SessionOptions): Promise<string> {
-    assertChatPrompt(text)
-    const sdk = await loadSdk()
-    const sessionId = randomUUID()
-    const transcript = new Transcript(projectPath, undefined, this.submissionStore?.load(sourceId))
-    for (const m of await sdk.getSessionMessages(sourceId, { dir: projectPath })) {
-      transcript.apply(m)
-      if (m.uuid === at) break
-    }
-    transcript.finish()
-    transcript.activity.finishHistory(true)
-    transcript.takeChanged()
-    this.submissionStore?.save(sessionId, transcript.humanSubmissions())
-    this.transcripts.set(sessionId, transcript)
-    this.updatePrefs(sessionId, p => { p.options = options })
-    this.spawn(sessionId, projectPath, false, options, transcript, { from: sourceId, at }).send(text)
-    return sessionId
+  edit(sessionId: string, projectPath: string, messageId: string, text: string): Promise<void> {
+    return this.lock(sessionId, async () => {
+      assertChatPrompt(text)
+      const live = this.live.get(sessionId)
+      if (live && (live.state !== 'idle' || live.approvals.length || [...live.tasks.values()].some(task => task.status === 'running'))) {
+        throw new Error('请等待当前任务结束后编辑')
+      }
+      const original = await this.transcript(sessionId, projectPath)
+      const target = original.messages.find(m => m.id === messageId && m.role === 'user')
+      if (!target || target.forkFrom === undefined) throw new Error('找不到可编辑的消息')
+      const sourceId = this.historyId(sessionId)
+      const at = target.forkFrom
+      const transcript = new Transcript(projectPath, undefined, at === null ? [] : this.submissionStore?.load(sourceId))
+      if (at !== null) {
+        const sdk = await loadSdk()
+        const messages = await sdk.getSessionMessages(sourceId, { dir: projectPath })
+        const boundary = messages.findIndex(message => message.uuid === at)
+        if (boundary < 0) throw new Error('历史位置尚未保存，请稍后重试')
+        for (const message of messages.slice(0, boundary + 1)) transcript.apply(message)
+      }
+      transcript.finish()
+      transcript.activity.finishHistory(true)
+      transcript.takeChanged()
+
+      if (this.shuttingDown) throw new Error('应用已关闭')
+      const options = this.options(sessionId)
+      const historyId = randomUUID()
+      const submission = { uuid: randomUUID(), text, time: Date.now() }
+      this.submissionStore?.save(historyId, [...transcript.humanSubmissions(), submission])
+      recordEdit(sessionId, historyId)
+      this.closeSession(sessionId)
+      if (this.prefs(sessionId).queue.items.length && !this.prefs(sessionId).queue.paused) this.pauseQueue(sessionId)
+      this.activeHistoryIds.set(sessionId, historyId)
+      this.transcripts.set(sessionId, transcript)
+      const replacement = this.spawn(sessionId, projectPath, false, options, transcript, at === null ? undefined : { from: sourceId, at })
+      this.publish(sessionId, { kind: 'replaceHistory', snapshot: this.snapshot(sessionId, transcript) })
+      replacement.send(text, submission.uuid)
+    })
   }
 
   async send(sessionId: string, projectPath: string, text: string, options: SessionOptions, attachments: string[] = []): Promise<void> {
@@ -306,7 +330,7 @@ export class SessionManager {
           return id
         }
         const sdk = await loadSdk()
-        const result = await sdk.forkSession(sessionId, { dir: path, upToMessageId: message.forkFrom })
+        const result = await sdk.forkSession(this.historyId(sessionId), { dir: path, upToMessageId: message.forkFrom })
         this.updatePrefs(result.sessionId, p => { p.options = options })
         return result.sessionId
       }
@@ -334,7 +358,7 @@ export class SessionManager {
   async checkExternal(sessionId: string, projectPath: string): Promise<boolean> {
     if (this.live.has(sessionId)) return false // 正在本应用里运行的会话以本应用为准
     const sdk = await loadSdk()
-    const count = (await sdk.getSessionMessages(sessionId, { dir: projectPath })).length
+    const count = (await sdk.getSessionMessages(this.historyId(sessionId), { dir: projectPath })).length
     const before = this.seen.get(sessionId)
     if (before === undefined) this.seen.set(sessionId, count)
     return before !== undefined && count > before
@@ -343,20 +367,26 @@ export class SessionManager {
   async context(sessionId: string, projectPath: string, model: string | null): Promise<ContextUsage | null> {
     const live = this.live.get(sessionId)
     // 新会话还没写出会话文件时读不到，返回 null 即可
-    return (live ? this.live.use(sessionId, () => live.contextUsage()) : peekContext(sessionId, projectPath, model)).catch(() => null)
+    return (live ? this.live.use(sessionId, () => live.contextUsage()) : peekContext(this.historyId(sessionId), projectPath, model)).catch(() => null)
   }
 
   reload(sessionId: string, projectPath: string): Promise<ChatSnapshot> {
-    this.closeSession(sessionId)
-    this.transcripts.delete(sessionId)
-    this.transcriptLoads.delete(sessionId)
-    return this.open(sessionId, projectPath)
+    return this.lock(sessionId, () => {
+      this.closeSession(sessionId)
+      this.transcripts.delete(sessionId)
+      this.transcriptLoads.delete(sessionId)
+      return this.open(sessionId, projectPath)
+    })
   }
 
   closeAll(): void {
     this.shuttingDown = true
     clearInterval(this.sweeper)
     this.live.closeAll()
+  }
+
+  private historyId(sessionId: string): string {
+    return this.activeHistoryIds.get(sessionId) ?? sessionId
   }
 
   private async transcript(sessionId: string, projectPath: string): Promise<Transcript> {
@@ -366,14 +396,23 @@ export class SessionManager {
     if (pending) return pending
     // 并发恢复共享同一份记录，避免缓存和 LiveSession 持有不同实例。
     const loading = loadSdk().then(async (sdk) => {
-      const saved = this.activityStore?.load(sessionId)
-      const transcript = new Transcript(projectPath, saved, this.submissionStore?.load(sessionId))
-      const messages = await sdk.getSessionMessages(sessionId, { dir: projectPath })
+      const candidates = historyIds(sessionId).reverse()
+      let historyId = sessionId
+      let messages: Awaited<ReturnType<typeof sdk.getSessionMessages>> = []
+      // A restart before the replacement writes any messages can still open the last saved history.
+      for (const candidate of candidates) {
+        historyId = candidate
+        messages = await sdk.getSessionMessages(candidate, { dir: projectPath })
+        if (messages.length) break
+      }
+      const saved = this.activityStore?.load(historyId)
+      const transcript = new Transcript(projectPath, saved, this.submissionStore?.load(historyId))
       for (const m of messages) transcript.apply(m)
       transcript.finish()
       transcript.activity.finishHistory(!saved)
       transcript.takeChanged()
       if (this.transcriptLoads.get(sessionId) === loading) {
+        this.activeHistoryIds.set(sessionId, historyId)
         this.seen.set(sessionId, messages.length)
         this.transcripts.set(sessionId, transcript)
       }
@@ -396,8 +435,9 @@ export class SessionManager {
     fork?: { from: string; at: string }
   ): LiveSession {
     this.evictIfFull()
+    const historyId = this.historyId(sessionId)
     const emit = (event: ChatEvent): void => {
-      if (event.kind === 'summary') this.activityStore?.save(sessionId, transcript.activity.export())
+      if (event.kind === 'summary') this.activityStore?.save(historyId, transcript.activity.export())
       if (event.kind === 'result') {
         const ids = event.diagnostic?.userMessageIds ?? []
         this.preferences.observe(sessionId, p => {
@@ -416,14 +456,15 @@ export class SessionManager {
     }
     const configuration = this.commandObserver?.configuration()
     const session = new LiveSession({
-      sessionId, cwd, resume, fork, options, transcript, emit, onCommands: this.commandObserver?.publisher(cwd),
+      sessionId: historyId, cwd, resume, fork, options, transcript, emit, onCommands: this.commandObserver?.publisher(cwd),
       onConsumed: (ids) => {
         this.preferences.observe(sessionId, p => { for (const item of p.queue.items) if (ids.includes(item.id)) item.status = 'received' })
       },
       onSubmit: (submission) => {
         if (!this.submissionStore) return
-        const previous = this.submissionStore.load(sessionId)
-        this.submissionStore.save(sessionId, [...previous.filter(s => s.uuid !== submission.uuid), submission])
+        const previous = this.submissionStore.load(historyId)
+        if (previous.some(s => s.uuid === submission.uuid && s.text === submission.text)) return
+        this.submissionStore.save(historyId, [...previous.filter(s => s.uuid !== submission.uuid), submission])
       },
       onClosed: (closed) => {
         // 迟到的旧实例退出事件不能删除已经替换它的新实例。

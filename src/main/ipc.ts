@@ -213,9 +213,7 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   handle('chat:prepareControls', (id, path) => chats.prepareControls(str(id, 'id'), str(path, 'path')))
   handle('chat:open', (id, path) => chats.openForDisplay(str(id, 'id'), str(path, 'path')))
   handle('chat:start', (path, text, o) => chats.start(str(path, 'path'), str(text, 'text'), opts(o)))
-  handle('chat:fork', (path, from, at, text, o) =>
-    chats.fork(str(from, 'from'), str(path, 'path'), str(at, 'at'), str(text, 'text'), opts(o))
-  )
+  handle('chat:edit', (id, path, messageId, text) => chats.edit(str(id, 'id'), str(path, 'path'), str(messageId, 'messageId'), str(text, 'text')))
   handle('chat:send', (id, path, text, o, attachments) => chats.send(str(id, 'id'), str(path, 'path'), str(text, 'text'), opts(o), Array.isArray(attachments) ? attachments.map(p => str(p, 'attachment')) : []))
   handle('chat:queue', (id, path, action) => chats.queueAction(str(id, 'id'), str(path, 'path'), action as QueueAction))
   handle('chat:interrupt', (id) => chats.interrupt(str(id, 'id')))

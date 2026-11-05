@@ -216,8 +216,7 @@ export interface DeskApi {
     open(sessionId: string, projectPath: string): Promise<ChatSnapshot>
     start(projectPath: string, text: string, options: SessionOptions): Promise<string>
     send(sessionId: string, projectPath: string, text: string, options: SessionOptions, attachments?: string[]): Promise<void>
-    /** 编辑历史消息：从源会话 at（主链条目 uuid）之后分叉出新会话并发出 text，返回新会话 id */
-    fork(projectPath: string, sourceId: string, at: string, text: string, options: SessionOptions): Promise<string>
+    edit(sessionId: string, projectPath: string, messageId: string, text: string): Promise<void>
     queue(sessionId: string, projectPath: string, action: QueueAction): Promise<void>
     interrupt(sessionId: string): Promise<void>
     setMode(sessionId: string, mode: PermissionMode): Promise<void>

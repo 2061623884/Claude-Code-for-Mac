@@ -504,8 +504,8 @@ export class LiveSession {
       const completed = ids.length ? ids : (m.queued_turn_count ?? 0) === 0 ? [...this.configCommands] : []
       this.configChanged(!failed && completed.some(id => this.configCommands.has(id)))
       for (const id of completed) this.configCommands.delete(id)
-      const error = failed
-        ? [userStopped ? '已按用户请求停止' : `运行结束：${m.subtype}`, ...errors, ...(m.terminal_reason ? [`结束原因：${m.terminal_reason}`] : [])].join('\n')
+      const error = failed && !userStopped
+        ? [`运行结束：${m.subtype}`, ...errors, ...(m.terminal_reason ? [`结束原因：${m.terminal_reason}`] : [])].join('\n')
         : null
       this.stopTargets = undefined
       for (const id of ids) this.outstandingInputs.delete(id)

@@ -45,6 +45,10 @@ export function applyChatEvent(current: ChatProjection, event: ChatEvent, receiv
     case 'state': return fields(['state'], { state: event.state })
     case 'notice': return fields(['error'], { error: event.text })
     case 'result': return fields(['error', 'lastResult'], { error: event.error, lastResult: event })
+    case 'replaceHistory': {
+      const history = mergeChatSnapshot({ ...current, sync: undefined }, { ...event.snapshot, revision: event.revision }, received, true)
+      return { ...history, lastResult: undefined, sync: { ...emptySync(), snapshotRevision: event.revision, eventRevision: event.revision } }
+    }
     case 'upsert': {
       const messages = [...current.messages]
       sync.messages = { ...previous.messages }

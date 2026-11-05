@@ -15,7 +15,7 @@ describe('usage navigation and shared requests', () => {
   it('shows remaining windows on one entry and routes without changing session state', () => {
     render(<UsageNav />)
     expect(screen.getByText('5h 80% · 周 60%')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '使用情况' }))
+    fireEvent.click(screen.getByRole('button', { name: '剩余额度' }))
     expect(useDesk.getState().view).toEqual({ kind: 'usage' })
   })
   it('retains last data on failure, and unknown is not shown as zero', async () => {

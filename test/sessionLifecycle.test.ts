@@ -3,10 +3,12 @@ import { SessionManager } from '../src/main/live/SessionManager'
 import { LiveSession } from '../src/main/live/LiveSession'
 import { Transcript } from '../src/main/transcript'
 import { PushQueue } from '../src/main/live/PushQueue'
+import { list } from '../src/main/sessions'
 
-const sdk = vi.hoisted(() => ({ query: vi.fn(), getSessionMessages: vi.fn(), load: vi.fn() }))
+const sdk = vi.hoisted(() => ({ query: vi.fn(), getSessionMessages: vi.fn(), listSessions: vi.fn(), load: vi.fn() }))
 vi.mock('../src/main/sdk', () => ({ loadSdk: () => sdk.load(), claudeExecutable: () => undefined, withIdleQuery: vi.fn() }))
-vi.mock('../src/main/store', () => ({ read: () => ({ settings: { allowBypass: false } }) }))
+const saved = vi.hoisted(() => ({ settings: { allowBypass: false }, archived: {}, sessionEdits: {} as Record<string, string[]> }))
+vi.mock('../src/main/store', () => ({ read: () => saved, update: (change: (data: typeof saved) => void) => change(saved) }))
 const options = { model: null, mode: 'default' as const, effort: null }
 let manager: SessionManager
 const emit = vi.fn()
@@ -16,6 +18,7 @@ function liveQuery() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  saved.sessionEdits = {}
   sdk.load.mockImplementation(async () => sdk)
   sdk.getSessionMessages.mockResolvedValue([])
   sdk.query.mockImplementation(liveQuery)
@@ -110,7 +113,11 @@ it('emits and persists live summary changes, including SDK directory hooks', asy
 it('requests summarized thinking for new, resumed and forked queries without changing model or effort', async () => {
   manager.start('/tmp', 'new', options)
   await manager.send('resumed', '/tmp', 'continue', options)
-  await manager.fork('source', '/tmp', 'at', 'fork', options)
+  sdk.getSessionMessages.mockResolvedValue([
+    { type: 'assistant', uuid: 'at', message: { id: 'reply', content: [{ type: 'text', text: 'kept' }] } },
+    { type: 'user', uuid: 'target', origin: { kind: 'human' }, message: { content: 'old' } }
+  ])
+  await manager.edit('source', '/tmp', 'target', 'edited')
   await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(3))
   for (const [request] of sdk.query.mock.calls) {
     expect(request.options.extraArgs).toEqual({ 'thinking-display': 'summarized', 'replay-user-messages': null })
@@ -197,7 +204,7 @@ it('uses the same human UUID for UI and SDK, deduplicates echoes and retains que
   })
 })
 
-it('restores saved originals on reload and copies only the retained submissions when forking', async () => {
+it('keeps prior submissions and reloads the edited history through the same session', async () => {
   manager.closeAll()
   const records = new Map<string, import('../src/main/humanSubmissionRepository').HumanSubmission[]>()
   manager = new SessionManager(emit, undefined, undefined, {
@@ -220,12 +227,44 @@ it('restores saved originals on reload and copies only the retained submissions 
   expect(restored.messages.filter(m => m.source === 'human').map(m => m.blocks)).toEqual([
     [{ kind: 'text', text: first.message.content }], [{ kind: 'text', text: '后续输入' }]
   ])
-  const fork = await manager.fork(id, '/tmp', 'fork-point', '修改后的输入', options)
-  expect(records.get(fork)!.map(s => s.text)).toEqual([first.message.content, '修改后的输入'])
-  expect((await manager.open(fork, '/tmp')).messages.filter(m => m.source === 'human').map(m => m.blocks)).toEqual([
+  await manager.edit(id, '/tmp', second.uuid, '修改后的输入')
+  const replacementId = saved.sessionEdits[id][0]
+  expect(replacementId).not.toBe(id)
+  expect(records.get(replacementId)!.map(s => s.text)).toEqual([first.message.content, '修改后的输入'])
+  expect((await manager.open(id, '/tmp')).messages.filter(m => m.source === 'human').map(m => m.blocks)).toEqual([
     [{ kind: 'text', text: first.message.content }], [{ kind: 'text', text: '修改后的输入' }]
   ])
   expect(records.get(id)!.map(s => s.text)).toEqual([first.message.content, '后续输入'])
+  const rewritten = records.get(replacementId)!.at(-1)!
+  sdk.getSessionMessages.mockImplementation(async historyId => historyId === replacementId ? [
+    { ...first, message: { content: 'expanded first' } },
+    { type: 'user', uuid: rewritten.uuid, message: { content: 'expanded edit' } }
+  ] : [])
+  await manager.reload(id, '/tmp')
+  expect(sdk.getSessionMessages).toHaveBeenLastCalledWith(replacementId, { dir: '/tmp' })
+  await manager.send(id, '/tmp', 'continue', options)
+  expect(sdk.query.mock.lastCall![0].options.resume).toBe(replacementId)
+})
+
+it('edits the first message without adding a sidebar entry and keeps the existing title', async () => {
+  sdk.getSessionMessages.mockResolvedValue([
+    { type: 'user', uuid: 'first', origin: { kind: 'human' }, message: { content: 'old' } },
+    { type: 'assistant', uuid: 'second', message: { id: 'reply', content: [{ type: 'text', text: 'old reply' }] } }
+  ])
+  await manager.edit('source', '/tmp', 'first', 'new first')
+  const replacementId = saved.sessionEdits.source[0]
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce())
+  expect(sdk.query.mock.lastCall![0].options).toMatchObject({ sessionId: replacementId })
+  expect(sdk.query.mock.lastCall![0].options.resume).toBeUndefined()
+  expect((await manager.open('source', '/tmp')).messages).toMatchObject([{ role: 'user', blocks: [{ kind: 'text', text: 'new first' }] }])
+
+  sdk.listSessions.mockResolvedValue([
+    { sessionId: 'source', customTitle: 'My title', lastModified: 1 },
+    { sessionId: replacementId, firstPrompt: 'new first', lastModified: 2 },
+    { sessionId: 'independent', firstPrompt: 'other chat', lastModified: 3 }
+  ])
+  expect(await list('/tmp')).toMatchObject([{ id: 'independent' }, { id: 'source', title: 'My title', lastModified: 2 }])
+  expect(emit.mock.calls.every(([id]) => id === 'source')).toBe(true)
 })
 
 it.each([
@@ -240,7 +279,7 @@ it.each([
   if (stop) await manager.interrupt(id)
   sdk.query.mock.results[0].value.push({ type: 'result', subtype: 'error_during_execution', uuid: 'failure', duration_ms: 10, errors: ['diagnostic detail'], terminal_reason: reason, user_message_uuid: matching ? input.uuid : 'unrelated' })
   await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, expect.objectContaining({
-    kind: 'result', error: expect.stringContaining('diagnostic detail'),
+    kind: 'result', error: stopped ? null : expect.stringContaining('diagnostic detail'),
     diagnostic: expect.objectContaining({ terminalReason: reason, userStopped: stopped, errors: ['diagnostic detail'] })
   })))
 })

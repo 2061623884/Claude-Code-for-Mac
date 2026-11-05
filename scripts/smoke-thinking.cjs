@@ -52,11 +52,13 @@ app.on('browser-window-created', (_event, win) => {
     const setState = value => { state=value;win.webContents.send('chat:event','a',{kind:'state',state}) }
     const checkSummaryOrder = async () => {
       const correct = await js(`(()=>{
-        const summary=document.querySelector('[data-thinking-summary]');
+        const summaries=[...document.querySelectorAll('[data-thinking-summary]')];
+        const tool=[...document.querySelectorAll('main button')].find(e=>e.textContent.includes('README.md'));
         const answer=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');
-        return Boolean(summary && answer && (summary.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING));
+        const follows=(previous,next)=>Boolean(previous&&next&&(previous.compareDocumentPosition(next)&Node.DOCUMENT_POSITION_FOLLOWING));
+        return summaries.length===2&&follows(summaries[0],tool)&&follows(tool,summaries[1])&&follows(summaries[1],answer);
       })()`)
-      if(!correct)throw new Error('Thinking summary must precede the answer')
+      if(!correct)throw new Error('Expected first summary, tool call, second summary, then answer')
     }
     try {
       await wait(`document.body.innerText.includes('动效测试 a')`); await open('a')
@@ -105,10 +107,17 @@ app.on('browser-window-created', (_event, win) => {
       setState('awaiting');await wait(`document.querySelector('main [role="status"]:has([data-activity-spark])')?.getAttribute('aria-label')?.includes('等待你确认')`)
       if(await js(`!!document.querySelector('[data-thinking-summary] animate')`))throw new Error('Approval wait is animating')
       setState('running');send({type:'user',message:{content:[{type:'tool_result',tool_use_id:'read',content:'ok'}]}})
-      send(event({type:'content_block_start',index:1,content_block:{type:'text',text:''}}));send(event({type:'content_block_delta',index:1,delta:{type:'text_delta',text:'检查完成。'}}))
+      send(begin('reply'));send(block(0,'thinking'));send(delta('读取完毕，整理结论。'))
+      await wait(`[...document.querySelectorAll('[aria-label="思考摘要内容"]')].some(e=>e.textContent==='读取完毕，整理结论。')`)
+      await wait(`(() => {
+        const latestSummary = document.querySelectorAll('main [data-thinking-summary]')[1];
+        const sparks = document.querySelectorAll('main [data-activity-spark]');
+        return sparks.length === 1 && latestSummary?.nextElementSibling === sparks[0].closest('[role="status"]');
+      })()`)
+      send(block(1,'text'));send(event({type:'content_block_delta',index:1,delta:{type:'text_delta',text:'检查完成。'}}))
       await wait(`document.querySelector('main [role="status"]:has([data-activity-spark])')?.getAttribute('aria-label')?.includes('正在生成回复')`)
       await checkSummaryOrder()
-      const followsText = await js(`(()=>{const p=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');const s=document.querySelector('main [role="status"]:has([data-activity-spark])');return Boolean(p&&s&&(p.compareDocumentPosition(s)&Node.DOCUMENT_POSITION_FOLLOWING)&&document.querySelectorAll('main [role="status"]:has([data-activity-spark])').length===1)})()`)
+      const followsText = await js(`(()=>{const p=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');const s=document.querySelector('main [role="status"]:has([data-activity-spark])');return Boolean(s&&p?.closest('.md')?.nextElementSibling===s&&document.querySelectorAll('main [data-activity-spark]').length===1)})()`)
       if(!followsText)throw new Error('Active indicator must follow the updated text block exactly once')
       if(await js(`document.querySelector('main [role="status"]:has([data-activity-spark])').textContent!==''`))throw new Error('Main activity indicator should not show status text')
       if(!await js(`(()=>{const p=[...document.querySelectorAll('main p')].find(e=>e.textContent==='检查完成。');return document.querySelector('main [role="status"]:has([data-activity-spark])').getBoundingClientRect().left<p.getBoundingClientRect().left})()`))throw new Error('Main activity indicator should sit slightly outside the text edge')
@@ -153,7 +162,7 @@ app.on('browser-window-created', (_event, win) => {
       if(await js(`!!document.querySelector('[data-thinking-summary] animate')`))throw new Error('Stopping is animating')
       await js(`window.__summaryBeforeFinish=document.querySelector('[data-thinking-summary]');window.__summaryTop=window.__summaryBeforeFinish.offsetTop`)
       activity.finish();flush();setState('idle')
-      await wait(`!!document.querySelector('[aria-label="思考摘要内容"]')`)
+      await wait(`!document.querySelector('main [data-activity-spark]')`)
       if(!await js(`document.querySelector('[data-thinking-summary]')===window.__summaryBeforeFinish&&window.__summaryBeforeFinish.offsetTop===window.__summaryTop`))throw Error('Summary moved on completion')
       await checkSummaryOrder()
       await click('展开思考摘要');await wait(`!!document.querySelector('[aria-label="思考摘要内容"]')`)

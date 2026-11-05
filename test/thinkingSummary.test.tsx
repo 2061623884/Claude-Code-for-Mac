@@ -16,50 +16,45 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 it('shows a compact live summary automatically and preserves explicit expansion on completion', () => {
-  const view = render(<ThinkingSummary messages={messages('一\n二\n三\n四')} state="running" activity={{ phase: 'thinking', revision: 1 }} />)
+  const view = render(<ThinkingSummary text={'一\n二\n三\n四'} streaming />)
   const body = screen.getByLabelText('思考摘要内容')
   expect(body.className).toContain('max-h-[63px]')
-  expect(screen.getByText('正在思考…')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
-  view.rerender(<ThinkingSummary messages={messages('一\n二\n三\n四')} state="idle" />)
+  view.rerender(<ThinkingSummary text={'一\n二\n三\n四'} />)
   expect(screen.getByLabelText('思考摘要内容').className).toContain('overflow-y-auto')
-  expect(screen.queryByRole('status')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '收起思考摘要' }))
   expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
 })
-it('keeps live preview and header placement stable after completion, excluding subagents', () => {
-  const source = [...messages('主会话'), { ...messages('子 Agent')[0], id: 'child', parentToolUseId: 'tool' }]
-  const view = render(<ThinkingSummary messages={source} state="running" />)
+it('keeps a preview in place when its block finishes streaming', () => {
+  const view = render(<ThinkingSummary text="主会话" streaming />)
   expect(screen.getByLabelText('思考摘要内容').textContent).toBe('主会话')
   const header = screen.getByRole('button', { name: '展开思考摘要' })
-  const headerClass = header.className
-  view.rerender(<ThinkingSummary messages={source} state="idle" />)
+  view.rerender(<ThinkingSummary text="主会话" />)
   expect(screen.getByLabelText('思考摘要内容').textContent).toBe('主会话')
-  expect(header.className).toBe(headerClass)
+  expect(screen.getByRole('button', { name: '展开思考摘要' })).toBe(header)
 })
+
 it('leaves the reader in place while viewing earlier text in an expanded summary', () => {
-  const view = render(<ThinkingSummary messages={messages('first')} state="running" />)
+  const view = render(<ThinkingSummary text={'first'} streaming />)
   fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
   const body = screen.getByLabelText('思考摘要内容')
   Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 1000 })
   Object.defineProperty(body, 'clientHeight', { configurable: true, value: 252 })
   body.scrollTop = 100; fireEvent.scroll(body)
-  view.rerender(<ThinkingSummary messages={messages('first\nnew text')} state="running" />)
+  view.rerender(<ThinkingSummary text={'first\nnew text'} streaming />)
   expect(body.scrollTop).toBe(100)
   body.scrollTop = 748; fireEvent.scroll(body)
-  view.rerender(<ThinkingSummary messages={messages('first\nnew text\nlatest')} state="running" />)
+  view.rerender(<ThinkingSummary text={'first\nnew text\nlatest'} streaming />)
   expect(body.scrollTop).toBe(1000)
 })
-it('shows actual tool and approval states without inventing a thinking summary', () => {
-  const view = render(<ThinkingSummary messages={messages('')} state="running" activity={{ phase: 'tool', toolName: 'Read', revision: 1 }} />)
-  expect(screen.getByText('正在读取文件…')).toBeTruthy()
-  expect(screen.queryByRole('button')).toBeNull()
-  view.rerender(<ThinkingSummary messages={messages('')} state="awaiting" />)
-  expect(screen.getByText('等待你确认')).toBeTruthy()
-  expect(view.container.querySelector('animate')).toBeNull()
-  view.rerender(<ThinkingSummary messages={[]} state="error" />)
+it('omits empty summaries and keeps summaries from history folded', () => {
+  const view = render(<ThinkingSummary text="  " streaming />)
   expect(view.container.textContent).toBe('')
+  view.rerender(<ThinkingSummary text="已保存的摘要" />)
+  expect(screen.getByRole('button', { name: '展开思考摘要' })).toBeTruthy()
+  expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
 })
+
 it('stops Spark on reduced motion, hidden documents and inactive side pages', () => {
   const view = render(<ActivitySpark />)
   expect(view.container.querySelector('animate')).toBeTruthy()
@@ -103,13 +98,13 @@ it('keeps session activity isolated and rejects an older activity snapshot', asy
 })
 
 it('does not follow when the reader scrolls just one line above the bottom', () => {
-  const view = render(<ThinkingSummary messages={messages('first')} state="running" />)
+  const view = render(<ThinkingSummary text={'first'} streaming />)
   fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
   const body = screen.getByLabelText('思考摘要内容')
   Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 273 })
   Object.defineProperty(body, 'clientHeight', { configurable: true, value: 252 })
   body.scrollTop = 0; fireEvent.scroll(body)
-  view.rerender(<ThinkingSummary messages={messages('first\nnew')} state="running" />)
+  view.rerender(<ThinkingSummary text={'first\nnew'} streaming />)
   expect(body.scrollTop).toBe(0)
 })
 

@@ -29,7 +29,6 @@ interface ChatStore {
   start(text: string, title?: string, onCreated?: (sessionId: string) => void): Promise<void>
   send(sessionId: string, text: string, attachments?: string[]): Promise<void>
   queueAction(sessionId: string, action: QueueAction): Promise<void>
-  /** 编辑历史上的一条用户消息：从它之前分叉出新会话并发出新内容，原会话不变 */
   edit(sessionId: string, messageId: string, text: string): Promise<void>
   interrupt(sessionId: string): Promise<void>
   setOptions(sessionId: string, patch: Partial<SessionOptions>): Promise<void>
@@ -118,18 +117,10 @@ export const useChat = create<ChatStore>((set, get) => {
     },
 
     async edit(sessionId, messageId, text) {
+      await optionChanges.get(sessionId)
       const c = get().chats[sessionId]
-      const msg = c?.messages.find((m) => m.id === messageId)
-      if (!c || !msg || msg.forkFrom === undefined) return
-      const path = projectPath(c.projectId)
-      // 第一条消息没有可以分叉的位置，直接开新对话
-      const id =
-        msg.forkFrom === null ? await desk().chat.start(path, text, c.options) : await desk().chat.fork(path, sessionId, msg.forkFrom, text, c.options)
-      const pending = get().chats[id]
-      set({ chats: { ...get().chats, [id]: { ...blank(c.projectId, c.options), ...pending, projectId: c.projectId } } })
-      await readSnapshot(id, () => desk().chat.open(id, path))
-      useDesk.getState().addPendingSession(c.projectId, id, text)
-      useDesk.getState().setView({ kind: 'session', sessionId: id, projectId: c.projectId })
+      if (!c) throw new Error('找不到当前会话')
+      await desk().chat.edit(sessionId, projectPath(c.projectId), messageId, text)
     },
 
     async queueAction(sessionId, action) {

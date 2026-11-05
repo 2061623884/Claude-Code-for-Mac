@@ -8,6 +8,7 @@ interface StoreData {
   version: 1
   projects: Project[]
   archived: Record<string, true>
+  sessionEdits: Record<string, string[]>
   settings: Settings
   seededFromHistory: boolean
 }
@@ -16,6 +17,7 @@ const DEFAULTS: StoreData = {
   version: 1,
   projects: [],
   archived: {},
+  sessionEdits: {},
   settings: { executionLanguage: 'zh', theme: 'system', defaultModel: 'opus', defaultPermissionMode: 'default', defaultEffort: null, claudePath: null, allowBypass: false },
   seededFromHistory: false
 }

@@ -6,13 +6,20 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.43-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.43-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.44-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.44-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
 
 首次使用需要在本机配置有效的 Claude Code 登录或 API 认证。安装包不包含账号、API Key 或聊天记录。
+
+## v0.3.44 更新
+
+- 编辑历史消息后在同一个会话里重新生成，保留编辑点之前的对话和原有的侧栏入口。旧版本保存在本地。
+- 思考摘要按实际顺序穿插在回复和工具调用之间。摘要行只保留箭头和标题，散射动效跟随当前输出。
+- 主动停止只显示简短状态，运行失败的诊断详情可展开查看。
+- 左下角用量入口统一显示为“剩余额度”。
 
 ## v0.3.43 更新
 

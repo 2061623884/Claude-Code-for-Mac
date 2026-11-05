@@ -3,7 +3,7 @@ import type { UiMessage } from '@shared/chat'
 import { LinkifiedText } from '../files/FileLink'
 import { UserActions } from './MessageActions'
 
-/** 用户消息：气泡 + 悬停时的时间 / 复制 / 编辑；编辑时原地变成输入框，发送后从这里分叉出新会话 */
+/** 用户消息：气泡 + 悬停时的时间 / 复制 / 编辑；编辑时原地变成输入框，发送后从这里重新生成 */
 export function UserMessage({ message, text, onEdit }: { message: UiMessage; text: string; onEdit?(text: string): Promise<void> }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(text)
@@ -61,7 +61,7 @@ export function UserMessage({ message, text, onEdit }: { message: UiMessage; tex
           </button>
           <button
             type="button"
-            disabled={!draft.trim() || sending}
+            disabled={!draft.trim() || !onEdit || sending}
             onClick={() => void submit()}
             className="h-7 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-40"
           >

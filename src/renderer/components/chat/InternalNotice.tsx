@@ -24,7 +24,6 @@ export function InternalNotice({ message }: { message: UiMessage }) {
   </details>
   // Synthetic notifications and old snapshots without display metadata remain visible.
   return <div className="my-3 text-[12px] text-fg2">
-    <div className="mb-1 text-fg3">系统通知</div>
     <div className="whitespace-pre-wrap break-words select-text">{textOf(message)}</div>
   </div>
 }
