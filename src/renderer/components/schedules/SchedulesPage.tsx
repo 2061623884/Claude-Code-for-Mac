@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Ellipsis, Plus } from 'lucide-react'
+import { Clock, Ellipsis, Folder, Plus, ShieldCheck } from 'lucide-react'
 import type { PermissionMode } from '@shared/types'
 import { PERMISSION_MODES } from '@shared/format'
 import { describeSchedule, MIN_INTERVAL_MINUTES, nextRunAt, validateSchedule, WEEKDAY_LABELS, type Schedule, type ScheduledTask, type ScheduledTaskInput } from '@shared/schedules'
@@ -22,12 +22,97 @@ export function formatRunTime(at: number, now = Date.now()): string {
   return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
 }
 
+/** 距离 at 还有多久，只在 24 小时内显示，例如「2 分钟后」「3 小时后」 */
+export function formatUntil(at: number, now = Date.now()): string | null {
+  const minutes = Math.ceil((at - now) / 60_000)
+  if (minutes <= 0) return '即将运行'
+  if (minutes < 60) return `${minutes} 分钟后`
+  const hours = Math.floor(minutes / 60)
+  return hours < 24 ? `${hours} 小时后` : null
+}
+
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(timer)
+  }, [intervalMs])
+  return now
+}
+
+function MetaChip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md bg-chip px-1.5 py-0.5 text-fg2">{icon}<span className="truncate">{children}</span></span>
+}
+
+function TaskCard({ task, now, projectName, onToggle, onRunNow, onEdit, onRemove, onOpenSession }: {
+  task: ScheduledTask
+  now: number
+  projectName?: string
+  onToggle(enabled: boolean): void
+  onRunNow(): void
+  onEdit(): void
+  onRemove(): void
+  onOpenSession(): void
+}) {
+  const run = task.lastRun
+  const next = task.enabled && task.nextRunAt ? task.nextRunAt : null
+  const until = next ? formatUntil(next, now) : null
+  const status = !run ? null : run.error ? { dot: 'bg-danger', text: `失败：${run.error}`, tone: 'text-danger' } : run.skipped ? { dot: 'bg-amber-400', text: run.skipped, tone: 'text-fg3' } : { dot: 'bg-green-500', text: '已运行', tone: 'text-fg3' }
+  const showPrompt = task.prompt.trim() !== task.name.trim()
+
+  return <div className={`rounded-xl border border-line bg-card transition-colors hover:border-line-strong ${task.enabled ? '' : 'opacity-70'}`}>
+    <div className="flex items-start gap-3 px-4 pt-3.5">
+      <div className={`grid size-9 shrink-0 place-items-center rounded-lg ${task.enabled ? 'bg-accent/10 text-accent' : 'bg-chip text-fg3'}`}>
+        <ScheduleIcon size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[14px] font-medium">{task.name}</span>
+          {!task.enabled && <span className="shrink-0 rounded bg-chip px-1.5 py-px text-[11px] text-fg3">已暂停</span>}
+          {run?.error && <span className="shrink-0 rounded bg-danger/10 px-1.5 py-px text-[11px] text-danger">上次失败</span>}
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11.5px]">
+          <MetaChip icon={<Clock size={12} className="shrink-0" />}>{describeSchedule(task.schedule)}</MetaChip>
+          <MetaChip icon={<Folder size={12} className="shrink-0" />}>{projectName ?? task.projectPath}</MetaChip>
+          <MetaChip icon={<ShieldCheck size={12} className="shrink-0" />}>{PERMISSION_MODES.find(m => m.value === task.mode)?.label ?? task.mode}</MetaChip>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 pt-1.5">
+        <Toggle label={`启用 ${task.name}`} value={task.enabled} onChange={onToggle} />
+        <Menu
+          align="right"
+          width={160}
+          trigger={({ toggle }) => <IconButton label="更多操作" onClick={toggle}><Ellipsis size={15} /></IconButton>}
+          items={[
+            { key: 'run', label: '立即运行', onSelect: onRunNow },
+            { key: 'edit', label: '编辑', onSelect: onEdit },
+            { key: 'remove', label: '删除', danger: true, separatorBefore: true, onSelect: onRemove }
+          ]}
+        />
+      </div>
+    </div>
+    {showPrompt && <div className="mx-4 mt-3 line-clamp-2 whitespace-pre-wrap rounded-lg bg-chip/60 px-3 py-2 text-[12.5px] leading-relaxed text-fg2">{task.prompt}</div>}
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 text-[12px] text-fg3">
+      <span>
+        下次运行 {next ? <><span className="text-fg">{formatRunTime(next, now)}</span>{until && <span className="text-accent"> · {until}</span>}</> : <span className="text-fg2">已暂停</span>}
+      </span>
+      {run && status && <span className="ml-auto flex min-w-0 items-center gap-1.5" title={run.error ?? run.skipped}>
+        <span className={`size-1.5 shrink-0 rounded-full ${status.dot}`} />
+        <span className="shrink-0">上次 {formatRunTime(run.at, now)}</span>
+        <span className={`truncate ${status.tone}`}>{status.text}</span>
+        {run.sessionId && !run.error && projectName && <button type="button" className="shrink-0 text-accent hover:underline" onClick={onOpenSession}>查看对话</button>}
+      </span>}
+    </div>
+  </div>
+}
+
 export function SchedulesPage() {
   const [tasks, setTasks] = useState<ScheduledTask[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<ScheduledTask | 'new' | null>(null)
   const [removing, setRemoving] = useState<ScheduledTask | null>(null)
   const projects = useDesk(s => s.projects)
+  const now = useNow(30_000)
 
   useEffect(() => {
     let disposed = false
@@ -62,37 +147,12 @@ export function SchedulesPage() {
       </div>}
 
       {tasks && tasks.length > 0 && <div className="mt-5 flex flex-col gap-3">
-        {tasks.map(task => {
-          const project = projects.find(p => p.path === task.projectPath)
-          const run = task.lastRun
-          return <div key={task.id} className={`rounded-xl border border-line px-4 py-3 ${task.enabled ? '' : 'opacity-60'}`}>
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px] font-medium">{task.name}</div>
-                <div className="mt-0.5 truncate text-[12px] text-fg3">{describeSchedule(task.schedule)} · {project?.name ?? task.projectPath} · {PERMISSION_MODES.find(m => m.value === task.mode)?.label ?? task.mode}</div>
-              </div>
-              <Toggle label={`启用 ${task.name}`} value={task.enabled} onChange={enabled => act(() => window.desk.schedules.setEnabled(task.id, enabled))} />
-              <Menu
-                align="right"
-                width={160}
-                trigger={({ toggle }) => <IconButton label="更多操作" onClick={toggle}><Ellipsis size={15} /></IconButton>}
-                items={[
-                  { key: 'run', label: '立即运行', onSelect: () => act(() => window.desk.schedules.runNow(task.id)) },
-                  { key: 'edit', label: '编辑', onSelect: () => setEditing(task) },
-                  { key: 'remove', label: '删除', danger: true, separatorBefore: true, onSelect: () => setRemoving(task) }
-                ]}
-              />
-            </div>
-            <div className="mt-2 line-clamp-2 whitespace-pre-wrap text-[12.5px] text-fg2">{task.prompt}</div>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-fg3">
-              <span>下次运行：{task.enabled && task.nextRunAt ? formatRunTime(task.nextRunAt) : '已暂停'}</span>
-              {run && <span className={run.error ? 'text-danger' : ''}>
-                上次：{formatRunTime(run.at)}{run.error ? ` 失败（${run.error}）` : run.skipped ? `（${run.skipped}）` : ''}
-                {run.sessionId && !run.error && project && <button type="button" className="ml-1.5 text-accent hover:underline" onClick={() => openSession(task)}>查看对话</button>}
-              </span>}
-            </div>
-          </div>
-        })}
+        {tasks.map(task => <TaskCard key={task.id} task={task} now={now} projectName={projects.find(p => p.path === task.projectPath)?.name}
+          onToggle={enabled => act(() => window.desk.schedules.setEnabled(task.id, enabled))}
+          onRunNow={() => act(() => window.desk.schedules.runNow(task.id))}
+          onEdit={() => setEditing(task)}
+          onRemove={() => setRemoving(task)}
+          onOpenSession={() => openSession(task)} />)}
       </div>}
     </div>
 

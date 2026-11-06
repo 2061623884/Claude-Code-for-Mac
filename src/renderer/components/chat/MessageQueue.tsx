@@ -19,7 +19,7 @@ export function MessageQueue({ queue, canInsert, onAction, onEdit, editingId }: 
     catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(false) }
   }
-  return <section aria-label="消息队列" className="rounded-t-[16px] border border-b-0 border-line bg-card px-2.5 pt-1 pb-1 text-[12px] shadow-pop">
+  return <section aria-label="消息队列" className="rounded-[14px] border border-line bg-sidebar px-2.5 pt-1 pb-1 text-[12px] text-fg2 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
     <div className="flex items-center justify-between gap-2 pl-1 text-[11px] text-fg3">
       <span>消息队列</span>
       <div className="flex items-center gap-0.5">

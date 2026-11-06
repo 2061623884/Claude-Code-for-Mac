@@ -1,0 +1,74 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { parseFrontmatter, readSkillBody, readSkillCatalog, setPluginEnabled } from '../src/main/skills'
+
+let root: string, config: string, project: string
+const previous = process.env.CLAUDE_CONFIG_DIR
+const write = (path: string, text: string): void => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text) }
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'claude-skills-')); config = join(root, 'config'); project = join(root, 'project')
+  process.env.CLAUDE_CONFIG_DIR = config
+})
+afterEach(() => {
+  if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = previous
+  rmSync(root, { recursive: true, force: true })
+})
+
+it('parses quoted and folded frontmatter fields', () => {
+  expect(parseFrontmatter('---\nname: pdf\ndescription: "Use for PDFs"\n---\nbody')).toEqual({ name: 'pdf', description: 'Use for PDFs' })
+  expect(parseFrontmatter('---\ndescription: >\n  first line\n  second line\nname: x\n---')).toEqual({ description: 'first line second line', name: 'x' })
+  expect(parseFrontmatter('no frontmatter')).toEqual({})
+  expect(parseFrontmatter('---\ndescription: "say \\"hi\\" now"\nname: \'it\'\'s\'\n---')).toEqual({ description: 'say "hi" now', name: "it's" })
+})
+
+it('collects user, project, synced and plugin skills with plugin enablement', async () => {
+  write(join(config, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\ndescription: personal\n---')
+  write(join(config, 'commands', 'git', 'ship.md'), '# Ship\nShip the branch')
+  write(join(config, 'skills', 'synced', 'org_user', 'docx', 'SKILL.md'), '---\nname: docx\ndescription: word\n---')
+  write(join(project, '.claude', 'skills', 'local', 'SKILL.md'), '---\ndescription: project only\n---')
+  const install = join(config, 'plugins', 'cache', 'm', 'tools', '1.0.0')
+  write(join(install, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'tools', description: 'Tool kit' }))
+  write(join(install, 'skills', 'lint', 'SKILL.md'), '---\nname: lint\ndescription: lint code\n---')
+  write(join(config, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'tools@m': [{ scope: 'user', installPath: install, version: '1.0.0' }], 'empty@m': [{ scope: 'user', installPath: join(root, 'missing') }] } }))
+  write(join(config, 'settings.json'), JSON.stringify({ enabledPlugins: { 'tools@m': false } }))
+  write(join(project, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'tools@m': true } }))
+
+  const catalog = await readSkillCatalog(project)
+  expect(catalog.skills.map(s => [s.name, s.source, s.kind])).toEqual([
+    ['anthropic-skills:docx', 'synced', 'skill'],
+    ['git:ship', 'user', 'command'],
+    ['local', 'project', 'skill'],
+    ['mine', 'user', 'skill'],
+    ['tools:lint', 'plugin', 'skill']
+  ])
+  expect(catalog.skills.find(s => s.name === 'git:ship')?.description).toBe('Ship the branch')
+  expect(catalog.plugins.map(p => [p.id, p.enabled, p.projectOverride, p.version])).toEqual([['empty@m', false, false, undefined], ['tools@m', true, true, '1.0.0']])
+
+  const userOnly = await readSkillCatalog(null)
+  expect(userOnly.skills.some(s => s.source === 'project')).toBe(false)
+  expect(userOnly.plugins.find(p => p.id === 'tools@m')?.enabled).toBe(false)
+})
+
+it('reads only scanned skill bodies and toggles plugins without losing other settings', async () => {
+  const skill = join(config, 'skills', 'mine', 'SKILL.md')
+  write(skill, '---\nname: mine\n---\n# Body\ntext')
+  write(join(config, 'secret.md'), 'nope')
+  const install = join(config, 'plugins', 'cache', 'tools')
+  write(join(config, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'tools@m': [{ scope: 'user', installPath: install }] } }))
+  write(join(config, 'settings.json'), JSON.stringify({ model: 'opus', enabledPlugins: { 'other@m': true } }))
+
+  await readSkillCatalog(null)
+  expect(await readSkillBody(skill)).toBe('# Body\ntext')
+  await expect(readSkillBody(join(config, 'secret.md'))).rejects.toThrow()
+
+  await setPluginEnabled('tools@m', true)
+  expect(JSON.parse(readFileSync(join(config, 'settings.json'), 'utf8'))).toEqual({ model: 'opus', enabledPlugins: { 'other@m': true, 'tools@m': true } })
+  expect((await readSkillCatalog(null)).plugins[0].enabled).toBe(true)
+  await expect(setPluginEnabled('missing@m', true)).rejects.toThrow('未安装')
+
+  write(join(config, 'settings.json'), '{ broken')
+  await expect(setPluginEnabled('tools@m', false)).rejects.toThrow('格式有误')
+  expect(readFileSync(join(config, 'settings.json'), 'utf8')).toBe('{ broken')
+})

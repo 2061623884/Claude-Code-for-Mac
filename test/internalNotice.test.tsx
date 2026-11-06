@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
-import { InternalNotice, TechnicalRecords } from '../src/renderer/components/chat/InternalNotice'
+import { InternalNotice, TaskNotice, TechnicalRecords } from '../src/renderer/components/chat/InternalNotice'
 import type { UiMessage } from '../src/shared/chat'
 afterEach(cleanup)
 const msg = (id: string, internalKind: UiMessage['internalKind'], text: string): UiMessage => ({ id, role: 'notice', source: 'internal', internalKind, blocks: [{ kind: 'text', text }], parentToolUseId: null })
@@ -30,4 +30,17 @@ it.each(['notification', 'technical', undefined] as const)('never collapses reco
 it('does not duplicate a command record', () => {
   const view = render(<InternalNotice message={msg('cmd','command','<command-name>/model</command-name>')} />)
   expect(view.container.textContent).toBe('')
+})
+const taskMsg = (text: string): UiMessage => ({ id: 'task', role: 'notice', source: 'external', originKind: 'task-notification', blocks: [{ kind: 'text', text }], parentToolUseId: null })
+it('collapses a task notification into status and summary while keeping the raw record', () => {
+  const raw = '<task-notification>\n<task-id>bw7</task-id>\n<status>completed</status>\n<summary>Background command "Run app" completed (exit code 0)</summary>\n</task-notification>'
+  const view = render(<TaskNotice message={taskMsg(raw)} />)
+  expect(view.getByText('后台任务 · 已完成 · Background command "Run app" completed (exit code 0)')).toBeTruthy()
+  expect(view.container.querySelector('details')!.open).toBe(false)
+  expect(view.container.textContent).toContain('<task-id>bw7</task-id>')
+})
+it('shows unparseable task notifications verbatim', () => {
+  const view = render(<TaskNotice message={taskMsg('done')} />)
+  expect(view.getByText('done')).toBeTruthy()
+  expect(view.container.querySelector('details')).toBeNull()
 })

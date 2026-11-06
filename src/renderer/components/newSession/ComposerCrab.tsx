@@ -1,5 +1,5 @@
 import { CRAB_GESTURES } from './crabGestures'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatActivity, ChatState } from '@shared/chat'
 import { Crab } from './Crab'
 import { crabActivity } from './crabActivity'
@@ -12,7 +12,7 @@ export function nextVerb(previous?: string): SpinnerVerb {
   return pool[Math.floor(Math.random() * pool.length)]!
 }
 
-export function ComposerCrab({ state = 'idle', activity, hasDraft, rainbow, fast }: { fast?: boolean; rainbow?: boolean; state?: ChatState; activity?: ChatActivity; hasDraft: boolean }) {
+export function ComposerCrab({ state = 'idle', activity, hasDraft, rainbow, fast, queue }: { fast?: boolean; rainbow?: boolean; queue?: ReactNode; state?: ChatState; activity?: ChatActivity; hasDraft: boolean }) {
   const language = useDesk((s): 'zh' | 'en' => s.settings?.executionLanguage === 'en' ? 'en' : 'zh')
   const display = crabActivity(state, activity, language)
   const [sleeping, setSleeping] = useState(false)
@@ -56,6 +56,7 @@ export function ComposerCrab({ state = 'idle', activity, hasDraft, rainbow, fast
       {display.rotating && <span className="composer-crab-decoration"><span key={rotation.changes} className={`composer-crab-verb${shimmer ? ' composer-crab-shimmer' : ''}`}>{language === 'zh' ? SPINNER_VERBS_ZH[rotation.word] : rotation.word}…</span></span>}
       {!display.rotating && <span className="composer-crab-state">{display.label}</span>}
     </div>
+    {queue && <div className="composer-queue-bubble">{queue}</div>}
     <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{display.label}</span>
   </div>
 }

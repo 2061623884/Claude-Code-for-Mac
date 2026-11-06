@@ -48,6 +48,7 @@ const api: DeskApi = {
     setArchived: call('sessions:setArchived')
   },
   settings: { get: call('settings:get'), set: call('settings:set') },
+  skills: { list: call('skills:list'), read: call('skills:read'), setPluginEnabled: call('skills:setPluginEnabled') },
   schedules: {
     list: call('schedules:list'),
     create: call('schedules:create'),
@@ -99,6 +100,7 @@ const api: DeskApi = {
     context: call('chat:context'),
     btw: call('chat:btw'),
     mcp: call('chat:mcp'),
+    mcpAction: call('chat:mcpAction'),
     onEvent(listener) {
       const handler = (_e: Electron.IpcRendererEvent, sessionId: string, event: ChatEvent): void => listener(sessionId, event)
       ipcRenderer.on('chat:event', handler)

@@ -1,5 +1,5 @@
 import type { UiMessage } from '@shared/chat'
-import { internalNoticeKind } from '@shared/internalNotice'
+import { internalNoticeKind, parseTaskNotification } from '@shared/internalNotice'
 const textOf = (message: UiMessage) => message.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n')
 
 export function TechnicalRecords({ messages }: { messages: UiMessage[] }) {
@@ -26,4 +26,17 @@ export function InternalNotice({ message }: { message: UiMessage }) {
   return <div className="my-3 text-[12px] text-fg2">
     <div className="whitespace-pre-wrap break-words select-text">{textOf(message)}</div>
   </div>
+}
+
+const TASK_STATUS: Record<string, string> = { completed: '已完成', failed: '失败', killed: '已停止', stopped: '已停止' }
+/** Compact display for CLI task notifications; the raw record stays available on expand. */
+export function TaskNotice({ message }: { message: UiMessage }) {
+  const text = textOf(message)
+  const task = parseTaskNotification(text)
+  if (!task) return <div className="my-3 whitespace-pre-wrap break-words text-[13px] text-fg2 select-text">{text}</div>
+  const status = task.status ? TASK_STATUS[task.status] ?? task.status : undefined
+  return <details className="my-3 text-[12px] text-fg3">
+    <summary className="cursor-pointer">后台任务{status ? ` · ${status}` : ''}{task.summary ? ` · ${task.summary}` : ''}</summary>
+    <div className="mt-2 whitespace-pre-wrap break-words text-fg2 select-text">{text}</div>
+  </details>
 }

@@ -27,6 +27,7 @@ import { createHumanSubmissionRepository } from './humanSubmissionRepository'
 import { registerAppNotifications } from './appNotifications'
 import { Scheduler } from './schedules'
 import type { ScheduledTaskInput } from '../shared/schedules'
+import { readSkillBody, readSkillCatalog, setPluginEnabled } from './skills'
 
 function str(value: unknown, name: string): string {
   if (typeof value !== 'string' || value === '') throw new Error(`参数 ${name} 无效`)
@@ -131,6 +132,9 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     if (!value || typeof value !== 'object') throw new Error('参数 task 无效')
     return value as ScheduledTaskInput
   }
+  handle('skills:list', (path) => readSkillCatalog(typeof path === 'string' && path ? path : null))
+  handle('skills:read', (path) => readSkillBody(str(path, 'path')))
+  handle('skills:setPluginEnabled', (id, enabled) => setPluginEnabled(str(id, 'id'), enabled === true))
   handle('schedules:list', () => scheduler.list())
   handle('schedules:create', (input) => scheduler.create(task(input)))
   handle('schedules:update', (id, input) => scheduler.update(str(id, 'id'), task(input)))
@@ -242,5 +246,9 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     chats.sideQuestion(str(id, 'id'), str(path, 'path'), str(question, 'question'), (history as BtwTurn[]) ?? [], opts(o))
   )
   handle('chat:mcp', (id, path) => chats.mcp(typeof id === 'string' && id ? id : null, str(path, 'path')))
+  handle('chat:mcpAction', (path, operation, name) => {
+    if (operation !== 'enable' && operation !== 'disable' && operation !== 'reconnect') throw new Error('无效的 MCP 操作')
+    return chats.mcpAction(str(path, 'path'), operation, str(name, 'name'))
+  })
   handle('chat:context', (id, path, model) => chats.context(str(id, 'id'), str(path, 'path'), (model as string | null) ?? null))
 }

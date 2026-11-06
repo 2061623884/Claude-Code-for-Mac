@@ -7,7 +7,7 @@ import { errorText } from './ipcError'
 import type { DemoState, DetectedFolder, Project, SessionSummary, Settings } from '@shared/types'
 import type { SessionOptions } from '@shared/chat'
 
-export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings'; tab?: 'general' | 'claude' | 'mcp' | 'models' | 'context' | 'notifications' | 'advanced'; projectId?: string | null; sessionId?: string | null } | { kind: 'usage' } | { kind: 'schedules' }
+export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings'; tab?: 'general' | 'claude' | 'mcp' | 'models' | 'context' | 'notifications' | 'advanced'; projectId?: string | null; sessionId?: string | null } | { kind: 'usage' } | { kind: 'schedules' } | { kind: 'skills'; tab?: 'skills' | 'mcp' }
 
 interface DeskState {
   greeting: string
@@ -33,7 +33,10 @@ interface DeskState {
   init(): Promise<void>
   refreshSessions(projectId?: string): Promise<void>
   setView(view: View): void
-  newChat(projectId?: string): void
+  /** prefill：新对话输入框的初始内容（如从技能页发起的 /skill） */
+  newChat(projectId?: string, prefill?: string): void
+  newChatPrefill: string | null
+  takeNewChatPrefill(): string
   pickProject(): Promise<void>
   confirmAddProject(): Promise<void>
   cancelAddProject(): void
@@ -137,8 +140,15 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({ view, ...(view.kind === 'new' && !get().greetingSelected && get().projects.length ? { greeting: chooseGreeting(get()), greetingSelected: true } : {}) })
   },
 
-  newChat(projectId) {
-    set({ greetingSelected: !!get().projects.length, greeting: get().projects.length ? chooseGreeting(get()) : FALLBACK_GREETING, view: { kind: 'new' }, draftOverrides: {}, selectedProjectId: projectId ?? get().selectedProjectId ?? get().projects[0]?.id ?? null })
+  newChatPrefill: null,
+  takeNewChatPrefill() {
+    const text = get().newChatPrefill ?? ''
+    if (text) set({ newChatPrefill: null })
+    return text
+  },
+
+  newChat(projectId, prefill) {
+    set({ newChatPrefill: prefill ?? null, greetingSelected: !!get().projects.length, greeting: get().projects.length ? chooseGreeting(get()) : FALLBACK_GREETING, view: { kind: 'new' }, draftOverrides: {}, selectedProjectId: projectId ?? get().selectedProjectId ?? get().projects[0]?.id ?? null })
   },
 
   async pickProject() {

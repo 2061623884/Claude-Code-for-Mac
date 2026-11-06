@@ -296,14 +296,10 @@ button {
   scroll-behavior: auto !important;
 }
 
-/* Queue rises from the composer edge, with room on either side. */
-.composer-queue-panel { position: absolute; bottom: 100%; right: 0; width: calc(100% - 200px); max-width: 480px; z-index: 20; }
-.composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { max-width: max(90px, calc(100cqw - 590px)); overflow: hidden; }
-/* 排队面板贴在输入框右上角，和缓存倒计时重叠；排队只在运行中出现，那时缓存正在续期 */
-.composer-with-crab:has(.composer-queue-panel section) [data-cache-badge] { display: none; }
+/* 队列气泡接在小螃蟹的话后面，铺满到输入框右侧内缩处；话变长时话先省略，气泡保底宽度 */
+.composer-queue-bubble { flex: 1 1 240px; min-width: 240px; align-self: flex-end; margin-bottom: 8px; pointer-events: auto; }
 @container (max-width: 420px) {
-  .composer-queue-panel { bottom: calc(100% + 54px); right: 0; width: 100%; }
-  .composer-with-crab:has(.composer-queue-panel section) .composer-crab-label { max-width: none; }
+  .composer-queue-bubble { position: absolute; left: 0; right: 0; bottom: 100%; min-width: 0; }
 }
 
 /* First-send handoff uses measured viewport coordinates; never blocks the live UI. */

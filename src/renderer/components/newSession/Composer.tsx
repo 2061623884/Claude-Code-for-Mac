@@ -301,8 +301,8 @@ export function Composer({
   }
 
   return (
-    <div className="relative pt-[52px] composer-with-crab">
-      <ComposerCrab fast={fast} rainbow={rainbow} key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} />
+    <div className="relative pt-[52px] composer-with-crab [&>*]:pointer-events-auto">
+      <ComposerCrab fast={fast} rainbow={rainbow} key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} queue={queuePanel} />
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
       <div data-composer-surface data-ultracode={rainbow || undefined} data-cache={cacheMinutes === null ? undefined : cacheWarm ? 'warm' : 'cold'} className={`relative rounded-[20px] border bg-card shadow-card transition-colors ${cacheMinutes === null ? 'border-line-strong focus-within:border-accent/45' : cacheWarm ? 'border-accent/35 focus-within:border-accent/60' : 'border-line-strong focus-within:border-fg3/45'}`}>
@@ -312,7 +312,6 @@ export function Composer({
             {cacheMinutes}m
           </span>
         )}
-        {queuePanel && <div className="composer-queue-panel">{queuePanel}</div>}
         {header}
         {attachments.length > 0 && (
           <AttachmentRail

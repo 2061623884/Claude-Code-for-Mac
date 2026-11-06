@@ -5,8 +5,10 @@ import { formatBytes } from '@shared/format'
 import { openPath } from './FileLink'
 
 /** Shared visual representation for dropped files, mentions and sent attachments. */
-export function AttachmentCard({ path, kind = 'file', line, bytes, onRemove }: {
+export function AttachmentCard({ path, kind = 'file', line, bytes, compact = false, onRemove }: {
   path: string
+  /** 消息气泡里用的小尺寸 */
+  compact?: boolean
   kind?: 'file' | 'dir'
   line?: number
   bytes?: number
@@ -38,12 +40,12 @@ export function AttachmentCard({ path, kind = 'file', line, bytes, onRemove }: {
         title={path}
         aria-label={`预览 ${name}`}
         onClick={(event) => openPath(path, kind, line, event.metaKey)}
-        className={`flex overflow-hidden rounded-xl border border-line bg-card text-left shadow-sm transition-colors hover:border-accent/50 focus-visible:outline-2 focus-visible:outline-accent ${isImage && url ? 'w-[160px] flex-col' : 'h-[64px] w-[230px] max-w-full items-center gap-3 px-3'}`}
+        className={`flex overflow-hidden rounded-xl border border-line bg-card text-left shadow-sm transition-colors hover:border-accent/50 focus-visible:outline-2 focus-visible:outline-accent ${isImage && url ? (compact ? 'w-[112px] flex-col' : 'w-[160px] flex-col') : compact ? 'h-[44px] w-[180px] max-w-full items-center gap-2 px-2' : 'h-[64px] w-[230px] max-w-full items-center gap-3 px-3'}`}
       >
-        {isImage && url ? <img src={url} alt={name} className="h-[104px] w-full bg-chip object-contain" /> : <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${color}`}><Icon size={22} /></span>}
-        <span className={`min-w-0 flex-1 ${isImage && url ? 'w-full px-2.5 py-1.5' : 'pr-3'}`}>
-          <span className="block truncate text-[12.5px] font-medium text-fg">{name}</span>
-          <span className="block truncate text-[10.5px] leading-4 text-fg3">{kind === 'dir' ? '文件夹' : extension.toUpperCase() || '文件'}{bytes !== undefined ? ` · ${formatBytes(bytes)}` : ''}{line ? ` · 第 ${line} 行` : ''}</span>
+        {isImage && url ? <img src={url} alt={name} className={`${compact ? 'h-[72px]' : 'h-[104px]'} w-full bg-chip object-contain`} /> : <span className={`flex shrink-0 items-center justify-center rounded-lg ${compact ? 'size-7' : 'size-9'} ${color}`}><Icon size={compact ? 16 : 22} /></span>}
+        <span className={`min-w-0 flex-1 ${isImage && url ? (compact ? 'w-full px-2 py-1' : 'w-full px-2.5 py-1.5') : compact ? 'pr-1' : 'pr-3'}`}>
+          <span className={`block truncate font-medium text-fg ${compact ? 'text-[11.5px] leading-4' : 'text-[12.5px]'}`}>{name}</span>
+          <span className={`block truncate text-fg3 ${compact ? 'text-[10px] leading-[14px]' : 'text-[10.5px] leading-4'}`}>{kind === 'dir' ? '文件夹' : extension.toUpperCase() || '文件'}{bytes !== undefined ? ` · ${formatBytes(bytes)}` : ''}{line ? ` · 第 ${line} 行` : ''}</span>
         </span>
       </button>
       {onRemove && <button type="button" aria-label={`移除 ${name}`} title={`移除 ${name}`} onMouseDown={(event) => event.preventDefault()} onClick={onRemove} className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full border border-line bg-card text-fg3 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"><X size={12} /></button>}

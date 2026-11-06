@@ -3,6 +3,7 @@ import type { UsageAnalytics, UsageOverview, UsageProfile } from './usageAnalyti
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
 import type { ScheduledRunStarted, ScheduledTask, ScheduledTaskInput } from './schedules'
+import type { SkillCatalog } from './skills'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, QueueAction, McpStatus, SessionOptions } from './chat'
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions'
@@ -180,6 +181,14 @@ export interface DeskApi {
     get(): Promise<Settings>
     set(patch: Partial<Settings>): Promise<Settings>
   }
+  skills: {
+    /** 扫描个人、项目、账号同步和插件提供的技能；projectPath 为空时只读用户级 */
+    list(projectPath: string | null): Promise<SkillCatalog>
+    /** 技能正文（不含 frontmatter），仅限 list 返回过的路径 */
+    read(path: string): Promise<string>
+    /** 写入用户级 settings.json 的 enabledPlugins */
+    setPluginEnabled(id: string, enabled: boolean): Promise<void>
+  }
   schedules: {
     list(): Promise<ScheduledTask[]>
     create(input: ScheduledTaskInput): Promise<ScheduledTask[]>
@@ -252,6 +261,8 @@ export interface DeskApi {
     /** /btw 顺便问一下：返回回答文本，不写入会话 */
     /** /mcp：MCP 服务器状态；sessionId 为 null 时按项目读取 */
     mcp(sessionId: string | null, projectPath: string): Promise<McpStatus[]>
+    /** 在临时进程里启用、停用或重连 MCP 服务，返回操作后的状态；启停会持久化到项目配置 */
+    mcpAction(projectPath: string, operation: 'enable' | 'disable' | 'reconnect', name: string): Promise<McpStatus[]>
     btw(sessionId: string, projectPath: string, question: string, history: BtwTurn[], options: SessionOptions): Promise<string | null>
     /** 订阅会话事件，返回取消订阅函数 */
     onEvent(listener: (sessionId: string, event: ChatEvent) => void): () => void

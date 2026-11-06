@@ -11,6 +11,7 @@ import { IconButton } from './components/sidebar/SessionRow'
 import { NewSessionPage } from './components/newSession/NewSessionPage'
 import { UsagePage } from './components/usage/UsagePage'
 import { SchedulesPage } from './components/schedules/SchedulesPage'
+import { SkillsPage } from './components/skills/SkillsPage'
 import { startUsagePolling } from './usageStore'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { ChatView } from './components/chat/ChatView'
@@ -114,18 +115,23 @@ export function App() {
         {!sidebarCollapsed && <ResizeHandle side="left" width={leftWidth} defaultWidth={LEFT.default} onResize={setLeftWidth} />}
       </div>
       <main data-first-send-target={view.kind === 'session' && isFirstSendTarget(view.sessionId) ? '' : undefined} inert={rightOpen && expanded && view.kind === 'session'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
-        <div className="drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 pl-[84px]">
+        <div className="drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 pl-[96px]">
           {sidebarCollapsed && (
-            <div className="no-drag animate-fade-in flex gap-1">
-              <IconButton label="展开侧栏" onClick={toggleSidebar}>
-                <PanelLeft size={16} />
+            <div className="no-drag animate-fade-in flex gap-1.5">
+              <IconButton label="展开侧栏" size="md" onClick={toggleSidebar}>
+                <PanelLeft size={18} />
               </IconButton>
-              <IconButton label="新对话" onClick={() => newChat()}>
-                <SquarePen size={15} />
+              <IconButton label="新对话" size="md" onClick={() => newChat()}>
+                <SquarePen size={17} />
               </IconButton>
             </div>
           )}
-          {title && <span className="min-w-0 flex-1 truncate pr-6 text-[13.5px] font-medium">{title}</span>}
+          {title && (
+            <>
+              {sidebarCollapsed && <span aria-hidden className="mx-2.5 h-4 w-px shrink-0 bg-fg3/30" />}
+              <span className={`min-w-0 flex-1 truncate pr-6 font-serif text-[16px] font-normal tracking-[0.02em] text-fg ${sidebarCollapsed ? '' : 'pl-1'}`}>{title}</span>
+            </>
+          )}
           {view.kind !== 'settings' && (
             <div className={`ml-auto flex items-center gap-3 ${rightOpen ? 'pr-3' : 'pr-16'}`}>
               {view.kind === 'session' && <SessionSummary sessionId={view.sessionId} projectId={view.projectId} />}
@@ -137,6 +143,7 @@ export function App() {
         {view.kind === 'settings' && <SettingsPage />}
         {view.kind === 'usage' && <UsagePage />}
         {view.kind === 'schedules' && <SchedulesPage />}
+        {view.kind === 'skills' && <SkillsPage />}
         {view.kind === 'session' && <ChatView key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       </main>
       {view.kind === 'session' && <RightPanel key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}

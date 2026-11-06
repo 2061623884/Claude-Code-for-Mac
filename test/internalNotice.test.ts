@@ -51,3 +51,12 @@ it('classifies live and history metadata consistently', () => {
     expect(t.messages[0]).toMatchObject({ internalKind: 'technical', source: 'internal', startsTurn: false })
   }
 })
+it('treats image resize hints as technical records in live and history modes', () => {
+  const hint = '[Image: original 2560x1720, displayed at 2000x1344. Multiply coordinates by 1.28 to map to original image.]'
+  const t = new Transcript()
+  t.apply(event('live', hint, { isSynthetic: true }), 'live')
+  t.apply(event('history', hint, { isMeta: true }), 'history')
+  expect(t.messages.map(internalNoticeKind)).toEqual(['technical', 'technical'])
+  expect(groupTechnicalNotices(t.messages)).toHaveLength(1)
+  expect(internalNoticeKind(msg('mixed', 'notification', `${hint}\nAPI Error: 500`))).toBe('notification')
+})

@@ -12,6 +12,7 @@ import type { CommandInfo } from '../../shared/types'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, QueueAction, QueuedMessage, McpStatus, SessionOptions } from '../../shared/chat'
 import { peekContext } from '../context'
 import { loadSdk, withIdleQuery } from '../sdk'
+import type { McpServerStatus, Query } from '@anthropic-ai/claude-agent-sdk'
 import { Transcript } from '../transcript'
 import { LiveSession } from './LiveSession'
 import { SessionRuntimes } from './SessionRuntimes'
@@ -271,8 +272,19 @@ export class SessionManager {
   /** /mcp：会话在运行就问它，否则临时起一个进程读取（不发消息） */
   async mcp(sessionId: string | null, projectPath: string): Promise<McpStatus[]> {
     const live = sessionId ? this.live.get(sessionId) : undefined
-    const list = live ? await this.live.use(sessionId!, () => live.mcpStatus()) : await withIdleQuery({ cwd: projectPath }, (q) => q.mcpServerStatus())
-    return list.map((s) => ({ name: s.name, status: s.status, error: s.error, scope: s.scope, tools: s.tools?.length ?? 0 }))
+    const list = live ? await this.live.use(sessionId!, () => live.mcpStatus()) : await withIdleQuery({ cwd: projectPath }, (q) => settledMcpStatus(q))
+    return list.map(mcpView)
+  }
+
+  /** 不依赖会话启停或重连 MCP：停用状态由 Claude Code 写入项目配置，之后的新会话生效 */
+  async mcpAction(projectPath: string, operation: 'enable' | 'disable' | 'reconnect', name: string): Promise<McpStatus[]> {
+    const list = await withIdleQuery({ cwd: projectPath }, async (q) => {
+      if (!(await q.mcpServerStatus()).some((s) => s.name === name)) throw new Error('没有找到 MCP 服务：' + name)
+      if (operation === 'reconnect') await q.reconnectMcpServer(name)
+      else await q.toggleMcpServer(name, operation === 'enable')
+      return settledMcpStatus(q)
+    })
+    return list.map(mcpView)
   }
 
   async interrupt(sessionId: string): Promise<void> {
@@ -639,4 +651,19 @@ export class SessionManager {
     this.live.close(id)
     this.seen.delete(id) // 进程刚写完文件，下次检查时重新记基准
   }
+}
+
+function mcpView(s: McpServerStatus): McpStatus {
+  return { name: s.name, status: s.status, error: s.error, scope: s.scope, tools: s.tools?.length ?? 0 }
+}
+
+/** 临时进程刚启动时服务器多半还在连接，等状态稳定（最多 timeout）再返回，避免页面一直显示连接中 */
+export async function settledMcpStatus(q: Pick<Query, 'mcpServerStatus'>, timeout = 10_000, interval = 400): Promise<McpServerStatus[]> {
+  const deadline = Date.now() + timeout
+  let list = await q.mcpServerStatus()
+  while (list.some((s) => s.status === 'pending') && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, interval))
+    list = await q.mcpServerStatus()
+  }
+  return list
 }

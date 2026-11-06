@@ -20,7 +20,7 @@ export function NewSessionPage() {
   const { projects, selectedProjectId, pickProject, setDraft } = desk
   const options = draftSessionOptions(desk)
   const start = useChat((s) => s.start)
-  const [text, setText] = useState('')
+  const [text, setText] = useState(() => useDesk.getState().takeNewChatPrefill())
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)

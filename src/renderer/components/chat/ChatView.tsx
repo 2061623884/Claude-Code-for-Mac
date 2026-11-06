@@ -8,7 +8,7 @@ import type { ComposerAttachment } from '@shared/attachments'
 import type { UiBlock, UiMessage } from '@shared/chat'
 import type { CommandInfo } from '@shared/types'
 import { groupTechnicalNotices, isInterruptionNotice } from '@shared/internalNotice'
-import { InternalNotice, TechnicalRecords } from './InternalNotice'
+import { InternalNotice, TaskNotice, TechnicalRecords } from './InternalNotice'
 import { turnsOf } from '@shared/fileChanges'
 import { sumUsage, totalTokens } from '@shared/usageStats'
 import { cacheExpiresAt } from '@shared/cacheWindow'
@@ -157,6 +157,8 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
     sessionUsage
   }
 
+  const crabOverlap = !approval && !chat.optionsSaveError
+
   return (
     <FileContext.Provider value={{ cwd }}>
       <div className="flex min-h-0 flex-1">
@@ -169,7 +171,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
             }}
             className="min-h-0 flex-1 overflow-y-auto px-8"
           >
-            <div className="mx-auto max-w-[760px] pt-2 pb-6">
+            <div className={`mx-auto max-w-[760px] pt-2 ${crabOverlap ? 'pb-[76px]' : 'pb-6'}`}>
               {external && (
                 <div className="sticky top-0 z-10 mb-2 flex items-center gap-3 rounded-xl border border-line bg-card px-4 py-2.5 text-[13px] shadow-card">
                   <span className="min-w-0 flex-1 text-fg2">会话有更新</span>
@@ -211,8 +213,9 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
             </div>
           </div>
 
-          <div className="px-8 pb-5">
-            <div className="mx-auto max-w-[760px] space-y-2">
+          {/* 螃蟹那 52px 叠到消息区上，消息从螃蟹后面透出来，不被白底截断；空白处不拦截点击 */}
+          <div className={`pointer-events-none relative z-10 px-8 pb-5 ${crabOverlap ? '-mt-[52px]' : ''}`}>
+            <div className="mx-auto max-w-[760px] space-y-2 [&>*:not(.composer-with-crab)]:pointer-events-auto">
               {approval && (
                 <ApprovalCard
                   key={approval.requestId}
@@ -319,6 +322,7 @@ function Message({
   if (message.role === 'notice') {
     if (isInterruptionNotice(message)) return <div className="my-3 text-[13px] text-fg3">已停止</div>
     if (message.source === 'internal') return <InternalNotice message={message} />
+    if (message.source !== 'unknown' && message.originKind === 'task-notification') return <TaskNotice message={message} />
     if (message.source) {
       const label = message.source === 'unknown' ? (message.startsTurn ? '历史消息 · 来源未确认，按旧记录分组' : '消息 · 来源未确认') : message.originKind === 'task-notification' ? '任务通知' : message.originKind === 'peer' ? 'Agent 消息' : message.originKind === 'channel' ? '通道消息' : '外部消息'
       return <div title={label} className="my-3 whitespace-pre-wrap break-words text-[13px] text-fg2 select-text">{blockText(message.blocks)}</div>

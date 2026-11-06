@@ -21,6 +21,7 @@ import { Menu } from '../ui/Menu'
 import { Button, Dialog } from '../ui/Dialog'
 import { IconButton, SessionRow } from './SessionRow'
 import { ScheduleIcon } from '../schedules/ScheduleIcon'
+import { SkillsIcon } from '../skills/SkillsIcon'
 
 const VISIBLE_SESSIONS = 5
 
@@ -51,6 +52,7 @@ export function Sidebar({ width }: { width: number }) {
           active={view.kind === 'new'}
           onClick={() => newChat()}
         />
+        <NavItem icon={<SkillsIcon size={16} />} label="技能与插件" active={view.kind === 'skills'} onClick={() => setView({ kind: 'skills' })} />
         <NavItem icon={<ScheduleIcon size={16} />} label="定时任务" active={view.kind === 'schedules'} onClick={() => setView({ kind: 'schedules' })} />
         <NavItem icon={<Search size={16} />} label="搜索" hint="⌘K" active={false} onClick={() => setSearchOpen(true)} />
       </nav>

@@ -90,7 +90,7 @@ export function SessionRow({ session, active, status, indent = true, onOpen, onR
   )
 }
 
-export function IconButton({ label, onClick, children }: { label: string; onClick(): void; children: React.ReactNode }) {
+export function IconButton({ label, onClick, children, size = 'sm' }: { label: string; onClick(): void; children: React.ReactNode; size?: 'sm' | 'md' }) {
   return (
     <button
       type="button"
@@ -100,7 +100,7 @@ export function IconButton({ label, onClick, children }: { label: string; onClic
         e.stopPropagation()
         onClick()
       }}
-      className="flex size-6 items-center justify-center rounded-md text-fg2 hover:bg-active hover:text-fg"
+      className={`flex ${size === 'md' ? 'size-7' : 'size-6'} items-center justify-center rounded-md text-fg2 hover:bg-active hover:text-fg`}
     >
       {children}
     </button>

@@ -25,7 +25,7 @@ export function FileLink({ pathRef, fallback, attachment = false }: { pathRef: P
   const abs = resolvePath(pathRef.path, cwd, home)
   const kind = usePathKind(abs)
   if (!abs || !kind) return <>{fallback}</>
-  if (attachment) return <AttachmentCard path={abs} kind={kind} line={pathRef.line} />
+  if (attachment) return <AttachmentCard path={abs} kind={kind} line={pathRef.line} compact />
   return <FileChip path={abs} kind={kind} line={pathRef.line} />
 }
 
@@ -89,7 +89,9 @@ export function LinkifiedText({ text, attachments = false }: { text: string; att
   const parts: ReactNode[] = []
   let i = 0
   for (const m of findBarePaths(text)) {
-    if (m.start > i) parts.push(text.slice(i, m.start))
+    const between = text.slice(i, m.start)
+    // 附件模式下相邻附件之间只隔着换行时，换成空格，让卡片横向排成一行
+    if (between) parts.push(attachments && i > 0 && !between.trim() ? ' ' : between)
     const raw = text.slice(m.start, m.end)
     parts.push(<FileLink key={m.start} pathRef={m.ref} fallback={raw} attachment={attachments} />)
     i = m.end
