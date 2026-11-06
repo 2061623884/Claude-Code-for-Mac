@@ -371,7 +371,7 @@ export function Composer({
               data-composer-action
               aria-label="停止"
               onClick={onStop}
-              className="flex size-8 items-center justify-center rounded-full bg-accent text-accent-fg hover:opacity-85"
+              className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-fg hover:opacity-85"
             >
               <Square size={12} fill="currentColor" />
             </button>
@@ -385,7 +385,7 @@ export function Composer({
               onClick={() => {
                 void submit()
               }}
-              className={`flex h-8 ${submitLabel ? 'px-3 text-[12px]' : 'w-8'} items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-25`}
+              className={`flex h-8 ${submitLabel ? 'px-3 text-[12px]' : 'w-8'} items-center justify-center rounded-lg bg-accent text-accent-fg transition-opacity hover:opacity-85 disabled:opacity-25`}
             >
               {submitLabel ?? <ArrowUp size={17} strokeWidth={2.2} />}
             </button>

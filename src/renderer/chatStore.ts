@@ -34,6 +34,8 @@ interface ChatStore {
   setOptions(sessionId: string, patch: Partial<SessionOptions>): Promise<void>
   respond(sessionId: string, requestId: string, decision: Decision): Promise<void>
   handle(sessionId: string, event: ChatEvent): boolean
+  /** 主进程替渲染进程开的会话（如定时任务），绑定到项目以便刷新列表和通知 */
+  adopt(sessionId: string, projectId: string): void
 }
 
 let eventRevision = 0
@@ -200,6 +202,10 @@ export const useChat = create<ChatStore>((set, get) => {
         useSessionMarks.getState().complete(sessionId)
       }
       return true
+    },
+
+    adopt(sessionId, projectId) {
+      set({ chats: { ...get().chats, [sessionId]: { ...blank(projectId), ...get().chats[sessionId], projectId } } })
     }
   }
 })

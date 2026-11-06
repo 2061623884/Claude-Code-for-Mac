@@ -100,6 +100,6 @@ function ProfileEditor({ profile, onClose }: { profile: UsageProfile; onClose():
     <div className="flex items-center gap-4"><div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-chip text-[26px] text-accent">{avatar ? <img src={avatar} alt="头像预览" className="size-full object-cover" /> : name.slice(0, 1).toUpperCase()}</div><div className="space-y-2"><button type="button" disabled={busy} className="flex items-center gap-2 text-[13px]" onClick={() => picker.current?.click()}><Upload size={14} />上传头像</button><button type="button" disabled={busy} className="text-[12px] text-fg3" onClick={() => setAvatar(null)}>恢复默认头像</button></div></div>
     <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="选择头像图片" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; setBusy(true); setError(null); void avatarThumbnail(file).then(setAvatar, err => setError(String(err.message ?? err))).finally(() => setBusy(false)) }} />
     <label className="mt-5 block text-[13px]">显示名称<input value={name} maxLength={80} disabled={busy} onChange={e => setName(e.target.value)} className="mt-2 block w-full rounded-lg border border-line bg-bg px-3 py-2 outline-none focus:border-accent" /></label>
-    <p className="mt-3 text-[12px] text-fg3">仅保存在本机，不修改 Claude 账户资料。图片会居中裁切。</p>{error && <p role="alert" className="mt-2 text-[12px] text-danger">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-[12px] text-danger">{error}</p>}
   </Dialog>
 }

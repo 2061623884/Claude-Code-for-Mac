@@ -10,6 +10,7 @@ import { Sidebar } from './components/sidebar/Sidebar'
 import { IconButton } from './components/sidebar/SessionRow'
 import { NewSessionPage } from './components/newSession/NewSessionPage'
 import { UsagePage } from './components/usage/UsagePage'
+import { SchedulesPage } from './components/schedules/SchedulesPage'
 import { startUsagePolling } from './usageStore'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { ChatView } from './components/chat/ChatView'
@@ -135,6 +136,7 @@ export function App() {
         {view.kind === 'new' && <NewSessionPage />}
         {view.kind === 'settings' && <SettingsPage />}
         {view.kind === 'usage' && <UsagePage />}
+        {view.kind === 'schedules' && <SchedulesPage />}
         {view.kind === 'session' && <ChatView key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       </main>
       {view.kind === 'session' && <RightPanel key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}

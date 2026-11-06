@@ -81,6 +81,5 @@ export function OfficePreview({ base64, format }: { base64: string; format: 'doc
         </div>)}
       </div>}
     </div>
-    <p className="shrink-0 border-t border-line px-3 py-1 text-[11px] text-fg3">只读预览 · 公式显示文件中的缓存结果</p>
   </div>
 }

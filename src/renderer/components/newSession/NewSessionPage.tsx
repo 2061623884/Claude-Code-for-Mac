@@ -33,7 +33,6 @@ export function NewSessionPage() {
     return (
       <Centered>
         <h1 className="font-serif text-[30px] font-normal tracking-tight">先添加一个项目文件夹</h1>
-        <p className="mt-2 text-fg2">Claude 会在你选择的文件夹里阅读代码、修改文件和运行命令。</p>
         <div className="mt-6">
           <Button variant="primary" onClick={() => void pickProject()}>
             <span className="flex items-center gap-1.5">

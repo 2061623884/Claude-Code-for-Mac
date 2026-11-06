@@ -108,7 +108,7 @@ export function BtwPane({ pageId, sessionId, cwd, options, active }: { pageId: s
             aria-label="提问"
             onClick={submit}
             disabled={!text.trim() || pending}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity disabled:opacity-35"
+            className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg transition-opacity disabled:opacity-35"
           >
             <ArrowUp size={15} />
           </button>

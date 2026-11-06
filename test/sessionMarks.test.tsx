@@ -77,38 +77,48 @@ it('only badges reachable unarchived sessions and only notifies for accepted eve
   const stopEvents = vi.fn()
   const stopClick = vi.fn()
   const notify = vi.fn().mockResolvedValue(undefined)
-  const setDockUnread = vi.fn().mockResolvedValue(undefined)
+  const setDockBadge = vi.fn().mockResolvedValue(undefined)
+  let started!: Parameters<Window['desk']['schedules']['onStarted']>[0]
+  const stopStarted = vi.fn()
   window.desk = {
-    app: { notify, setDockUnread, onNotificationClick: (listener: typeof click) => { click = listener; return stopClick } },
-    chat: { onEvent: (listener: typeof receive) => { receive = listener; return stopEvents } }
+    app: { notify, setDockBadge, onNotificationClick: (listener: typeof click) => { click = listener; return stopClick } },
+    chat: { onEvent: (listener: typeof receive) => { receive = listener; return stopEvents } },
+    schedules: { onStarted: (listener: typeof started) => { started = listener; return stopStarted } }
   } as unknown as Window['desk']
   useDesk.setState({ settings: null })
   useSessionMarks.getState().complete('missing')
   const stop = connectSessionSignals()
   try {
-    expect(setDockUnread.mock.calls).toEqual([[false]])
+    expect(setDockBadge.mock.calls).toEqual([[0]])
     click('a')
     expect(useDesk.getState().view).toEqual({ kind: 'session', projectId: 'p', sessionId: 'a' })
     const result = { kind: 'result', resultId: 'dock-result', durationMs: 10, error: null, revision: 3 } as const
     receive('a', result)
-    expect(setDockUnread.mock.calls).toEqual([[false], [true]])
+    expect(setDockBadge.mock.calls).toEqual([[0], [1]])
     useSessionMarks.getState().markRead('a')
     receive('a', { ...result, revision: 4 })
     receive('a', { ...result, resultId: 'stale', revision: 2 })
     expect(notify).toHaveBeenCalledTimes(1)
-    expect(setDockUnread.mock.calls).toEqual([[false], [true], [false]])
+    expect(setDockBadge.mock.calls).toEqual([[0], [1], [0]])
 
     useSessionMarks.getState().complete('a')
     const sessions = useDesk.getState().sessions
     useDesk.setState({ sessions: { p: sessions.p.map(row => ({ ...row, archived: row.id === 'a' })) } })
-    expect(setDockUnread).toHaveBeenLastCalledWith(false)
+    expect(setDockBadge).toHaveBeenLastCalledWith(0)
     useDesk.setState({ sessions })
-    expect(setDockUnread).toHaveBeenLastCalledWith(true)
+    expect(setDockBadge).toHaveBeenLastCalledWith(1)
+    started({ taskId: 't', taskName: '每日汇总', sessionId: 'scheduled', projectPath: '/p' })
+    expect(useChat.getState().chats.scheduled.projectId).toBe('p')
+    expect(useDesk.getState().sessions.p[0]).toMatchObject({ id: 'scheduled', title: '每日汇总' })
+    started({ taskId: 't', taskName: '其他', sessionId: 'elsewhere', projectPath: '/missing' })
+    expect(useChat.getState().chats.elsewhere).toBeUndefined()
+
     useDesk.setState({ projects: [] })
-    expect(setDockUnread).toHaveBeenLastCalledWith(false)
+    expect(setDockBadge).toHaveBeenLastCalledWith(0)
   } finally {
     stop()
   }
   expect(stopEvents).toHaveBeenCalledOnce()
   expect(stopClick).toHaveBeenCalledOnce()
+  expect(stopStarted).toHaveBeenCalledOnce()
 })

@@ -59,14 +59,14 @@ export function SettingsPage() {
       {([['general', '外观与交互'], ['models', '模型与权限'], ['context', '上下文'], ['notifications', '通知'], ['mcp', '连接与 MCP'], ['advanced', '高级设置']] as const).map(([value, label]) => <button key={value} type="button" aria-current={tab === value ? 'page' : undefined} onClick={() => setView({ ...route, tab: value })} className={`rounded-lg px-3 py-1.5 text-[13px] ${tab === value ? 'bg-active' : 'text-fg2 hover:bg-hover'}`}>{label}</button>)}
     </nav>
     {settingsError && <p role="alert" className="mt-3 text-danger">设置保存失败：{settingsError}</p>}
-    {projectSettings && <Section title="项目上下文" description="选择要查看配置的项目；部分设置由所有项目共享。">
+    {projectSettings && <Section title="项目上下文">
       <Row label={<label htmlFor="settings-project">项目</label>}><select id="settings-project" value={project?.id ?? ''} onChange={e => setView({ ...route, projectId: e.target.value || null, sessionId: null })} className={settingsInputClass}><option value="">用户目录</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Row>
     </Section>}
-    {tab === 'general' && <Section title="界面与交互" description="保存后立即应用。">
+    {tab === 'general' && <Section title="界面与交互">
       <Row label="主题"><Segmented options={THEMES} value={settings.theme} onChange={theme => saveSettings({ theme })} /></Row>
       <Row label="自动跟随最新回复"><Toggle label="自动跟随最新回复" value={settings.autoScroll ?? true} onChange={autoScroll => saveSettings({ autoScroll })} /></Row>
       <Row label="减少动效"><Toggle label="减少动效" value={settings.reduceMotion ?? false} onChange={reduceMotion => saveSettings({ reduceMotion })} /></Row>
-      <Row label="执行提示语言" hint="仅影响小螃蟹旁的文案，保存后生效">
+      <Row label="执行提示语言">
         <select aria-label="执行提示语言" disabled={languageSaving} value={settings.executionLanguage ?? 'zh'} className={settingsInputClass} onChange={async e => {
           const executionLanguage = e.target.value === 'en' ? 'en' : 'zh'
           setLanguageSaving(true); setLanguageError(null)
@@ -77,26 +77,26 @@ export function SettingsPage() {
       </Row>
       {languageError && <p role="alert" className="px-4 py-2 text-danger">{languageError}</p>}
     </Section>}
-    {tab === 'models' && <Section title="新对话默认值" description="新建对话时使用以下设置，也可以在对话中单独调整。">
+    {tab === 'models' && <Section title="新对话默认值">
         <Row label="模型"><ModePicker inline="defaultModel" options={{ model: settings.defaultModel, effort: settings.defaultEffort, mode: settings.defaultPermissionMode }} onChange={patch => { if (patch.model) saveSettings({ defaultModel: patch.model }) }} /></Row>
         <Row label="思考程度"><ModePicker inline="defaults" options={{ model: settings.defaultModel, effort: settings.defaultEffort, mode: settings.defaultPermissionMode }}
           onChange={patch => { if (patch.effort !== undefined) saveSettings({defaultEffort:patch.effort}) }} /></Row>
         <Row label="权限模式"><Select value={settings.defaultPermissionMode} options={PERMISSION_MODES.filter(m => m.value !== 'bypassPermissions' || settings.allowBypass)} onChange={v => saveSettings({ defaultPermissionMode: v as typeof settings.defaultPermissionMode })} /></Row>
-        <Row label="允许选择跳过权限模式" hint="用于后续启动的对话。开启后已有对话需重新加载；关闭不改变正在运行的对话权限。"><Toggle label="允许选择跳过权限模式" value={settings.allowBypass} onChange={allowBypass => saveSettings({ allowBypass, ...(!allowBypass && settings.defaultPermissionMode === 'bypassPermissions' ? { defaultPermissionMode: 'default' as const } : {}) })} /></Row>
+        <Row label="允许选择跳过权限模式"><Toggle label="允许选择跳过权限模式" value={settings.allowBypass} onChange={allowBypass => saveSettings({ allowBypass, ...(!allowBypass && settings.defaultPermissionMode === 'bypassPermissions' ? { defaultPermissionMode: 'default' as const } : {}) })} /></Row>
       </Section>}
-    {tab === 'models' && route.sessionId && <Section title="当前对话" description="查看改动、管理后台任务和权限规则。">
+    {tab === 'models' && route.sessionId && <Section title="当前对话">
       <SessionControlsPane sessionId={route.sessionId} cwd={cwd} active initialTab="rules" />
     </Section>}
     {tab === 'context' && <>
       <ClaudeConfigSettings key={cwd} cwd={cwd} groups={[{ title: '对话与回复', keys: CONFIG_GROUPS.context }]} searchable={false} />
-      <Section title="文件引用"><Row label="遵循 .gitignore" hint="引用 Git 项目文件时，自动过滤被忽略的文件。"><span className="text-[12px] text-fg2">自动启用</span></Row></Section>
+      <Section title="文件引用"><Row label="遵循 .gitignore"><span className="text-[12px] text-fg2">自动启用</span></Row></Section>
     </>}
     {tab === 'notifications' && <>
-      <Section title="系统通知" description="控制任务结束和等待确认时的桌面通知。">
+      <Section title="系统通知">
         <Row label="任务结束"><Toggle label="任务结束" value={settings.notifyCompletion ?? true} onChange={notifyCompletion => saveSettings({ notifyCompletion })} /></Row>
         <Row label="等待确认"><Toggle label="等待确认" value={settings.notifyApproval ?? true} onChange={notifyApproval => saveSettings({ notifyApproval })} /></Row>
         <Row label="通知声音"><Toggle label="通知声音" value={settings.notificationSound ?? true} onChange={notificationSound => saveSettings({ notificationSound })} /></Row>
-        <Row label="测试通知" hint="先用测试按钮确认系统是否显示弹窗。"><button disabled={notificationSending} className={settingsButtonClass} onClick={async () => {
+        <Row label="测试通知"><button disabled={notificationSending} className={settingsButtonClass} onClick={async () => {
           setNotificationError(null); setNotificationResult(null); setNotificationSending(true)
           try {
             await window.desk.app.notify('Claude Code', '通知测试', settings.notificationSound === false)
@@ -104,7 +104,7 @@ export function SettingsPage() {
           } catch (e) { setNotificationError(e instanceof Error ? e.message : String(e)) }
           finally { setNotificationSending(false) }
         }}>{notificationSending ? '正在发送…' : '发送测试通知'}</button></Row>
-        <Row label="系统通知设置" hint="应用内开关不会覆盖系统的通知权限、专注模式或共享屏幕限制。"><button className={settingsButtonClass} onClick={async () => {
+        <Row label="系统通知设置"><button className={settingsButtonClass} onClick={async () => {
           setNotificationError(null)
           try { await window.desk.app.openNotificationSettings() }
           catch (error) { setNotificationError(errorText(error)) }
@@ -119,7 +119,7 @@ export function SettingsPage() {
         { title: '执行行为', keys: CONFIG_GROUPS.execution },
         { title: '工作流', keys: CONFIG_GROUPS.workflows }
       ]} />
-      <Section title="文件恢复"><Row label="文件检查点" hint="对话中可预览并恢复支持的文件修改。"><span className="text-[12px] text-fg2">自动启用</span></Row></Section>
+      <Section title="文件恢复"><Row label="文件检查点"><span className="text-[12px] text-fg2">自动启用</span></Row></Section>
       <Section title="运行环境">
         <Row label="运行引擎"><span className="text-fg2" title={settings.claudePath ?? undefined}>{settings.claudePath ? '自定义路径' : `应用内置${environment?.path === executable && environment.meta?.claudeVersion ? ` v${environment.meta.claudeVersion}` : ''}`}</span></Row>
         <Row label="账户"><span className="text-fg2">{environment?.path !== executable ? '读取中…' : environment.error ? <button onClick={() => setEnvironmentAttempt(value => value + 1)}>读取失败 · 重试</button> : environment.meta?.subscriptionType ?? '未知'}</span></Row>

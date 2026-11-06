@@ -2,6 +2,7 @@ import type { ClaudeConfigChange, ClaudeConfigSnapshot } from './claudeConfig'
 import type { UsageAnalytics, UsageOverview, UsageProfile } from './usageAnalytics'
 import type { CommandCatalogSnapshot } from './commandCatalog'
 import type { BrowserState, ViewBounds } from './workspace'
+import type { ScheduledRunStarted, ScheduledTask, ScheduledTaskInput } from './schedules'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, QueueAction, McpStatus, SessionOptions } from './chat'
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions'
@@ -152,7 +153,8 @@ export interface DeskApi {
   }
   app: {
     notify(title: string, body: string, silent: boolean, sessionId?: string): Promise<void>
-    setDockUnread(unread: boolean): Promise<void>
+    /** Dock 角标显示的未读会话数，0 时清除 */
+    setDockBadge(count: number): Promise<void>
     openNotificationSettings(): Promise<void>
     onNotificationClick(listener: (sessionId: string) => void): () => void
     state(): Promise<AppState>
@@ -177,6 +179,17 @@ export interface DeskApi {
   settings: {
     get(): Promise<Settings>
     set(patch: Partial<Settings>): Promise<Settings>
+  }
+  schedules: {
+    list(): Promise<ScheduledTask[]>
+    create(input: ScheduledTaskInput): Promise<ScheduledTask[]>
+    update(id: string, input: ScheduledTaskInput): Promise<ScheduledTask[]>
+    setEnabled(id: string, enabled: boolean): Promise<ScheduledTask[]>
+    remove(id: string): Promise<ScheduledTask[]>
+    /** 立即执行一次，不影响下一次计划时间 */
+    runNow(id: string): Promise<ScheduledTask[]>
+    onChanged(listener: (tasks: ScheduledTask[]) => void): () => void
+    onStarted(listener: (run: ScheduledRunStarted) => void): () => void
   }
   meta: {
     get(projectPath?: string): Promise<MetaInfo>

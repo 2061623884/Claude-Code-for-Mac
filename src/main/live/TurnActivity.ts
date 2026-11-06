@@ -35,6 +35,8 @@ export class TurnActivity {
     let found: { messageId: string; blockIndex: number } | undefined
     for (let i = messages.length - 1; i >= 0 && !found; i--) {
       const m = messages[i]
+      // 只在本轮用户消息之后找；否则新一轮刚开始时会挂到上一轮的最后一条回复上
+      if (m.startsTurn && !m.parentToolUseId) break
       if (m.role !== 'assistant' || m.parentToolUseId || (!this.value.toolId && target && m.id !== target)) continue
       for (let j = m.blocks.length - 1; j >= 0; j--) {
         const b = m.blocks[j]

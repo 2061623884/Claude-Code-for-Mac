@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Archive, ArchiveRestore, Pencil, Pin, PinOff } from 'lucide-react'
+import { Archive, ArchiveRestore, LoaderCircle, Pencil, Pin, PinOff } from 'lucide-react'
 import type { ChatState } from '@shared/chat'
 import type { SessionSummary } from '@shared/types'
 import { useSessionMarks } from '../../sessionMarks'
@@ -59,9 +59,9 @@ export function SessionRow({ session, active, status, indent = true, onOpen, onR
       }`}
     >
       <span className={`min-w-0 flex-1 truncate ${active ? 'text-fg' : 'text-fg/85'}`}>{session.title}</span>
-      {status === 'running' && <span title="运行中" className="size-2 shrink-0 animate-pulse rounded-full bg-fg3 group-hover:hidden group-focus-within:hidden" />}
+      {status === 'running' && <LoaderCircle size={12} role="status" aria-label="运行中" className="shrink-0 animate-spin text-fg3 motion-reduce:animate-none" />}
       {status === 'awaiting' && <span className="shrink-0 text-[11px] text-accent">待确认</span>}
-      {unread && <span role="status" aria-label="有未读回复" title="有未读回复" className="size-1.5 shrink-0 rounded-full bg-orange-500" />}
+      {unread && status !== 'running' && <span role="status" aria-label="有未读回复" title="有未读回复" className="size-1.5 shrink-0 rounded-full bg-accent" />}
       <span className="shrink-0 text-[11.5px] text-fg3 group-hover:hidden group-focus-within:hidden">{relativeTimeZh(session.lastModified)}</span>
       <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
         {!session.archived && (

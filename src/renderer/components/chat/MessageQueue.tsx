@@ -88,7 +88,7 @@ export function MessageQueue({ queue, canInsert, onAction, onEdit, editingId }: 
             {(item.editing || !editable) && <span className="shrink-0 pr-2 text-[11px] text-fg3">{item.editing ? '正在输入框编辑' : labels[item.status]}</span>}
           </div>
           {item.error && <div className="px-2 pb-1 text-[12px] text-danger">{item.error}</div>}
-          {item.status === 'unknown' && <div className="px-2 pb-2 text-[12px] text-fg3"><p>请先核对会话。移除记录不会重新发送或取消任务。</p><button className="mt-1 hover:text-fg" disabled={busy} onClick={() => void act({ type: 'forget', id: item.id })}>移除记录（不重发）</button></div>}
+          {item.status === 'unknown' && <div className="px-2 pb-2 text-[12px] text-fg3"><button className="hover:text-fg" disabled={busy} onClick={() => void act({ type: 'forget', id: item.id })}>移除记录（不重发）</button></div>}
         </div>
       })}
     </div>

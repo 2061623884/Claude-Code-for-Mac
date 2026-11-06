@@ -111,11 +111,16 @@ export class SessionManager {
     return sessionId
   }
 
+  /** 正在回复、等待确认或仍有后台任务在跑 */
+  isBusy(sessionId: string): boolean {
+    const live = this.live.get(sessionId)
+    return Boolean(live && (live.state !== 'idle' || live.approvals.length || [...live.tasks.values()].some(task => task.status === 'running')))
+  }
+
   edit(sessionId: string, projectPath: string, messageId: string, text: string): Promise<void> {
     return this.lock(sessionId, async () => {
       assertChatPrompt(text)
-      const live = this.live.get(sessionId)
-      if (live && (live.state !== 'idle' || live.approvals.length || [...live.tasks.values()].some(task => task.status === 'running'))) {
+      if (this.isBusy(sessionId)) {
         throw new Error('请等待当前任务结束后编辑')
       }
       const original = await this.transcript(sessionId, projectPath)

@@ -6,14 +6,6 @@ import { CONFIG_LABELS, VALUE_LABELS } from '@shared/commands'
 import { useClaudeConfig } from '../../hooks/useClaudeConfig'
 import { Row, Section, Toggle, settingsInputClass, settingsButtonClass } from './SettingsControls'
 
-const CONFIG_HINTS: Record<string, string> = {
-  language: '选择后自动保存。自动表示不固定回复语言，也可选择其他语言自行填写。',
-  autoCompact: '上下文达到阈值后自动生成摘要，保存开关不会立即触发压缩。',
-  workflows: '允许使用 Workflow 工具。是否调用取决于任务，对话中的单独选择优先。',
-  workflowKeywordTriggerEnabled: '消息中包含 ultracode 时，为该轮启用 Workflow 工具。',
-  workflowSizeGuideline: '工作流规模建议，不是并行任务数量的硬上限。'
-}
-
 type ConfigGroup = { title: string; keys?: readonly string[]; excludeKeys?: readonly string[] }
 export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true, groups }: { cwd: string; keys?: readonly string[]; excludeKeys?: readonly string[]; searchable?: boolean; groups?: ConfigGroup[] }) {
   const { snapshot, error, saving, results, save, refresh } = useClaudeConfig(cwd)
@@ -30,7 +22,6 @@ export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true
       {searchable && <input aria-label="搜索 Claude Code 设置" placeholder="搜索设置" value={query} onChange={e => setQuery(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 outline-none focus:border-accent" />}
       <button type="button" aria-label="刷新 Claude Code 设置" disabled={!!saving || reloading} onClick={refresh} className={`${settingsButtonClass} flex items-center gap-2`}><RefreshCw size={14} />刷新</button>
     </div>
-    <p className="mb-3 text-[12px] text-fg3">保存后用于后续启动的对话。对话中单独选择的工作流设置优先；回复语言和输出风格会尝试应用到当前对话。</p>
     {sessionId && <button type="button" disabled={reloading || !!saving} className={`mb-3 ${settingsButtonClass}`} onClick={async () => {
       setReloading(true); setReloadResult(''); setReloadError(false)
       try { await window.desk.chat.control(sessionId, cwd, 'reloadConfiguration'); setReloadResult('已重载当前会话') }
@@ -45,7 +36,7 @@ export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true
         const disabled = !!saving || reloading || !!item.locked
         const label = CONFIG_LABELS[item.key] ?? item.key
         return <div key={item.key}>
-          <Row label={<label htmlFor={`config-${item.key}`}>{label}</label>} hint={item.locked ?? CONFIG_HINTS[item.key]}>
+          <Row label={<label htmlFor={`config-${item.key}`}>{label}</label>} hint={item.locked}>
             {item.key === 'language' ? <ReplyLanguagePicker key={`${cwd}:${item.value}`} id={`config-${item.key}`} value={item.value} disabled={disabled} onSave={value => void save(item.key, value)} />
             : boolean ? <Toggle id={`config-${item.key}`} label={label} value={item.value === 'true'} disabled={disabled} title={item.locked} onChange={value => void save(item.key, String(value))} />
             : item.values.length ? <select id={`config-${item.key}`} disabled={disabled} value={item.value ?? ''} title={item.locked} onChange={e => void save(item.key, e.target.value)} className={settingsInputClass}>
@@ -54,7 +45,7 @@ export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true
               {item.values.map(v => <option key={v} value={v}>{VALUE_LABELS[v] ?? v}</option>)}
             </select> : <ConfigInput key={`${item.key}:${item.value}`} id={`config-${item.key}`} initialValue={item.value} disabled={disabled} onSave={value => void save(item.key, value)} />}
           </Row>
-          {saving === item.key ? <p role="status" className="px-4 pb-3 text-[12px] text-fg3">保存中…</p> : results[item.key] && <p role={results[item.key].error ? 'alert' : 'status'} className={`px-4 pb-3 text-[12px] ${results[item.key].error ? 'text-danger' : 'text-fg3'}`}>{results[item.key].error ?? results[item.key].status ?? '已保存 · 后续启动生效'}</p>}
+          {saving === item.key ? <p role="status" className="px-4 pb-3 text-[12px] text-fg3">保存中…</p> : results[item.key] && <p role={results[item.key].error ? 'alert' : 'status'} className={`px-4 pb-3 text-[12px] ${results[item.key].error ? 'text-danger' : 'text-fg3'}`}>{results[item.key].error ?? results[item.key].status ?? '已保存'}</p>}
         </div>
       })}
       </Section>)}

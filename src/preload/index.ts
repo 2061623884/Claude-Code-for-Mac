@@ -26,7 +26,7 @@ const api: DeskApi = {
   },
   app: {
     notify: call('app:notify'),
-    setDockUnread: call('app:setDockUnread'),
+    setDockBadge: call('app:setDockBadge'),
     openNotificationSettings: call('app:openNotificationSettings'),
     onNotificationClick: (listener) => subscribe('app:notificationClick', listener),
     state: call('app:state'),
@@ -48,6 +48,16 @@ const api: DeskApi = {
     setArchived: call('sessions:setArchived')
   },
   settings: { get: call('settings:get'), set: call('settings:set') },
+  schedules: {
+    list: call('schedules:list'),
+    create: call('schedules:create'),
+    update: call('schedules:update'),
+    setEnabled: call('schedules:setEnabled'),
+    remove: call('schedules:remove'),
+    runNow: call('schedules:runNow'),
+    onChanged: (listener) => subscribe('schedules:changed', listener),
+    onStarted: (listener) => subscribe('schedules:started', listener)
+  },
   meta: { get: call('meta:get'), cachedModels: call('meta:cachedModels'), commands: call('meta:commands'), onCommands: (listener) => subscribe('meta:commands', listener), usage: call('meta:usage'), config: call('meta:config'), configSnapshot: call('meta:configSnapshot'), onConfigChanged: (listener) => subscribe('meta:configChanged', listener) },
   files: {
     saveImage: call('files:saveImage'),

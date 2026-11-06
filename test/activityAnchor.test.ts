@@ -17,3 +17,15 @@ it('tracks the actual streaming block even when its message precedes the last to
   expect(a.snapshot().messageId).toBe('text')
   a.finish(); expect(a.snapshot().messageId).toBeUndefined()
 })
+it('does not anchor a new turn to the previous turn reply', () => {
+  const t = new Transcript(), a = new TurnActivity()
+  const apply = (m: unknown) => { a.apply(m); t.apply(m, 'live'); a.locate(t.messages, m) }
+  t.addUser('first')
+  apply({ type: 'assistant', message: { id: 'old', content: [{ type: 'text', text: 'done' }] } })
+  a.start(); t.addUser('second')
+  apply({ type: 'system', subtype: 'init' })
+  expect(a.snapshot().messageId).toBeUndefined()
+  apply({ type: 'stream_event', event: { type: 'message_start', message: { id: 'new' } } })
+  apply({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: 'hi' } } })
+  expect(a.snapshot()).toMatchObject({ messageId: 'new', blockIndex: 0 })
+})

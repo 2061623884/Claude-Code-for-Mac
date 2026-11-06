@@ -25,6 +25,8 @@ import { activityRepository } from './activityRepository'
 import { createSessionPreferencesRepository } from './sessionPreferences'
 import { createHumanSubmissionRepository } from './humanSubmissionRepository'
 import { registerAppNotifications } from './appNotifications'
+import { Scheduler } from './schedules'
+import type { ScheduledTaskInput } from '../shared/schedules'
 
 function str(value: unknown, name: string): string {
   if (typeof value !== 'string' || value === '') throw new Error(`参数 ${name} 无效`)
@@ -76,6 +78,23 @@ export const commandCatalog: CommandCatalog = new CommandCatalog({
 })
 export const chats: SessionManager = new SessionManager(broadcast, activityRepository, { configuration: commandConfiguration, publisher: (cwd) => commandCatalog.publisher(cwd) }, createHumanSubmissionRepository(() => join(app.getPath('userData'), 'human-submissions')), createSessionPreferencesRepository(() => join(app.getPath('userData'), 'session-preferences')))
 
+function sendAll(channel: string, ...args: unknown[]): void {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send(channel, ...args)
+}
+
+export const scheduler: Scheduler = new Scheduler({
+  file: () => join(app.getPath('userData'), 'schedules.json'),
+  options: (task) => {
+    const { settings } = store.read()
+    if (task.mode === 'bypassPermissions' && !settings.allowBypass) throw new Error('「跳过所有权限」未在设置中启用')
+    return { model: settings.defaultModel ?? null, mode: task.mode, effort: settings.defaultEffort ?? null }
+  },
+  start: (projectPath, prompt, options) => chats.start(projectPath, prompt, options),
+  isBusy: (sessionId) => chats.isBusy(sessionId),
+  onStarted: (run) => sendAll('schedules:started', run),
+  onChanged: (tasks) => sendAll('schedules:changed', tasks)
+})
+
 export function projectMetadata(cwd: string) {
   return meta.get(cwd, commandCatalog.seedFromMetadata(cwd))
 }
@@ -107,6 +126,17 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   handle('projects:detectFromHistory', () => projects.detectFromHistory())
   handle('projects:markSeeded', () => projects.markSeeded())
   handle('projects:revealInFinder', (path) => projects.revealInFinder(str(path, 'path')))
+
+  const task = (value: unknown): ScheduledTaskInput => {
+    if (!value || typeof value !== 'object') throw new Error('参数 task 无效')
+    return value as ScheduledTaskInput
+  }
+  handle('schedules:list', () => scheduler.list())
+  handle('schedules:create', (input) => scheduler.create(task(input)))
+  handle('schedules:update', (id, input) => scheduler.update(str(id, 'id'), task(input)))
+  handle('schedules:setEnabled', (id, enabled) => scheduler.setEnabled(str(id, 'id'), enabled === true))
+  handle('schedules:remove', (id) => scheduler.remove(str(id, 'id')))
+  handle('schedules:runNow', (id) => scheduler.runNow(str(id, 'id')))
 
   handle('sessions:list', (path) => sessions.list(str(path, 'path')))
   handle('sessions:rename', (id, title, path) => sessions.rename(str(id, 'id'), str(title, 'title'), str(path, 'path')))

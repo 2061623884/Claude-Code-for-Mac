@@ -79,7 +79,6 @@ export function SummaryDetail({ sessionId, projectId, section }: { sessionId: st
           <SummaryRows section={category} items={summary.sections[category]} />
         </section>
       })}
-      {(section === 'changes' || (section === 'all' && summary.sections.changes.length > 0)) && <p className="mt-4 text-[11px] text-fg3">仅汇总已确认成功的文件工具操作，行数为操作累计。无法确认的差异显示未知；通过终端或外部程序产生的改动可能不包含在内。</p>}
       {summary.historyIncomplete && <p className="mt-4 text-[11px] text-fg3">此会话历史记录不完整，部分来源、任务或子 Agent 状态可能未保存。</p>}
     </div>
   </section>

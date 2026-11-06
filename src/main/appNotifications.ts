@@ -1,10 +1,9 @@
 import { app, ipcMain, Notification, shell } from 'electron'
 
 export function registerAppNotifications(focusWindow?: () => void): void {
-  ipcMain.handle('app:setDockUnread', (_event, unread: unknown) => {
-    if (typeof unread !== 'boolean') throw new Error('无效未读状态')
-    // 用空格保留原生角标的底色，省去数字。
-    app.dock?.setBadge(unread ? ' ' : '')
+  ipcMain.handle('app:setDockBadge', (_event, count: unknown) => {
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) throw new Error('无效未读数量')
+    app.dock?.setBadge(count === 0 ? '' : count > 99 ? '99+' : String(count))
   })
 
   ipcMain.handle('app:openNotificationSettings', async () => {

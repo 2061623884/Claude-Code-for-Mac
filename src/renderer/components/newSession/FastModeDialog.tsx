@@ -38,7 +38,6 @@ export function FastModeDialog({ needsCredits, busy, onClose, onConfirm }: {
           <p>{needsCredits ? '请先在 Claude 用量设置中启用 Usage credits，再返回这里确认开启。' : '请确认账号已启用 Usage credits。使用 API 登录时，费用计入 API 账单。'}</p>
           <a className="text-fg underline underline-offset-4 hover:text-fg2" href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">打开 Claude 用量设置</a>
         </div>
-        <p className="text-xs text-fg3">确认后将尝试开启，以账号实际权限为准。</p>
       </div>
     </Dialog>
   </div>, document.body)

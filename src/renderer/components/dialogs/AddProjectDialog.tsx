@@ -24,7 +24,6 @@ export function AddProjectDialog({ path }: { path: string }) {
         <Folder size={14} className="mt-0.5 shrink-0 text-fg2" />
         {path}
       </div>
-      <p className="mt-3 text-[12.5px] text-fg3">在这个项目里新建的对话，Claude 会在此文件夹中读写文件和运行命令。</p>
     </Dialog>
   )
 }

@@ -5,7 +5,7 @@ import { closeTemporaryQueries } from './temporaryQuery'
 import { AppWindow } from './appWindow'
 import type { DemoState } from '../shared/types'
 import { adoptLoginShellPath } from './env'
-import { applyTheme, chats, commandCatalog, projectMetadata, registerIpc } from './ipc'
+import { applyTheme, chats, commandCatalog, projectMetadata, registerIpc, scheduler } from './ipc'
 import * as store from './store'
 import { flushActivityRepository } from './activityRepository'
 import { registerWorkspaceIpc, closeWorkspace } from './workspace'
@@ -33,7 +33,7 @@ if (process.argv.includes('--probe')) {
 } else {
   if (app.isPackaged) void adoptLoginShellPath()
   const window = new AppWindow(() => {
-    for (const cleanup of [() => commandCatalog.close(), closeClaudeConfigWatchers, closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
+    for (const cleanup of [() => scheduler.stopTimer(), () => commandCatalog.close(), closeClaudeConfigWatchers, closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
       try { cleanup() } catch (error) { console.error('退出清理失败', error) }
     }
   })
@@ -42,6 +42,7 @@ if (process.argv.includes('--probe')) {
     applyTheme(theme ?? store.read().settings.theme)
     registerIpc(demo, () => window.open())
     registerWorkspaceIpc()
+    if (!demo) scheduler.startTimer()
     window.installMenu()
     window.open()
     // The initial composer opens in the first saved project. Overlap its CLI handshake with rendering.

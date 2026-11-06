@@ -6,14 +6,15 @@ import { refreshSessionsInBackground, useDesk } from './store'
 /** Connect session state to desktop notifications and the Dock for the lifetime of the renderer. */
 export function connectSessionSignals(): () => void {
   const { app, chat } = window.desk
-  let lastBadge: boolean | undefined
+  let lastBadge: number | undefined
   const syncBadge = (): void => {
     const { projects, sessions } = useDesk.getState()
     const { unread } = useSessionMarks.getState()
-    const hasUnread = projects.some(project => sessions[project.id]?.some(session => !session.archived && unread[session.id]))
-    if (lastBadge === hasUnread) return
-    lastBadge = hasUnread
-    void app.setDockUnread(hasUnread).catch(error => console.error('[dock badge]', error))
+    const count = projects.reduce((total, project) =>
+      total + (sessions[project.id]?.filter(session => !session.archived && unread[session.id]).length ?? 0), 0)
+    if (lastBadge === count) return
+    lastBadge = count
+    void app.setDockBadge(count).catch(error => console.error('[dock badge]', error))
   }
 
   const stopDesk = useDesk.subscribe((state, previous) => {
@@ -29,6 +30,12 @@ export function connectSessionSignals(): () => void {
       ?? projects.find(project => sessions[project.id]?.some(session => session.id === sessionId))
     if (project) setView({ kind: 'session', sessionId, projectId: project.id })
   })
+  const stopScheduled = window.desk.schedules.onStarted(({ sessionId, projectPath, taskName }) => {
+    const project = useDesk.getState().projects.find(project => project.path === projectPath)
+    if (!project) return
+    useChat.getState().adopt(sessionId, project.id)
+    useDesk.getState().addPendingSession(project.id, sessionId, taskName)
+  })
   const stopEvents = chat.onEvent((sessionId, event) => {
     if (!useChat.getState().handle(sessionId, event)) return
     if (event.kind === 'result') {
@@ -40,6 +47,7 @@ export function connectSessionSignals(): () => void {
   syncBadge()
   return () => {
     stopEvents()
+    stopScheduled()
     stopClick()
     stopMarks()
     stopDesk()
