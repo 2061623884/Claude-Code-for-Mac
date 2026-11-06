@@ -120,6 +120,16 @@ describe('Transcript', () => {
     expect(t.messages[0].usage).toEqual({ input: 3, output: 42, cacheRead: 100, cacheWrite: 20 })
   })
 
+  it('从 cache_creation 识别缓存档位，后续事件没带时保留', () => {
+    const t = new Transcript()
+    const ev = (event: unknown) => ({ type: 'stream_event', event, parent_tool_use_id: null })
+    t.apply(ev({ type: 'message_start', message: { id: 'a', usage: { input_tokens: 1, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 50 } } } }))
+    t.apply(ev({ type: 'message_delta', usage: { output_tokens: 2 } }))
+    t.apply(ev({ type: 'message_start', message: { id: 'b', usage: { input_tokens: 1, cache_creation: { ephemeral_5m_input_tokens: 9, ephemeral_1h_input_tokens: 0 } } } }))
+    t.apply(ev({ type: 'message_start', message: { id: 'c', usage: { input_tokens: 1, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 } } } }))
+    expect(t.messages.map(m => m.usage?.cacheTtl)).toEqual(['1h', '5m', undefined])
+  })
+
   it('记录消息时间和会话链位置：编辑用户消息时从它前面最后一个链条目分叉', () => {
     const t = new Transcript()
     const ts = '2026-10-31T03:56:00.000Z'

@@ -29,6 +29,7 @@ import { AttachmentCard } from '../files/AttachmentCard'
 import { ComposerCrab } from './ComposerCrab'
 import { ComposerEditor, type EditorHandle } from './ComposerEditor'
 import { useSuggestions, type Suggestion } from './useSuggestions'
+import { useCacheMinutes } from '../../hooks/useCacheMinutes'
 
 interface ComposerProps {
   fast?: boolean
@@ -60,6 +61,8 @@ interface ComposerProps {
   cwd?: string
   /** 显示在发送按钮左边（如上下文占用） */
   meter?: ReactNode
+  /** 提示缓存的过期时间；给了就在右上角显示倒计时，并用边框颜色区分缓存是否有效 */
+  cacheExpiresAt?: number
   /** 应用自己实现、SDK 里没有的命令，排在命令菜单最前面 */
   extraCommands?: CommandInfo[]
   /** 输入框上方的浮层（命令面板），打开时盖住建议列表 */
@@ -93,6 +96,7 @@ export function Composer({
   autoFocus,
   cwd,
   meter,
+  cacheExpiresAt,
   extraCommands,
   panel,
   onCommand
@@ -101,6 +105,8 @@ export function Composer({
   const historyIndex = useRef(-1)
   const home = useDesk((s) => s.home)
   const fileInput = useRef<HTMLInputElement>(null)
+  const cacheMinutes = useCacheMinutes(cacheExpiresAt)
+  const cacheWarm = cacheMinutes !== null && cacheMinutes > 0
   const showStop = running && !value.trim() && attachments.length === 0 && onStop
   // 光标前后的文字（文件小组件换成占位符），用来识别 / 命令和 @ 补全
   const [cursor, setCursor] = useState({ text: value, caret: value.length })
@@ -299,7 +305,13 @@ export function Composer({
       <ComposerCrab fast={fast} rainbow={rainbow} key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} />
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
-      <div data-composer-surface data-ultracode={rainbow || undefined} className="relative rounded-[20px] border border-line-strong bg-card shadow-card transition-colors focus-within:border-accent/45">
+      <div data-composer-surface data-ultracode={rainbow || undefined} data-cache={cacheMinutes === null ? undefined : cacheWarm ? 'warm' : 'cold'} className={`relative rounded-[20px] border bg-card shadow-card transition-colors ${cacheMinutes === null ? 'border-line-strong focus-within:border-accent/45' : cacheWarm ? 'border-accent/35 focus-within:border-accent/60' : 'border-line-strong focus-within:border-fg3/45'}`}>
+        {cacheMinutes !== null && (
+          <span data-cache-badge title={cacheWarm ? `提示缓存约剩 ${cacheMinutes} 分钟，期间发送可命中缓存` : '提示缓存已过期，下一条消息会重新写入缓存'}
+            className={`pointer-events-none absolute right-6 top-0 z-20 -translate-y-1/2 bg-card px-1.5 font-display text-[13px] italic leading-none tabular-nums ${cacheWarm ? 'text-accent' : 'text-fg3'}`}>
+            {cacheMinutes}m
+          </span>
+        )}
         {queuePanel && <div className="composer-queue-panel">{queuePanel}</div>}
         {header}
         {attachments.length > 0 && (

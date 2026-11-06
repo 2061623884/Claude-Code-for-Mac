@@ -4,27 +4,27 @@ type Copy = { id: string; group: string; text: string; period?: Period; named?: 
 const generic = (id: string, text: string, named?: Copy['named'], weight = 1): Copy => ({ id, group: id, text, named, weight })
 const timed = (period: Period, group: string, text: string, named?: Copy['named']): Copy => ({ id: `${period}-${group}`, group, text, period, named })
 export const GREETINGS: Copy[] = [
-  generic('chat', '今天想聊些什么？', n => `${n}，今天想聊些什么？`),
-  generic('think', '有什么想一起想想的？'),
-  generic('start', '我们从哪里开始？', n => `${n}，我们从哪里开始？`),
-  generic('idea', '有什么新想法吗？'),
-  generic('topic', '想从哪件事聊起？'),
-  generic('look', '有什么想一起看看？'),
-  generic('unfinished', '一个还没成形的想法也可以。', undefined, 0.4),
-  generic('curious', '今天有什么让你好奇的？', undefined, 0.4),
-  generic('meet', '很高兴见到你。', undefined, 0.4),
-  generic('talk-or-do', '想聊聊什么，或一起做点什么？', undefined, 0.4),
+  generic('tinker', '今天想捣鼓点什么？', n => `${n}，今天想捣鼓点什么？`),
+  generic('brick', '先从哪块砖搭起？', n => `${n}，先从哪块砖搭起？`),
+  generic('pot', '有什么点子要下锅？'),
+  generic('brew', '想酿点什么新东西？'),
+  generic('dig', '想往哪儿钻一钻？'),
+  generic('thread', '有什么线头要理一理？'),
+  generic('raw', '半生不熟的点子也行。', undefined, 0.4),
+  generic('knead', '先揉个点子出来？', undefined, 0.4),
+  generic('poke', '戳一下，我就开工。', undefined, 0.4),
+  generic('sleeves', '袖子挽好了，来吧。', undefined, 0.4),
   timed('morning', 'hello', '早上好', n => `早上好，${n}`),
-  timed('morning', 'chat', '早安，今天想聊些什么？'),
-  timed('morning', 'start', '早上好，我们从哪里开始？'),
+  timed('morning', 'pot', '早安，先热热锅？'),
+  timed('morning', 'tinker', '早上好，今天捣鼓点啥？'),
   timed('noon', 'hello', '中午好', n => `中午好，${n}`),
-  timed('noon', 'look', '中午好，有什么想一起看看？'),
+  timed('noon', 'tinker', '中午好，边吃边捣鼓？'),
   timed('afternoon', 'hello', '下午好', n => `下午好，${n}`),
-  timed('afternoon', 'idea', '下午好，今天有什么新想法？'),
-  timed('afternoon', 'start', '下午好，我们从哪里开始？'),
+  timed('afternoon', 'fire', '下午好，再添把柴？'),
+  timed('afternoon', 'brick', '下午好，接着搭哪块？'),
   timed('evening', 'hello', '晚上好', n => `晚上好，${n}`),
-  timed('evening', 'chat', '晚上好，想聊些什么？'),
-  timed('evening', 'think', '晚上好，有什么想一起想想的？')
+  timed('evening', 'bake', '晚上好，再烤一炉？'),
+  timed('evening', 'stew', '晚上好，慢火炖点什么？')
 ]
 export interface GreetingHistory { day: string; recent: string[]; named: boolean }
 export const EMPTY_HISTORY: GreetingHistory = { day: '', recent: [], named: false }

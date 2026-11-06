@@ -32,12 +32,23 @@ function toUsage(raw: unknown, prev?: TokenUsage): TokenUsage | undefined {
   if (!raw || typeof raw !== 'object') return prev
   const u = raw as Json
   const n = (key: string, fallback = 0): number => (typeof u[key] === 'number' ? (u[key] as number) : fallback)
-  return {
+  const usage: TokenUsage = {
     input: n('input_tokens', prev?.input),
     output: n('output_tokens', prev?.output),
     cacheRead: n('cache_read_input_tokens', prev?.cacheRead),
     cacheWrite: n('cache_creation_input_tokens', prev?.cacheWrite)
   }
+  const cacheTtl = toCacheTtl(u.cache_creation) ?? prev?.cacheTtl
+  if (cacheTtl) usage.cacheTtl = cacheTtl
+  return usage
+}
+
+/** usage.cache_creation 里哪一档有写入；两档都有时以 1 小时为准 */
+function toCacheTtl(raw: unknown): TokenUsage['cacheTtl'] {
+  if (!raw || typeof raw !== 'object') return undefined
+  const c = raw as Json
+  if (typeof c.ephemeral_1h_input_tokens === 'number' && c.ephemeral_1h_input_tokens > 0) return '1h'
+  if (typeof c.ephemeral_5m_input_tokens === 'number' && c.ephemeral_5m_input_tokens > 0) return '5m'
 }
 
 function toBlock(raw: Json): UiBlock | null {

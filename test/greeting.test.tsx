@@ -35,7 +35,7 @@ it('excludes the last five phrase families across time and name variants', () =>
   }
 })
 it('falls back to general copy when the time pool is exhausted', () => {
-  const result = selectGreeting({ day: '', recent: ['hello', 'chat', 'start'], named: false }, date(9), null, () => 0)
+  const result = selectGreeting({ day: '', recent: ['hello', 'pot', 'tinker'], named: false }, date(9), null, () => 0)
   expect(GREETINGS.find(c => c.id === result.id)?.period).toBeUndefined()
 })
 it('uses 30% time category and 25% eligible-name thresholds after first entry', () => {
@@ -43,7 +43,7 @@ it('uses 30% time category and 25% eligible-name thresholds after first entry', 
   const random = (...values: number[]) => vi.fn(() => values.shift() ?? 0)
   expect(selectGreeting(history, date(9), 'Link', random(0.29, 0, 0.24)).text).toBe('早上好，Link')
   expect(selectGreeting(history, date(9), 'Link', random(0.29, 0, 0.25)).text).toBe('早上好')
-  expect(selectGreeting(history, date(9), null, random(0.3, 0)).text).toBe('今天想聊些什么？')
+  expect(selectGreeting(history, date(9), null, random(0.3, 0)).text).toBe('今天想捣鼓点什么？')
 })
 it('reuses existing identity in priority order and filters unsuitable identifiers', () => {
   expect(greetingName('小林', 'link@example.com', 'local')).toBe('小林')

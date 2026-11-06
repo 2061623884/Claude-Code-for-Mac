@@ -11,6 +11,7 @@ import { groupTechnicalNotices, isInterruptionNotice } from '@shared/internalNot
 import { InternalNotice, TechnicalRecords } from './InternalNotice'
 import { turnsOf } from '@shared/fileChanges'
 import { sumUsage, totalTokens } from '@shared/usageStats'
+import { cacheExpiresAt } from '@shared/cacheWindow'
 import { useBtw } from '../../btwStore'
 import { useSessionMarks } from '../../sessionMarks'
 import { useChat, useChatActions } from '../../chatStore'
@@ -232,6 +233,7 @@ export function ChatView({ sessionId, projectId }: { sessionId: string; projectI
                 sessionId={sessionId}
                 sessionState={chat.state}
                 activity={chat.activity}
+                cacheExpiresAt={cacheExpiresAt(chat.messages)}
                 key={`${sessionId}:${editing?.id ?? 'draft'}`}
                 clearOnSubmit={!editing}
                 submitLabel={editing ? '保存到队列' : undefined}

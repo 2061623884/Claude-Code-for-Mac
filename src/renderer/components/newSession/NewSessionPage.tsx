@@ -3,7 +3,6 @@ import { parseDesktopCommand, sessionCommand } from '@shared/sessionCommand'
 import { useEffect, useRef, useState } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { attachmentTitle, type ComposerAttachment } from '@shared/attachments'
-import { shortenPath } from '@shared/format'
 import { captureFirstSend } from '../../motion/firstSend'
 import { useDesk } from '../../store'
 import { draftSessionOptions } from '../../sessionOptions'
@@ -18,7 +17,7 @@ export function NewSessionPage() {
   const transition = useRef<ReturnType<typeof captureFirstSend>>(undefined)
   useEffect(() => () => transition.current?.release(), [])
   const desk = useDesk()
-  const { projects, selectedProjectId, home, pickProject, setDraft } = desk
+  const { projects, selectedProjectId, pickProject, setDraft } = desk
   const options = draftSessionOptions(desk)
   const start = useChat((s) => s.start)
   const [text, setText] = useState('')
@@ -47,17 +46,8 @@ export function NewSessionPage() {
 
   return (
     <Centered>
-      <h1 className="font-serif text-[30px] font-normal tracking-tight">{desk.greeting}</h1>
-      <p className="mt-1.5 truncate text-fg3">
-        {project ? (
-          <>
-            在 <span className="font-medium text-fg2">{project.name}</span> 中 · {shortenPath(project.path, home)}
-          </>
-        ) : (
-          '请先选择一个项目'
-        )}
-      </p>
-      <div ref={composerRoot} className="relative mt-2">
+      <h1 className="font-serif text-[38px] font-light tracking-[0.04em] text-[var(--greeting)]">{desk.greeting}</h1>
+      <div ref={composerRoot} className="relative mt-4">
         <Composer fast={!!options.fastMode} rainbow={options.ultracode}
           sessionState={error ? 'error' : sending ? 'running' : 'idle'}
           value={text}

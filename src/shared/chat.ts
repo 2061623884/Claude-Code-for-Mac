@@ -22,6 +22,8 @@ export interface TokenUsage {
   output: number
   cacheRead: number
   cacheWrite: number
+  /** 这次请求写入的缓存档位；没写入缓存时缺省 */
+  cacheTtl?: '5m' | '1h'
 }
 
 export type CommandBlock = Extract<UiBlock, { kind: 'command' }>
