@@ -61,20 +61,37 @@ function Eyes({ gesture }: { gesture?: CrabGesture }) {
   </g>
 }
 
+/** 被夹住时的表情：眯眼 >_<、晕乎乎 x_x、瞪大眼（海绵宝宝那样） */
+export type CrabFace = 'squint' | 'dizzy' | 'wide'
+export const CRAB_FACES: readonly CrabFace[] = ['squint', 'dizzy', 'wide']
+const FACES: Record<CrabFace, readonly Eye[]> = {
+  squint: [[5, 1, 1, 1], [6, 2, 1, 1], [5, 3, 1, 1], [13, 1, 1, 1], [12, 2, 1, 1], [13, 3, 1, 1]],
+  dizzy: [[4, 1, 1, 1], [6, 1, 1, 1], [5, 2, 1, 1], [4, 3, 1, 1], [6, 3, 1, 1], [11, 1, 1, 1], [13, 1, 1, 1], [12, 2, 1, 1], [11, 3, 1, 1], [13, 3, 1, 1]],
+  wide: []
+}
+
+function Face({ face }: { face: CrabFace }) {
+  if (face === 'wide') return <>
+    <path fill="#f6efe6" d="M4 1h3v4H4zM11 1h3v4h-3z" />
+    <path fill="#2b2a27" d="M5 2h1v2H5zM12 2h1v2h-1z" />
+  </>
+  return <g fill="#2b2a27">{FACES[face].map(([x, y, width, height], i) => <rect key={i} x={x} y={y} width={width} height={height} />)}</g>
+}
+
 /** Fixed pixel mascot; the extended viewBox leaves room for the bulb and stationery. */
-export function Crab({ pose = 'idle', gesture, rainbow }: { rainbow?: boolean; pose?: CrabPose; gesture?: CrabGesture }) {
-  return <svg viewBox="-2 -7 26 17" width={78} height={51} shapeRendering="crispEdges" aria-hidden="true" className={`crab crab-${pose}${rainbow ? ' crab-violet' : ''}`} data-crab-pose={pose} data-crab-gesture={gesture}>
+export function Crab({ pose = 'idle', gesture, rainbow, face }: { rainbow?: boolean; pose?: CrabPose; gesture?: CrabGesture; face?: CrabFace }) {
+  return <svg viewBox="-2 -7 26 17" width={78} height={51} shapeRendering="crispEdges" aria-hidden="true" className={`crab crab-${pose}${rainbow ? ' crab-violet' : ''}${face ? ' crab-held' : ''}`} data-crab-pose={pose} data-crab-gesture={gesture} data-crab-face={face}>
     <rect x={-2} y={-7} width={26} height={17} fill="transparent" />
     <g fill={rainbow ? '#8e55ce' : COLOR}>
-      {[4, 6, 11, 13].map(x => <rect key={x} x={x} y={8} width={1} height={2} />)}
+      {[4, 6, 11, 13].map(x => <rect key={x} className="crab-leg" x={x} y={8} width={1} height={2} />)}
       <g className="crab-body">
         {pixels.map(p => <rect key={`${p.x}-${p.y}`} {...p} className={rainbow ? 'violet-pixel' : undefined} style={rainbow ? {animationDelay: ((p.x*.05+p.y*.0275)*4-4)+'s'} : undefined} width={1} height={2} />)}
         <rect className="crab-claw-l" x={1} y={4} width={1} height={2} />
         {!gesture && <rect className="crab-claw-r" x={16} y={4} width={1} height={2} />}
         {gesture === 'thinking' && <g className="crab-cheek"><Grip x={16.4} y={3.1} /></g>}
         {gesture === 'playing' && <g className="crab-flick"><Grip x={18.2} y={3.6} /></g>}
-        {gesture && <path className="crab-face-skin" fill={COLOR} d="M5 2h1v4H5zM12 2h1v4h-1z" />}
-        <Eyes gesture={gesture} />
+        {(gesture || face) && <path className="crab-face-skin" fill={rainbow ? '#8e55ce' : COLOR} d="M5 2h1v4H5zM12 2h1v4h-1z" />}
+        {face ? <Face face={face} /> : <Eyes gesture={gesture} />}
         {pose === 'writing' && <g fill="none" stroke="#34302e" strokeWidth={0.65}>
           <rect x={3.5} y={1} width={4} height={3.5} /><rect x={10.5} y={1} width={4} height={3.5} />
           <path d="M7.5 2h3M2 1.5h1.5M14.5 1.5H16" />

@@ -1,7 +1,6 @@
 import { ModePicker } from '../newSession/ModePicker'
 import { SessionControlsPane } from '../right/SessionControlsPane'
 import { ClaudeConfigSettings } from './ClaudeConfigSettings'
-import { McpSettings } from './McpSettings'
 import { Row, Section, Toggle, settingsInputClass, settingsButtonClass } from './SettingsControls'
 import { useEffect, useState } from 'react'
 import type { MetaInfo, Settings, Theme } from '@shared/types'
@@ -28,7 +27,6 @@ export function SettingsPage() {
   const [notificationResult, setNotificationResult] = useState<string | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [environment, setEnvironment] = useState<{ path: string | null; meta: MetaInfo | null; error: string | null } | null>(null)
-  const [environmentAttempt, setEnvironmentAttempt] = useState(0)
   const advanced = view.kind === 'settings' && view.tab === 'advanced'
   const executable = settings?.claudePath ?? null
   useEffect(() => {
@@ -41,7 +39,7 @@ export function SettingsPage() {
       if (active) setEnvironment({ path: executable, meta: null, error: errorText(error) })
     })
     return () => { active = false }
-  }, [advanced, executable, environmentAttempt])
+  }, [advanced, executable])
   const saveSettings = (patch: Partial<Settings>): void => {
     setSettingsError(null)
     void updateSettings(patch).catch(error => setSettingsError(errorText(error)))
@@ -52,11 +50,11 @@ export function SettingsPage() {
   const tab = route.tab === 'claude' ? 'models' : route.tab ?? 'general'
   const project = projects.find(p => p.id === route.projectId)
   const cwd = project?.path ?? home
-  const projectSettings = tab === 'context' || tab === 'advanced' || tab === 'mcp'
+  const projectSettings = tab === 'context' || tab === 'advanced'
   return <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-16"><div className="mx-auto max-w-[760px]">
     <h1 className="pt-6 font-serif text-[24px] font-normal">设置</h1>
     <nav className="mt-5 flex flex-wrap gap-1 border-b border-line pb-3" aria-label="设置分类">
-      {([['general', '外观与交互'], ['models', '模型与权限'], ['context', '上下文'], ['notifications', '通知'], ['mcp', '连接与 MCP'], ['advanced', '高级设置']] as const).map(([value, label]) => <button key={value} type="button" aria-current={tab === value ? 'page' : undefined} onClick={() => setView({ ...route, tab: value })} className={`rounded-lg px-3 py-1.5 text-[13px] ${tab === value ? 'bg-active' : 'text-fg2 hover:bg-hover'}`}>{label}</button>)}
+      {([['general', '外观与交互'], ['models', '模型与权限'], ['context', '上下文'], ['notifications', '通知'], ['advanced', '高级设置']] as const).map(([value, label]) => <button key={value} type="button" aria-current={tab === value ? 'page' : undefined} onClick={() => setView({ ...route, tab: value })} className={`rounded-lg px-3 py-1.5 text-[13px] ${tab === value ? 'bg-active' : 'text-fg2 hover:bg-hover'}`}>{label}</button>)}
     </nav>
     {settingsError && <p role="alert" className="mt-3 text-danger">设置保存失败：{settingsError}</p>}
     {projectSettings && <Section title="项目上下文">
@@ -89,7 +87,6 @@ export function SettingsPage() {
     </Section>}
     {tab === 'context' && <>
       <ClaudeConfigSettings key={cwd} cwd={cwd} groups={[{ title: '对话与回复', keys: CONFIG_GROUPS.context }]} searchable={false} />
-      <Section title="文件引用"><Row label="遵循 .gitignore"><span className="text-[12px] text-fg2">自动启用</span></Row></Section>
     </>}
     {tab === 'notifications' && <>
       <Section title="系统通知">
@@ -100,7 +97,7 @@ export function SettingsPage() {
           setNotificationError(null); setNotificationResult(null); setNotificationSending(true)
           try {
             await window.desk.app.notify('Claude Code', '通知测试', settings.notificationSound === false)
-            setNotificationResult('系统已接收测试通知。若未看到弹窗，请检查系统通知设置、专注模式及共享屏幕时的通知选项。')
+            setNotificationResult('已发送。没看到弹窗请检查系统通知、专注模式，或是否在共享屏幕。')
           } catch (e) { setNotificationError(e instanceof Error ? e.message : String(e)) }
           finally { setNotificationSending(false) }
         }}>{notificationSending ? '正在发送…' : '发送测试通知'}</button></Row>
@@ -113,16 +110,13 @@ export function SettingsPage() {
       {notificationResult && <p role="status" className="mt-3 text-[12px] text-fg2">{notificationResult}</p>}
       {notificationError && <p role="alert" className="mt-3 text-danger">{notificationError}</p>}
     </>}
-    {tab === 'mcp' && <McpSettings key={`${cwd}:${route.sessionId}`} sessionId={route.sessionId ?? null} cwd={cwd} />}
     {tab === 'advanced' && <>
       <ClaudeConfigSettings key={cwd} cwd={cwd} searchable={false} groups={[
         { title: '执行行为', keys: CONFIG_GROUPS.execution },
         { title: '工作流', keys: CONFIG_GROUPS.workflows }
       ]} />
-      <Section title="文件恢复"><Row label="文件检查点"><span className="text-[12px] text-fg2">自动启用</span></Row></Section>
       <Section title="运行环境">
         <Row label="运行引擎"><span className="text-fg2" title={settings.claudePath ?? undefined}>{settings.claudePath ? '自定义路径' : `应用内置${environment?.path === executable && environment.meta?.claudeVersion ? ` v${environment.meta.claudeVersion}` : ''}`}</span></Row>
-        <Row label="账户"><span className="text-fg2">{environment?.path !== executable ? '读取中…' : environment.error ? <button onClick={() => setEnvironmentAttempt(value => value + 1)}>读取失败 · 重试</button> : environment.meta?.subscriptionType ?? '未知'}</span></Row>
       </Section>
     </>}
   </div></div>

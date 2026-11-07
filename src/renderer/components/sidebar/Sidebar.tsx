@@ -134,7 +134,7 @@ export function Sidebar({ width }: { width: number }) {
             </>
           }
         >
-          仅从列表中移除，不会删除文件夹里的任何文件，也不会删除历史会话。之后可以重新添加。
+          只从列表移除，不删除文件和历史会话。
         </Dialog>
       )}
     </aside>

@@ -1,5 +1,5 @@
 import { parseDesktopCommand } from '@shared/sessionCommand'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUp,
   Box,
@@ -107,6 +107,10 @@ export function Composer({
   const fileInput = useRef<HTMLInputElement>(null)
   const cacheMinutes = useCacheMinutes(cacheExpiresAt)
   const cacheWarm = cacheMinutes !== null && cacheMinutes > 0
+  // 缓存角标压在边框线上：量出角标宽度，边框在这一段留缺口，角标背后保持透明
+  const cacheBadge = useRef<HTMLSpanElement>(null)
+  const [cacheGap, setCacheGap] = useState(0)
+  useLayoutEffect(() => setCacheGap(cacheBadge.current?.offsetWidth ?? 0), [cacheMinutes])
   const showStop = running && !value.trim() && attachments.length === 0 && onStop
   // 光标前后的文字（文件小组件换成占位符），用来识别 / 命令和 @ 补全
   const [cursor, setCursor] = useState({ text: value, caret: value.length })
@@ -302,13 +306,13 @@ export function Composer({
 
   return (
     <div className="relative pt-[52px] composer-with-crab [&>*]:pointer-events-auto">
-      <ComposerCrab fast={fast} rainbow={rainbow} key={sessionId ?? 'new'} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} queue={queuePanel} />
+      <ComposerCrab fast={fast} rainbow={rainbow} key={sessionId ?? 'new'} draggable={!sessionId} state={sessionState ?? (running || submitting ? 'running' : 'idle')} activity={activity} hasDraft={Boolean(value.trim() || attachments.length)} queue={queuePanel} />
       {panel}
       {suggest.open && !panel && <SuggestionList status={suggest.status} error={suggest.error} onRetry={suggest.retry} items={suggest.items} active={suggest.active} onPick={pick} onHover={suggest.setActive} />}
-      <div data-composer-surface data-ultracode={rainbow || undefined} data-cache={cacheMinutes === null ? undefined : cacheWarm ? 'warm' : 'cold'} className={`relative rounded-[20px] border bg-card shadow-card transition-colors ${cacheMinutes === null ? 'border-line-strong focus-within:border-accent/45' : cacheWarm ? 'border-accent/35 focus-within:border-accent/60' : 'border-line-strong focus-within:border-fg3/45'}`}>
+      <div data-composer-surface data-ultracode={rainbow || undefined} data-cache={cacheMinutes === null ? undefined : cacheWarm ? 'warm' : 'cold'} style={cacheMinutes === null ? undefined : { '--cache-gap': `${cacheGap}px` } as React.CSSProperties} className={`relative rounded-[20px] border bg-card shadow-card transition-colors ${cacheMinutes === null ? 'border-line-strong focus-within:border-accent/45' : cacheWarm ? 'border-accent/35 focus-within:border-accent/60' : 'border-line-strong focus-within:border-fg3/45'}`}>
         {cacheMinutes !== null && (
-          <span data-cache-badge title={cacheWarm ? `提示缓存约剩 ${cacheMinutes} 分钟，期间发送可命中缓存` : '提示缓存已过期，下一条消息会重新写入缓存'}
-            className={`pointer-events-none absolute right-6 bottom-full z-20 mb-1 px-1.5 font-display text-[13px] italic leading-none tabular-nums ${cacheWarm ? 'text-accent' : 'text-fg3'}`}>
+          <span ref={cacheBadge} data-cache-badge title={cacheWarm ? `提示缓存约剩 ${cacheMinutes} 分钟，期间发送可命中缓存` : '提示缓存已过期，下一条消息会重新写入缓存'}
+            className={`pointer-events-none absolute right-6 top-0 z-20 -translate-y-1/2 px-1.5 font-display text-[13px] italic leading-none tabular-nums ${cacheWarm ? 'text-accent' : 'text-fg3'}`}>
             {cacheMinutes}m
           </span>
         )}

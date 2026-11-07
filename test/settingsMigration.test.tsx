@@ -60,17 +60,16 @@ it('marks the saved field unknown when the confirming read fails and allows retr
   fireEvent.click(screen.getByLabelText('刷新 Claude Code 设置'))
   expect((await screen.findByRole('switch', { name: '自动压缩对话' })).getAttribute('aria-checked')).toBe('false')
 })
-it('routes config and MCP to settings, preserving the originating session and project', async () => {
+it('routes config to settings and MCP to the skills page, preserving the originating session and project', async () => {
   expect(openAppPanel('config', '')).toBe(true)
   expect(useDesk.getState().view).toMatchObject({ kind: 'settings', tab: 'claude', sessionId: 's', projectId: 'p' })
   render(<SettingsPage />)
+  expect(screen.queryByRole('button', { name: '连接与 MCP' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '上下文' }))
   await screen.findByLabelText('自动压缩对话')
-  fireEvent.click(screen.getByRole('button', { name: '连接与 MCP' }))
-  await screen.findByText('files')
-  expect(window.desk.chat.mcp).toHaveBeenCalledWith('s', '/project')
-  fireEvent.change(screen.getByLabelText('项目'), { target: { value: '' } })
-  await waitFor(() => expect(window.desk.chat.mcp).toHaveBeenCalledWith(null, '/home'))
+  useDesk.setState({ view: { kind: 'session', sessionId: 's', projectId: 'p' } })
+  expect(openAppPanel('mcp', '')).toBe(true)
+  expect(useDesk.getState().view).toEqual({ kind: 'skills', tab: 'mcp', projectId: 'p' })
 })
 it('renders every returned option, searches labels and saves enumerated and free values', async () => {
   render(<ClaudeConfigSettings cwd="/project" />)
@@ -155,12 +154,12 @@ it('surfaces failed desktop preference writes and keeps the last confirmed value
   expect((await screen.findByRole('alert')).textContent).toBe('设置保存失败：disk full')
   expect(screen.getByRole('switch', { name: '减少动效' }).getAttribute('aria-checked')).toBe('false')
 })
-it('shows account and CLI version when advanced settings are opened', async () => {
+it('shows the CLI version but not the account when advanced settings are opened', async () => {
   vi.mocked(window.desk.meta.get).mockResolvedValue({ models: [], claudeVersion: '2.1.301', subscriptionType: 'pro' })
   useDesk.setState({ view: { kind: 'settings', tab: 'advanced' } })
   render(<SettingsPage />)
-  await screen.findByText('pro')
-  expect(screen.getByText('应用内置 v2.1.301')).toBeTruthy()
+  await screen.findByText('应用内置 v2.1.301')
+  expect(screen.queryByText('账户')).toBeNull()
 })
 it('does not offer Fast in desktop default model selection', async () => {
   vi.mocked(window.desk.meta.get).mockResolvedValue({ models: [{ value: 'sonnet', label: 'Sonnet', efforts: ['low'] }], claudeVersion: null, subscriptionType: null })
@@ -171,14 +170,13 @@ it('does not offer Fast in desktop default model selection', async () => {
   expect(screen.queryByRole('checkbox', { name: 'Fast' })).toBeNull()
 })
 
-it.each(['config', 'mcp'])('preserves the draft project for /%s and falls back only without a selection', name => {
+it.each([['config', 'settings'], ['mcp', 'skills']] as const)('preserves the draft project for /%s and falls back only without a selection', (name, kind) => {
   useDesk.setState({ view: { kind: 'new' }, selectedProjectId: 'p' })
   openAppPanel(name, '')
-  expect(useDesk.getState().view).toMatchObject({ kind: 'settings', projectId: 'p' })
-  expect(useDesk.getState().view).toMatchObject({ sessionId: null })
+  expect(useDesk.getState().view).toMatchObject({ kind, projectId: 'p' })
   useDesk.setState({ view: { kind: 'new' }, selectedProjectId: null })
   openAppPanel(name, '')
-  expect(useDesk.getState().view).toMatchObject({ kind: 'settings', projectId: null })
+  expect(useDesk.getState().view).toMatchObject({ kind, projectId: null })
 })
 
 it('refreshes matching project changes, all user changes, and ignores late results after switching project', async () => {
@@ -234,18 +232,17 @@ it('keeps desktop execution and workflow controls but hides terminal and unknown
   expect(screen.queryByText('终端主题')).toBeNull()
   expect(screen.queryByText('futureOption')).toBeNull()
   expect(screen.queryByRole('switch', { name: /检查点/ })).toBeNull()
-  expect(screen.getByText('文件检查点')).toBeTruthy()
+  expect(screen.queryByText('文件检查点')).toBeNull()
   fireEvent.click(workflows)
   await waitFor(() => expect(window.desk.meta.config).toHaveBeenCalledWith('/project', 'workflows=false'))
 })
 
-it('keeps file filtering informational and reports reload errors in the desktop context page', async () => {
+it('drops informational-only rows and reports reload errors in the desktop context page', async () => {
   useDesk.setState({ view: { kind: 'settings', tab: 'context', sessionId: 's', projectId: 'p' } })
   window.desk.chat.control = vi.fn().mockRejectedValue(new Error('请等待当前任务结束后重载'))
   render(<SettingsPage />)
   await screen.findByRole('switch', { name: '自动压缩对话' })
-  expect(screen.getByText('遵循 .gitignore')).toBeTruthy()
-  expect(screen.queryByRole('switch', { name: '遵循 .gitignore' })).toBeNull()
+  expect(screen.queryByText('遵循 .gitignore')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '重新加载当前对话设置' }))
   expect((await screen.findByRole('alert')).textContent).toContain('请等待当前任务结束后重载')
   expect(window.desk.chat.control).toHaveBeenCalledWith('s', '/project', 'reloadConfiguration')
@@ -283,7 +280,7 @@ it('reports native test delivery and provides a system-settings shortcut', async
   expect((screen.getByRole('button', { name: '正在发送…' }) as HTMLButtonElement).disabled).toBe(true)
   expect(screen.queryByRole('status')).toBeNull()
   await act(async () => deliver())
-  expect(screen.getByRole('status').textContent).toContain('系统已接收')
+  expect(screen.getByRole('status').textContent).toContain('已发送')
   expect(screen.getByRole('status').textContent).toContain('共享屏幕')
   fireEvent.click(screen.getByRole('button', { name: '打开系统设置' }))
   expect(openNotificationSettings).toHaveBeenCalledOnce()

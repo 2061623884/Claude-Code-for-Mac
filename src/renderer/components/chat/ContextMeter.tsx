@@ -72,6 +72,11 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
   )
 }
 
+/** 概要信息一行：标签靠左，数值右对齐，和下方明细列表对齐 */
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return <div className="flex items-baseline justify-between gap-3"><span>{label}</span><span className="tabular-nums">{value}</span></div>
+}
+
 /** 上下文占用明细：总量、彩色分段条、各组成部分和剩余空间 */
 export function ContextBreakdown({ usage, title = '当前上下文' }: { usage: ContextUsage; title?: string }) {
   const free = usage.free ?? Math.max(usage.max - usage.used - (usage.buffer ?? 0), 0)
@@ -81,13 +86,11 @@ export function ContextBreakdown({ usage, title = '当前上下文' }: { usage: 
         <span className="font-medium">{title}</span>
         <span className="text-[12px] text-fg3 tabular-nums">{usage.percent}%</span>
       </div>
-      <div className="mt-0.5 text-[12px] text-fg3 tabular-nums">
-        当前已用 {formatTokens(usage.used)} tokens
-      </div>
-      <div className="mt-1 text-[12px] text-fg3">有效统计窗口 {formatTokens(usage.max)} tokens</div>
-      <div className="mt-1 text-[12px] text-fg3">
-        自动压缩：{usage.autoCompactEnabled === false ? '已关闭' : usage.autoCompactEnabled === true ? '已开启' : '状态未知'}
-        {usage.autoCompactEnabled === true && <div>触发阈值：{usage.autoCompactThreshold !== undefined ? `${formatTokens(usage.autoCompactThreshold)} tokens` : '未知'}</div>}
+      <div className="mt-1 space-y-1 text-[12px] text-fg3">
+        <SummaryRow label="当前已用" value={`${formatTokens(usage.used)} tokens`} />
+        <SummaryRow label="有效统计窗口" value={`${formatTokens(usage.max)} tokens`} />
+        <SummaryRow label="自动压缩" value={usage.autoCompactEnabled === false ? '已关闭' : usage.autoCompactEnabled === true ? '已开启' : '状态未知'} />
+        {usage.autoCompactEnabled === true && <SummaryRow label="触发阈值" value={usage.autoCompactThreshold !== undefined ? `${formatTokens(usage.autoCompactThreshold)} tokens` : '未知'} />}
       </div>
 
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-chip">

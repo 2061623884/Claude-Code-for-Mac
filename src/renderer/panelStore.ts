@@ -34,7 +34,12 @@ export function openAppPanel(name: string, args: string): boolean {
   if (!args && ['config', 'settings', 'output-style', 'mcp'].includes(name)) {
     usePanel.getState().close()
     const { view, selectedProjectId } = useDesk.getState()
-    useDesk.getState().setView({ kind: 'settings', tab: name === 'mcp' ? 'mcp' : name === 'output-style' ? 'context' : 'claude', ...(view.kind === 'session' ? { sessionId: view.sessionId, projectId: view.projectId } : view.kind === 'new' ? { projectId: selectedProjectId, sessionId: null } : {}) })
+    // MCP 统一在「技能与插件」页管理，带上当前项目
+    if (name === 'mcp') {
+      useDesk.getState().setView({ kind: 'skills', tab: 'mcp', projectId: view.kind === 'session' ? view.projectId : view.kind === 'new' ? selectedProjectId : null })
+      return true
+    }
+    useDesk.getState().setView({ kind: 'settings', tab: name === 'output-style' ? 'context' : 'claude', ...(view.kind === 'session' ? { sessionId: view.sessionId, projectId: view.projectId } : view.kind === 'new' ? { projectId: selectedProjectId, sessionId: null } : {}) })
     return true
   }
   const panel = appPanelFor(name, args)

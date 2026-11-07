@@ -210,7 +210,7 @@ export function SkillsPage() {
   const projects = useDesk(s => s.projects)
   const home = useDesk(s => s.home)
   const tab: Tab = view.kind === 'skills' && view.tab === 'mcp' ? 'mcp' : 'skills'
-  const [projectId, setProjectId] = useState('')
+  const [projectId, setProjectId] = useState((view.kind === 'skills' && view.projectId) || '')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [catalog, setCatalog] = useState<SkillCatalog | null>(null)

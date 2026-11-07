@@ -41,11 +41,13 @@ buildSync({ entryPoints: [resolve('src/renderer/components/newSession/spinnerVer
 const { SPINNER_VERBS } = require(join(scratch, 'crab/spinnerVerbs.cjs'))
 const { CRAB_GESTURES } = require(join(scratch, 'crab/crabGestures.cjs'))
 // 工作中的动作由随机动词决定（与具体工具无关）；这里只挑出几种不同动作，让画面有变化
-const SHOWCASE = ['thinking', 'exploring', 'cooking', 'making', 'growing']
+const SHOWCASE = ['thinking', 'exploring', 'cooking', 'making']
 
 const TITLE = '给设置页加深色模式开关'
 const PAST = [['h1', '重构笔记列表的虚拟滚动', 1], ['h2', '修复导出 PDF 时的中文字体', 26], ['h3', '给搜索加上拼音匹配', 50], ['h4', '整理 README 和截图', 120]]
-const CONTEXT = { used: 61200, max: 200000, percent: 31, autoCompactEnabled: true, parts: [{ name: 'System prompt', tokens: 3100 }, { name: 'System tools', tokens: 14800 }, { name: 'MCP tools', tokens: 6200 }, { name: 'Memory files', tokens: 2400 }, { name: 'Skills', tokens: 1300 }, { name: 'Messages', tokens: 33400 }] }
+const CONTEXT = { used: 252000, max: 1000000, percent: 25, autoCompactEnabled: true, autoCompactThreshold: 967000, buffer: 33000, parts: [{ name: 'System prompt', tokens: 2443 }, { name: 'System tools', tokens: 5989 }, { name: 'Memory files', tokens: 29 }, { name: 'Skills', tokens: 5289 }, { name: 'Messages', tokens: 238250 }] }
+// 额度剩余百分比，延时段逐帧改写，再通过 online 事件让侧栏立即刷新
+const quota = { five: 100, week: 75 }
 let transcript, activity, sessionId, state = 'idle', onStart
 
 const originalHandle = ipcMain.handle.bind(ipcMain)
@@ -66,7 +68,7 @@ const STUBS = ({
     : { messages: [], state: 'idle', approvals: [], live: true },
   'chat:context': () => sessionId ? CONTEXT : null,
   'chat:checkExternal': () => false,
-  'usage:overview': () => ({ account: { key: 'demo', email: null, organization: null, subscriptionType: 'Max' }, profile: { name: 'Demo', avatar: null }, updatedAt: Date.now(), usage: { available: true, subscriptionType: 'max', windows: [{ kind: 'five_hour', label: '5 小时内', percent: 28, resetsAt: new Date(Date.now() + 2 * 3600e3).toISOString() }, { kind: 'seven_day', label: '本周（所有模型）', percent: 46, resetsAt: new Date(Date.now() + 3 * 86400e3).toISOString() }] } }),
+  'usage:overview': () => ({ account: { key: 'demo', email: null, organization: null, subscriptionType: 'Max' }, profile: { name: 'Demo', avatar: null }, updatedAt: Date.now(), usage: { available: true, subscriptionType: 'max', windows: [{ kind: 'five_hour', label: '5 小时内', percent: 100 - quota.five, resetsAt: new Date(Date.now() + 2 * 3600e3).toISOString() }, { kind: 'seven_day', label: '本周（所有模型）', percent: 100 - quota.week, resetsAt: new Date(Date.now() + 3 * 86400e3).toISOString() }] } }),
   'meta:get': () => ({ models: [], subscriptionType: 'max', claudeVersion: 'demo' }),
   'meta:usage': () => ({ subscriptionType: null, available: false, windows: [] }),
   'meta:commands': (_event, cwd) => ({ cwd, revision: 1, commands: [], status: 'ready', updatedAt: Date.now() })
@@ -74,11 +76,12 @@ const STUBS = ({
 
 // ── SDK 事件构造 ───────────────────────────────────────────
 const stream = (event) => ({ type: 'stream_event', event, parent_tool_use_id: null })
-const begin = id => stream({ type: 'message_start', message: { id } })
+const USAGE = { input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 240000, cache_creation_input_tokens: 3000, cache_creation: { ephemeral_5m_input_tokens: 3000 } }
+const begin = id => stream({ type: 'message_start', message: { id, usage: USAGE } })
 const block = (index, type) => stream({ type: 'content_block_start', index, content_block: { type, thinking: '', text: '' } })
 const thinking = (text, index = 0) => stream({ type: 'content_block_delta', index, delta: { type: 'thinking_delta', thinking: text } })
 const textDelta = (text, index = 0) => stream({ type: 'content_block_delta', index, delta: { type: 'text_delta', text } })
-const toolUse = (id, name, input) => ({ type: 'assistant', uuid: 'u-' + id, message: { id: 'm-' + id, content: [{ type: 'tool_use', id, name, input }] } })
+const toolUse = (id, name, input) => ({ type: 'assistant', uuid: 'u-' + id, message: { id: 'm-' + id, usage: USAGE, content: [{ type: 'tool_use', id, name, input }] } })
 const toolResult = (id, content) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -94,6 +97,11 @@ app.on('browser-window-created', (_event, win) => {
     const box = selector => rect(`document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect()`)
     const hover = r => win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) })
     const status = value => wait(`document.querySelector('[data-composer-crab] [role="status"]')?.textContent===${JSON.stringify(value)}`)
+    // 输入框整体：边框、右上角缓存倒计时和站在上面的螃蟹
+    const composerBox = () => rect(`(()=>{const a=document.querySelector('main [data-composer-surface]').getBoundingClientRect(),b=document.querySelector('[data-composer-crab]').getBoundingClientRect();const t=Math.min(a.top,b.top);return {x:a.left,y:t,width:a.width,height:a.bottom-t}})()`)
+    // 只在视频里出现的天色：夜晚是一层深蓝正片叠底，黎明是一层暖光
+    const sky = (color, opacity, ms) => js(`(()=>{let e=document.getElementById('promo-sky');if(!e){e=document.createElement('div');e.id='promo-sky';e.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483647;mix-blend-mode:multiply;opacity:0';document.body.appendChild(e)}e.style.transition='opacity ${ms}ms ease, background-color ${ms}ms ease';e.style.backgroundColor='${color}';e.style.opacity='${opacity}'})()`)
+    const setQuota = (five, week) => { quota.five = five; quota.week = week; return js(`dispatchEvent(new Event('online'))`) }
     const pose = (value, ms) => wait(`document.querySelector('[data-crab-pose]')?.dataset.crabPose===${JSON.stringify(value)}`, ms)
     const flush = () => {
       const messages = transcript.takeChanged(); if (messages.length) win.webContents.send('chat:onEvent', sessionId, { kind: 'upsert', messages: structuredClone(messages) })
@@ -167,7 +175,7 @@ app.on('browser-window-created', (_event, win) => {
       send(toolUse('bash', 'Bash', { command: 'npm test -- settings', description: '运行设置页测试' }))
       win.webContents.send('chat:onEvent', sessionId, { kind: 'approval', request: { requestId: 'r1', toolName: 'Bash', input: { command: 'npm test -- settings', description: '运行设置页测试' }, canAlwaysAllow: true } })
       setState('awaiting')
-      await status('等你确认后继续'); mark('wait')
+      await status('等你确认后继续'); mark('wait'); rects.composer = await composerBox()
       await sleep(2300)
       win.webContents.send('chat:onEvent', sessionId, { kind: 'approvalDone', requestId: 'r1' }); setState('running')
 
@@ -194,25 +202,7 @@ app.on('browser-window-created', (_event, win) => {
       await sleep(2200)
       win.webContents.sendInputEvent({ type: 'mouseMove', x: 700, y: 300 })
 
-      // 9. 剩余额度螃蟹
-      const quota = await box('[aria-label="剩余额度"]')
-      hover(quota); mark('quota'); rects.quota = quota
-      await sleep(2200)
-
-      // 10. 用量热力图
-      await click('剩余额度')
-      await js(`document.querySelector('[aria-label="Token 活动"]').scrollIntoView({block:'center'})`)
-      await wait(`[...document.querySelectorAll('[aria-label="每日 Token 热力图"] button')].filter(e=>!/ 0 Token$/.test(e.getAttribute('aria-label'))).length>100`)
-      await sleep(900)
-      rects.usage = await box('[aria-label="Token 活动"]')
-      const cells = await js(`[...document.querySelectorAll('[aria-label="每日 Token 热力图"] button')].filter(e=>!/ 0 Token$/.test(e.getAttribute('aria-label'))).slice(-60).filter((_,i)=>i%5===2).map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})`)
-      mark('usage')
-      for (const c of cells) { hover(c); await sleep(2400 / cells.length) }
-
-      // 11. 回到会话，新一轮工作中展示几种螃蟹动作
-      await js(`[...document.querySelectorAll('[role="button"],button')].find(e=>e.offsetParent&&e.innerText.startsWith('给设置页加'))?.click()`)
-      await wait(`!!document.querySelector('[data-composer-crab]')`)
-      win.webContents.sendInputEvent({ type: 'mouseMove', x: 700, y: 300 })
+      // 11. 新一轮工作中展示几种螃蟹动作
       await sleep(400)
       activity.start(); send(begin('m-more')); send(block(0, 'thinking')); setState('running')
       for (const gesture of SHOWCASE) {
@@ -225,13 +215,51 @@ app.on('browser-window-created', (_event, win) => {
         mark('gesture-' + gesture)
         await sleep(1500)
       }
-      rects.crabShow = await box('[data-composer-crab]')
+      rects.crabShow = await composerBox()
+      send(begin('m-done')); send(block(0, 'text')); send(textDelta('好了。'))
       activity.finish(); flush(); setState('idle')
 
-      // 12. 空闲 30 秒后螃蟹睡着
-      await pose('sleep', 45000)
-      mark('sleep'); rects.crabSleep = await box('[data-composer-crab]')
-      await sleep(2200)
+      // 12. 空闲后缓存倒计时快进到 0，螃蟹在 30 秒空闲时睡着
+      await sleep(27400)
+      mark('cache')
+      const last = transcript.messages.findLast(m => m.role === 'assistant' && !m.parentToolUseId && m.usage)
+      for (const left of [4, 3, 2, 1, 0]) {
+        await sleep(450)
+        last.time = Date.now() - 5 * 60000 + left * 60000 - 1000
+        win.webContents.send('chat:onEvent', sessionId, { kind: 'upsert', messages: [structuredClone(last)] })
+      }
+      await wait(`document.querySelector('[data-cache-badge]')?.textContent==='0m'`)
+      await pose('sleep', 5000)
+      mark('sleep')
+      await sleep(400)
+
+      // 13. 镜头移到左下角额度（运镜在 assemble.cjs 里做，这里只留时间）
+      rects.quota = await box('[aria-label="剩余额度"]')
+      await js(`(()=>{const s=document.createElement('style');s.textContent='[data-quota-ring],[data-quota-fill]{transition-duration:.08s!important;transition-timing-function:linear!important}';document.head.appendChild(s)})()`)
+      mark('pan')
+      await sleep(1050)
+
+      // 14. 额度延时：外圈 5 小时额度一圈圈烧完 → 入夜 → 天亮回满；周额度每轮少一截，最后烧尽
+      mark('quota')
+      const WEEKS = [75, 50, 25, 0]
+      for (let cycle = 0; cycle < 3; cycle++) {
+        const steps = 22
+        for (let i = 1; i <= steps; i++) {
+          await setQuota(Math.round(100 * (1 - i / steps)), Math.round(WEEKS[cycle] + (WEEKS[cycle + 1] - WEEKS[cycle]) * i / steps))
+          await sleep(1100 / steps)
+        }
+        mark('night-' + cycle)
+        await sky('#2a3766', 0.78, 260)
+        await sleep(cycle < 2 ? 380 : 560)
+        if (cycle === 2) break
+        await setQuota(100, WEEKS[cycle + 1])
+        await sky('#ffc89a', 0.45, 220)
+        await sleep(200)
+        mark('dawn-' + cycle)
+        await sky('#ffc89a', 0, 260)
+        await sleep(160)
+      }
+      mark('quotaEnd')
 
       recording = false
       await dbg.sendCommand('Page.stopScreencast')

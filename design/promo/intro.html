@@ -57,14 +57,15 @@
   <rect width="100%" height="100%" fill="#d97757" mask="url(#hole)"/>
   <g id="logoT"><use href="#spark" fill="#fff"/></g>
 </svg>
-<div id="caption">Claude Code，看得见了</div>
+<div id="caption">Hi，你可以看见我了</div>
 
 <script src="spark.js"></script>
 <script>
 // 参数沿用 design/splash/preview.html；加载时长固定，给字幕留出阅读时间
-const PERIOD = 900, ENTER = 260, EXIT = 1750, CHARGE = 90, BURST = 420
+// 先是一段纯橙色；APPEAR 时光芒和字幕同时出现
+const APPEAR = 450, PERIOD = 900, ENTER = 260, EXIT = 2150, CHARGE = 90, BURST = 420
 const FADE_FROM = 0.25, FADE_TO = 0.75, CURVE = 1.8, LAND = 300, DURATION = 3000
-const CAP_IN = [450, 750], CAP_OUT = [1600, 1750]
+const CAP_IN = [APPEAR, APPEAR + 300], CAP_OUT = [2000, EXIT]
 
 const $ = id => document.getElementById(id)
 const spark = $('spark'), logoT = $('logoT'), holeT = $('holeT'), splash = $('splash'), page = $('page'), caption = $('caption')
@@ -72,6 +73,7 @@ const shot = new URLSearchParams(location.search).get('shot')
 if (shot) { page.classList.add('shot'); page.style.backgroundImage = `url("${shot}")` }
 
 function idle(t) {
+  t = Math.max(0, t - APPEAR)
   const e = clamp01(t / ENTER)
   return { s: lerp(0.4, 1, outBack(e)), rot: 15 * (1 - outCubic(e)), wo: outCubic(e), k: pulse(t / PERIOD) }
 }
@@ -103,7 +105,7 @@ function render(t) {
   const tf = `translate(${vw / 2} ${vh / 2}) scale(${s * unit}) rotate(${rot})`
   splash.style.display = gone ? 'none' : ''
   logoT.setAttribute('transform', tf)
-  logoT.setAttribute('opacity', wo)
+  logoT.setAttribute('opacity', t < APPEAR ? 0 : wo)
   holeT.setAttribute('transform', tf)
   holeT.setAttribute('visibility', hole ? 'visible' : 'hidden')
   spark.setAttribute('d', sparkD(k))

@@ -4,7 +4,7 @@ import { closeClaudeConfigWatchers } from './claudeConfigChanges'
 import { closeTemporaryQueries } from './temporaryQuery'
 import { AppWindow } from './appWindow'
 import type { DemoState } from '../shared/types'
-import { adoptLoginShellPath } from './env'
+import { adoptLoginShellEnv } from './env'
 import { applyTheme, chats, commandCatalog, projectMetadata, registerIpc, scheduler } from './ipc'
 import * as store from './store'
 import { flushActivityRepository } from './activityRepository'
@@ -33,7 +33,7 @@ if (process.argv.includes('--probe')) {
   app.quit()
 } else {
   registerMediaScheme()
-  if (app.isPackaged) void adoptLoginShellPath()
+  if (app.isPackaged) void adoptLoginShellEnv()
   const window = new AppWindow(() => {
     for (const cleanup of [() => scheduler.stopTimer(), () => commandCatalog.close(), closeClaudeConfigWatchers, closeTemporaryQueries, () => chats.closeAll(), flushActivityRepository, closeWorkspace]) {
       try { cleanup() } catch (error) { console.error('退出清理失败', error) }

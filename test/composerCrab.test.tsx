@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ComposerCrab, nextVerb } from '../src/renderer/components/newSession/ComposerCrab'
 import { crabActivity } from '../src/renderer/components/newSession/crabActivity'
@@ -19,6 +19,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('composer crab', () => {
+  it('makes a face while held and settles back without one; only the draft page crab can be grabbed', () => {
+    const face = () => document.querySelector('[data-crab-face]')?.getAttribute('data-crab-face')
+    const view = render(<ComposerCrab hasDraft={false} draggable />)
+    const handle = document.querySelector<HTMLElement>('.crab-draggable')!
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 11, clientY: 11 })
+    expect(face()).toBeUndefined()
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 60, clientY: -80 })
+    expect(['squint', 'dizzy', 'wide']).toContain(face())
+    expect(handle.style.position).toBe('fixed')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 60, clientY: -80 })
+    expect(face()).toBeUndefined()
+    expect(handle.style.position).toBe('')
+    view.rerender(<ComposerCrab hasDraft={false} />)
+    expect(document.querySelector('.crab-draggable')).toBeNull()
+  })
+
   it('sleeps after 30 seconds, wakes with a draft or attachment, and restarts the idle clock', () => {
     const view = render(<ComposerCrab hasDraft={false} />)
     tick(29_999); expect(pose()).toBe('idle')

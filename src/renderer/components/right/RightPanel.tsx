@@ -83,8 +83,8 @@ export function RightPanel({ sessionId, projectId }: { sessionId: string; projec
                   <button type="button" role="tab" aria-selected={active} title={'title' in tab ? tab.title : tab.label}
                     ref={active ? (el) => el?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) : undefined}
                     onClick={() => layout.openRight(tab.id)} onMouseDown={(e) => { if (e.button === 1 && close) { e.preventDefault(); close() } }}
-                    className={`flex min-w-0 items-center gap-1.5 px-2 py-1.5 text-[12px] ${active ? 'font-medium' : 'text-fg2'}`}>
-                    <tab.icon size={14} className="shrink-0" /><span className="truncate">{tab.label}</span>
+                    className={`flex min-w-0 items-center gap-2 px-2 py-1.5 ${active ? 'font-medium' : 'text-fg2'}`}>
+                    <tab.icon size={16} className="shrink-0" /><span className="truncate">{tab.label}</span>
                   </button>
                   {close && <button type="button" aria-label={`关闭${tab.label}`} onClick={close} className="mr-1 rounded p-0.5 text-fg3 hover:bg-active hover:text-fg"><X size={12} /></button>}
                 </div>
@@ -93,7 +93,7 @@ export function RightPanel({ sessionId, projectId }: { sessionId: string; projec
           </div>
           <div className="no-drag flex">
             {sidebarPageCount(layout) < MAX_SIDEBAR_PAGES && <IconButton label="新建侧栏页面" onClick={() => layout.newPage(cwd)}><Plus size={16} /></IconButton>}
-            <IconButton label={expanded ? '还原侧栏宽度' : '展开侧栏页面'} onClick={() => layout.setExpanded(!expanded)}>{expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>
+            <IconButton label={expanded ? '还原侧栏宽度' : '展开侧栏页面'} onClick={() => layout.setExpanded(!expanded)}>{expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</IconButton>
 
           </div>
         </div>

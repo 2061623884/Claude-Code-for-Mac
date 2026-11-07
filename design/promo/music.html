@@ -115,21 +115,21 @@ function compose(ctx) {
 
   // ── 0–3 秒：开屏 ──
   pad(0, 3.6, CH.Fmaj7.voice.map(m => m + 12), 0.035, 1400, 1.4)
-  bell(0.45, 84, 0.35); bell(1.35, 81, 0.35)                       // Spark 跳动
+  bell(0.45, 84, 0.35); bell(1.8, 81, 0.35)                        // 光芒和字幕出现、Spark 跳动
   { // 炸开前的气声渐强
     const src = ctx.createBufferSource(); src.buffer = noiseBuffer(1.2)
     const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2
-    bp.frequency.setValueAtTime(500, 0.8); bp.frequency.exponentialRampToValueAtTime(5000, 1.88)
-    const g = ctx.createGain(); g.gain.setValueAtTime(0, 0.8); g.gain.linearRampToValueAtTime(0.09, 1.84); g.gain.linearRampToValueAtTime(0, 1.98)
-    src.connect(bp).connect(g).connect(fxBus); src.start(0.8)
+    bp.frequency.setValueAtTime(500, 1.2); bp.frequency.exponentialRampToValueAtTime(5000, 2.28)
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, 1.2); g.gain.linearRampToValueAtTime(0.09, 2.24); g.gain.linearRampToValueAtTime(0, 2.38)
+    src.connect(bp).connect(g).connect(fxBus); src.start(1.2)
   }
   { // 炸开：一记很轻的低频
-    const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(70, 1.9); o.frequency.exponentialRampToValueAtTime(40, 2.6)
-    g.gain.setValueAtTime(0.0001, 1.9); g.gain.exponentialRampToValueAtTime(0.07, 1.93); g.gain.exponentialRampToValueAtTime(0.0001, 2.9)
-    o.connect(g).connect(dry); o.start(1.9); o.stop(3)
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(70, 2.3); o.frequency.exponentialRampToValueAtTime(40, 3.0)
+    g.gain.setValueAtTime(0.0001, 2.3); g.gain.exponentialRampToValueAtTime(0.07, 2.33); g.gain.exponentialRampToValueAtTime(0.0001, 3.3)
+    o.connect(g).connect(dry); o.start(2.3); o.stop(3.4)
   }
-  ;[60, 64, 67, 69, 72, 76].forEach((m, i) => piano(1.92 + i * 0.035, m, 0.55 - i * 0.04, 2.4))  // 和弦绽放
-  ;[88, 91, 93].forEach((m, i) => bell(2.0 + i * 0.07, m, 0.18))
+  ;[60, 64, 67, 69, 72, 76].forEach((m, i) => piano(2.32 + i * 0.035, m, 0.55 - i * 0.04, 2.4))  // 和弦绽放
+  ;[88, 91, 93].forEach((m, i) => bell(2.4 + i * 0.07, m, 0.18))
 
   // ── 3 秒起：分解和弦铺底，14 秒后让位给旋律 ──
   const ARP = [0, 1, 2, 3, 4, 3, 2, 1]
@@ -150,10 +150,25 @@ function compose(ctx) {
   }
   bass(25, CH.C.bass, 1)
 
-  // ── 6–14 秒：螃蟹 ──
-  ;[[81, 84], [84, 86], [86, 89], [89, 91], [91, 93]].forEach(([a, b], i) => { const t = 6 + i * 1.1; bell(t, a, 0.45); bell(t + 0.12, b, 0.5) })
-  bell(11.5, 79, 0.4); bell(12.05, 79, 0.3)                        // 停下来等
-  ;[[12.8, 81], [13.15, 77], [13.55, 72]].forEach(([t, m], i) => bell(t, m, 0.42 - i * 0.08))   // 歇会儿
+  // ── 10.75–14.55 秒：输入框特写，螃蟹每 0.95 秒换一个动作 ──
+  ;[[81, 84], [84, 86], [86, 89], [89, 91]].forEach(([a, b], i) => { const t = 10.75 + i * 0.95; bell(t, a, 0.45); bell(t + 0.12, b, 0.5) })
+
+  // ── 14.55–17 秒：缓存倒计时一格格跳到 0，螃蟹睡着 ──
+  // 以下时间点按当前录制（record.cjs）的节点换算；重录后若节奏变化需同步调整
+  ;[[14.97, 84], [15.39, 81], [15.81, 79], [16.23, 77], [16.65, 72]].forEach(([t, m], i) => bell(t, m, 0.34 - i * 0.04))
+  bell(17.05, 89, 0.16); bell(17.3, 93, 0.12)                      // 睡着
+  { // 运镜到左下角：一声很轻的气流
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer(1)
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.8
+    bp.frequency.setValueAtTime(900, 17.39); bp.frequency.exponentialRampToValueAtTime(2600, 17.9); bp.frequency.exponentialRampToValueAtTime(1200, 18.4)
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, 17.39); g.gain.linearRampToValueAtTime(0.05, 17.85); g.gain.linearRampToValueAtTime(0, 18.4)
+    src.connect(bp).connect(g).connect(fxBus); src.start(17.39)
+  }
+
+  // ── 18.4–23.5 秒：额度延时，三次入夜、两次天亮 ──
+  for (const t of [19.45, 21.22, 22.97]) { piano(t, 41, 0.35, 1.2); piano(t + 0.02, 53, 0.22, 1.2); bell(t, 72, 0.18) }
+  for (const t of [20.0, 21.76]) [84, 88, 91, 96].forEach((m, i) => bell(t + i * 0.05, m, 0.26 - i * 0.04))
+  bell(23.5, 96, 0.16)                                             // 切到上下文窗口
 
   // ── 14–26 秒：主旋律，20 秒加弦乐 ──
   for (const [m, beat, len] of MELODY) {
@@ -163,7 +178,6 @@ function compose(ctx) {
   }
   pad(20, 5.6, [65, 69, 72, 77], 0.018, 2200, 1.6)
   pad(20, 6, [57, 62, 65], 0.016, 1800, 2)
-  bell(22, 96, 0.16); bell(24, 96, 0.16)                           // 数据镜头切换
 
   // ── 26–30 秒：片尾 ──
   bass(26, 41, 3.6, 0.07)

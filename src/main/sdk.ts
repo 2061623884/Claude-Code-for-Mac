@@ -3,7 +3,7 @@
 import { join } from 'node:path'
 import type { Options, Query } from '@anthropic-ai/claude-agent-sdk'
 import { app } from 'electron'
-import { adoptLoginShellPath } from './env'
+import { adoptLoginShellEnv } from './env'
 import { proxyEnvironment, readSystemProxy } from './systemProxy'
 import { temporaryQuery } from './temporaryQuery'
 import * as store from './store'
@@ -16,7 +16,7 @@ export async function loadSdk(): Promise<Sdk> {
   const [loaded, systemProxy] = await Promise.all([
     sdk ??= import('@anthropic-ai/claude-agent-sdk'),
     readSystemProxy(),
-    app.isPackaged ? adoptLoginShellPath() : undefined
+    app.isPackaged ? adoptLoginShellEnv() : undefined
   ])
   // 每个 CLI 入口共用代理继承，显式环境配置优先；不修改桌面主进程的环境。
   return {
