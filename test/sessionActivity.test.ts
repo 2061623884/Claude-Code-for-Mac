@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SessionActivity } from '../src/main/sessionActivity'
+import { resolve } from 'node:path'
 const call = (id: string, name: string, input: Record<string, unknown> = {}, parent: string | null = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { content: [{ type: 'tool_use', id, name, input }] } })
 const result = (id: string, output: Record<string, unknown> = {}, error = false, content = '') => ({ type: 'user', tool_use_result: output, message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error: error }] } })
 describe('session activity evidence', () => {
@@ -10,7 +11,7 @@ describe('session activity evidence', () => {
     for (const item of [edit, edited, edit, edited]) activity.apply(item)
     activity.apply(call('failed', 'Write', { file_path: 'failed.ts', content: 'x' })); activity.apply(result('failed', {}, true))
     activity.apply(call('staged', 'Write', { file_path: 'staged.ts', content: 'x' })); activity.apply(result('staged', { staged: true }))
-    expect(activity.snapshot().sections.changes).toEqual([expect.objectContaining({ path: '/project/a.ts', added: 2, removed: 1 })])
+    expect(activity.snapshot().sections.changes).toEqual([expect.objectContaining({ path: resolve('/project/a.ts'), added: 2, removed: 1 })])
   })
   it('reports unknown line counts for an overwrite without a reliable diff', () => {
     const activity = new SessionActivity('/project')
@@ -77,6 +78,6 @@ it('does not resolve main-thread references against a subagent directory', () =>
   const activity = new SessionActivity('/project')
   activity.observeDirectory('/worktree', false, '子 Agent 工作目录')
   activity.reference('@notes.md')
-  expect(activity.snapshot().sections.sources[0].path).toBe('/project/notes.md')
+  expect(activity.snapshot().sections.sources[0].path).toBe(resolve('/project/notes.md'))
   expect(activity.snapshot().sections.projects[1]).toMatchObject({ path: '/worktree', description: '子 Agent 工作目录' })
 })

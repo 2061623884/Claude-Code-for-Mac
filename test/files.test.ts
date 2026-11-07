@@ -37,7 +37,7 @@ describe('describePaths', () => {
     }
   })
 
-  it.skipIf(typeof process.getuid === 'function' && process.getuid() === 0)('忽略内容不可读的文件', async () => {
+  it.skipIf(process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0))('忽略内容不可读的文件（POSIX 权限）', async () => {
     const root = await mkdtemp(join(tmpdir(), 'claude-desk-files-'))
     const file = join(root, 'private.txt')
     await writeFile(file, 'secret')
@@ -85,7 +85,7 @@ describe('project file browser', () => {
   it('rejects symlinks that escape the project root', async () => {
     const root = await mkdtemp(join(tmpdir(), 'claude-desk-tree-'))
     const outside = await mkdtemp(join(tmpdir(), 'claude-desk-outside-'))
-    await symlink(outside, join(root, 'escape'))
+    await symlink(outside, join(root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir')
     try {
       await expect(listProjectDirectory(root, join(root, 'escape'))).rejects.toThrow()
       await expect(createProjectEntry(root, join(root, 'escape'), 'file', 'outside.txt')).rejects.toThrow()

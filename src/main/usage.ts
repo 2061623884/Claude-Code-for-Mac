@@ -1,6 +1,6 @@
 // 套餐用量：和终端里 /usage 看到的一样。SDK 的这个接口还标着「实验性」，以后版本可能会改名。
 import { homedir } from 'node:os'
-import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
+import type { Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
 import type { PlanUsage, UsageWindow } from '../shared/types'
 import { withIdleQuery } from './sdk'
 
@@ -22,8 +22,22 @@ export function toPlanUsage(r: SDKControlGetUsageResponse): PlanUsage {
   return { subscriptionType: r.subscription_type, available: r.rate_limits_available, windows }
 }
 
+/** A read-only quota query needs the official usage endpoint, even when normal
+ * CLI sessions disable nonessential traffic. Keep this override inside the
+ * short-lived query, with telemetry, hooks and tool/MCP execution disabled.
+ * The CLI treats even the string "0" as enabled: use an empty string. */
+export function withUsageQuery<T>(fn: (q: Query) => Promise<T>): Promise<T> {
+  return withIdleQuery({
+    cwd: homedir(), tools: [], mcpServers: {}, strictMcpConfig: true,
+    settings: { disableAllHooks: true, env: {
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '',
+      DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1', DISABLE_AUTOUPDATER: '1'
+    } }
+  }, fn)
+}
+
 export function planUsage(): Promise<PlanUsage> {
-  return withIdleQuery({ cwd: homedir() }, async (q) =>
+  return withUsageQuery(async (q) =>
     toPlanUsage(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }))
   )
 }

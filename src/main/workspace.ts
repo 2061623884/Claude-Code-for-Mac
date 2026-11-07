@@ -1,5 +1,6 @@
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
+import { terminalCommand } from './nativeRuntime'
 import { BrowserWindow, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { spawn, type IPty } from 'node-pty'
 import { browserUrl, type BrowserState } from '../shared/workspace'
@@ -106,7 +107,8 @@ function openTerminal(owner: WebContents, id: string, cwd: string): { output: st
   if ([...terminals.values()].filter((e) => e.owner === owner).length >= 12) throw new Error('最多同时打开 12 个终端')
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   delete env.ELECTRON_RUN_AS_NODE
-  const pty = spawn(process.env.SHELL || '/bin/zsh', ['-l'], { name: 'xterm-256color', cols: 80, rows: 24, cwd: realpathSync(cwd), env: { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } })
+  const command = terminalCommand()
+  const pty = spawn(command.file, command.args, { name: 'xterm-256color', cols: 80, rows: 24, cwd: realpathSync(cwd), ...(process.platform === 'win32' ? { useConptyDll: true } : {}), env: { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } })
   const entry = { owner, pty, output: '', exited: false }
   terminals.set(k, entry)
   pty.onData((data) => {

@@ -5,9 +5,10 @@ import { closeTemporaryQueries } from '../src/main/temporaryQuery'
 vi.mock('../src/main/systemProxy', async importOriginal => ({ ...await importOriginal<typeof import('../src/main/systemProxy')>(), readSystemProxy: async () => ({ HTTPS_PROXY: 'http://system:7897' }) }))
 const sdk = vi.hoisted(() => ({ query: vi.fn() }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => sdk)
-vi.mock('electron', () => ({ app: { isPackaged: false } }))
+vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => '/app' } }))
+vi.mock('../src/main/nativeRuntime', () => ({ resolveNativeRuntime: () => ({ path: '/fixture/claude', source: 'bundled' }) }))
 vi.mock('../src/main/store', () => ({ read: () => ({ settings: {} }) }))
-afterEach(() => { closeTemporaryQueries(); vi.clearAllMocks() })
+afterEach(() => { closeTemporaryQueries(); vi.clearAllMocks(); vi.unstubAllEnvs() })
 it('does not drain an idle query after obtaining the result', async () => {
   const close = vi.fn(), iterator = vi.fn()
   sdk.query.mockReturnValue({ close, [Symbol.asyncIterator]: iterator })
@@ -28,6 +29,7 @@ it('shares shutdown cleanup between idle and metadata queries', async () => {
 })
 
 it('passes system proxy to the query without overriding a caller proxy', async () => {
+  for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) vi.stubEnv(name, undefined)
   sdk.query.mockReturnValue({ close: vi.fn() })
   await withIdleQuery({ env: { HTTPS_PROXY: 'http://custom:8000' } }, async () => true)
   expect(sdk.query.mock.calls[0][0].options.env.HTTPS_PROXY).toBe('http://custom:8000')

@@ -98,7 +98,17 @@ async function scanPlugins(cwd: string | null): Promise<{ plugins: PluginInfo[];
       version: install.version ?? manifest.version, description: typeof manifest.description === 'string' ? manifest.description : undefined,
       enabled: enabled.merged[id] === true, projectOverride: enabled.project.has(id)
     }
-    const [skills, commands] = await Promise.all([scanSkills(join(root, 'skills'), 'plugin', prefix, id), scanCommands(join(root, 'commands'), 'plugin', prefix, id)])
+    const declared = typeof manifest.skills === 'string' ? [manifest.skills] : Array.isArray(manifest.skills) ? manifest.skills.filter((p: unknown): p is string => typeof p === 'string') : []
+    const customSkills = await Promise.all(declared.map(async (relative: string): Promise<SkillInfo[]> => {
+      const directory = resolve(root, relative)
+      if (!directory.startsWith(resolve(root) + sep)) return []
+      const path = join(directory, 'SKILL.md'), text = await readText(path)
+      if (text === null) return scanSkills(directory, 'plugin', prefix, id)
+      const fields = parseFrontmatter(text)
+      return [{ name: prefix + (fields.name || basename(directory)), description: describe(text, fields), kind: 'skill', source: 'plugin', path, plugin: id }]
+    }))
+    const [defaults, commands] = await Promise.all([scanSkills(join(root, 'skills'), 'plugin', prefix, id), scanCommands(join(root, 'commands'), 'plugin', prefix, id)])
+    const skills = [...new Map([...defaults, ...customSkills.flat()].map(skill => [skill.path, skill])).values()]
     return { plugin, skills: [...skills, ...commands] }
   }))
   const ok = results.filter(r => r !== null)

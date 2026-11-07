@@ -166,6 +166,11 @@ export class SessionManager {
         return
       }
       for (const path of attachments) await access(path)
+      if (this.seen.has(sessionId) && await this.checkExternal(sessionId, projectPath)) {
+        this.transcripts.delete(sessionId)
+        this.transcriptLoads.delete(sessionId)
+        this.publish(sessionId, { kind: 'replaceHistory', snapshot: await this.open(sessionId, projectPath) })
+      }
       const prefs = this.prefs(sessionId)
       const session = this.live.get(sessionId)
       const busy = session?.state === 'running' || session?.state === 'awaiting'
@@ -408,6 +413,24 @@ export class SessionManager {
     const before = this.seen.get(sessionId)
     if (before === undefined) this.seen.set(sessionId, count)
     return before !== undefined && count > before
+  }
+
+  handoffToCli(sessionId: string, projectPath: string): Promise<string> {
+    return this.lock(sessionId, async () => {
+      this.assertInactive(sessionId, '切换到 CLI')
+      if (this.prefs(sessionId).queue.items.some(item => item.editing || ['queued', 'failed', 'submitting', 'submitted', 'received', 'unknown'].includes(item.status))) {
+        throw new Error('请先处理待发消息及未确认的交付记录，再切换到 CLI')
+      }
+      await this.transcript(sessionId, projectPath)
+      const id = this.historyId(sessionId)
+      const sdk = await loadSdk()
+      if (!(await sdk.getSessionMessages(id, { dir: projectPath })).length) throw new Error('会话尚未保存，请稍后重试')
+      this.closeSession(sessionId)
+      this.transcripts.delete(sessionId)
+      this.transcriptLoads.delete(sessionId)
+      this.publish(sessionId, { kind: 'replaceHistory', snapshot: await this.open(sessionId, projectPath) })
+      return id
+    })
   }
 
   async context(sessionId: string, projectPath: string, model: string | null): Promise<ContextUsage | null> {

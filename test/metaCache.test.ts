@@ -43,7 +43,8 @@ it('stores no account data and uses private file permissions', async () => {
   mocks.load.mockResolvedValue(init())
   await meta.get('/one')
   expect(readFileSync(cacheFile(), 'utf8')).not.toContain('private@example.com')
-  expect(statSync(cacheFile()).mode & 0o777).toBe(0o600)
+  // Windows uses ACLs, not POSIX mode bits; the no-account-data assertion above applies everywhere.
+  if (process.platform !== 'win32') expect(statSync(cacheFile()).mode & 0o777).toBe(0o600)
 })
 it('expires memory and disk entries and ignores corrupt files', async () => {
   vi.useFakeTimers()

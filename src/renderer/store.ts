@@ -7,7 +7,7 @@ import { errorText } from './ipcError'
 import type { DemoState, DetectedFolder, Project, SessionSummary, Settings } from '@shared/types'
 import type { SessionOptions } from '@shared/chat'
 
-export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings'; tab?: 'general' | 'claude' | 'models' | 'context' | 'notifications' | 'advanced'; projectId?: string | null; sessionId?: string | null } | { kind: 'usage' } | { kind: 'schedules' } | { kind: 'skills'; tab?: 'skills' | 'mcp'; projectId?: string | null }
+export type View = { kind: 'new' } | { kind: 'session'; sessionId: string; projectId: string } | { kind: 'settings'; tab?: 'general' | 'connection' | 'claude' | 'models' | 'context' | 'notifications' | 'advanced'; projectId?: string | null; sessionId?: string | null } | { kind: 'usage' } | { kind: 'schedules' } | { kind: 'skills'; tab?: 'skills' | 'mcp'; projectId?: string | null }
 
 interface DeskState {
   greeting: string

@@ -1,6 +1,7 @@
 import { ModePicker } from '../newSession/ModePicker'
 import { SessionControlsPane } from '../right/SessionControlsPane'
 import { ClaudeConfigSettings } from './ClaudeConfigSettings'
+import { ConnectionSettings } from './ConnectionSettings'
 import { Row, Section, Toggle, settingsInputClass, settingsButtonClass } from './SettingsControls'
 import { useEffect, useState } from 'react'
 import type { MetaInfo, Settings, Theme } from '@shared/types'
@@ -50,16 +51,17 @@ export function SettingsPage() {
   const tab = route.tab === 'claude' ? 'models' : route.tab ?? 'general'
   const project = projects.find(p => p.id === route.projectId)
   const cwd = project?.path ?? home
-  const projectSettings = tab === 'context' || tab === 'advanced'
+  const projectSettings = tab === 'context' || tab === 'advanced' || tab === 'connection'
   return <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-16"><div className="mx-auto max-w-[760px]">
     <h1 className="pt-6 font-serif text-[24px] font-normal">设置</h1>
     <nav className="mt-5 flex flex-wrap gap-1 border-b border-line pb-3" aria-label="设置分类">
-      {([['general', '外观与交互'], ['models', '模型与权限'], ['context', '上下文'], ['notifications', '通知'], ['advanced', '高级设置']] as const).map(([value, label]) => <button key={value} type="button" aria-current={tab === value ? 'page' : undefined} onClick={() => setView({ ...route, tab: value })} className={`rounded-lg px-3 py-1.5 text-[13px] ${tab === value ? 'bg-active' : 'text-fg2 hover:bg-hover'}`}>{label}</button>)}
+      {([['general', '外观与交互'], ['connection', '账号与接入'], ['models', '模型与权限'], ['context', '上下文'], ['notifications', '通知'], ['advanced', '高级设置']] as const).map(([value, label]) => <button key={value} type="button" aria-current={tab === value ? 'page' : undefined} onClick={() => setView({ ...route, tab: value })} className={`rounded-lg px-3 py-1.5 text-[13px] ${tab === value ? 'bg-active' : 'text-fg2 hover:bg-hover'}`}>{label}</button>)}
     </nav>
     {settingsError && <p role="alert" className="mt-3 text-danger">设置保存失败：{settingsError}</p>}
     {projectSettings && <Section title="项目上下文">
       <Row label={<label htmlFor="settings-project">项目</label>}><select id="settings-project" value={project?.id ?? ''} onChange={e => setView({ ...route, projectId: e.target.value || null, sessionId: null })} className={settingsInputClass}><option value="">用户目录</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Row>
     </Section>}
+    {tab === 'connection' && <ConnectionSettings cwd={cwd} />}
     {tab === 'general' && <Section title="界面与交互">
       <Row label="主题"><Segmented options={THEMES} value={settings.theme} onChange={theme => saveSettings({ theme })} /></Row>
       <Row label="自动跟随最新回复"><Toggle label="自动跟随最新回复" value={settings.autoScroll ?? true} onChange={autoScroll => saveSettings({ autoScroll })} /></Row>
@@ -116,7 +118,7 @@ export function SettingsPage() {
         { title: '工作流', keys: CONFIG_GROUPS.workflows }
       ]} />
       <Section title="运行环境">
-        <Row label="运行引擎"><span className="text-fg2" title={settings.claudePath ?? undefined}>{settings.claudePath ? '自定义路径' : `应用内置${environment?.path === executable && environment.meta?.claudeVersion ? ` v${environment.meta.claudeVersion}` : ''}`}</span></Row>
+        <Row label="运行引擎"><button className="text-fg2 hover:underline" onClick={() => setView({ ...route, tab: 'connection' })} title={settings.claudePath ?? undefined}>{settings.claudePath ? '自定义路径' : `自动检测${environment?.path === executable && environment.meta?.claudeVersion ? ` v${environment.meta.claudeVersion}` : ''}`} · 查看接入状态</button></Row>
       </Section>
     </>}
   </div></div>

@@ -46,12 +46,19 @@ export class AppWindow {
     win.on('closed', () => { if (this.window === win) this.window = null })
   }
   private create(): BrowserWindow {
+    const titleBarColors = () => ({ color: nativeTheme.shouldUseDarkColors ? '#1f1e1d' : '#f8f8f7', symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f4ee' : '#37352f', height: 40 })
     const win = new BrowserWindow({
       width: 1280, height: 820, minWidth: 960, minHeight: 600,
-      titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 16 },
+      ...(process.platform === 'win32' ? { icon: app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(__dirname, '../../build/icon.ico') } : {}),
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 16 } } : process.platform === 'win32' ? { titleBarStyle: 'hidden' as const, titleBarOverlay: titleBarColors(), autoHideMenuBar: true } : { autoHideMenuBar: true }),
       backgroundColor: nativeTheme.shouldUseDarkColors ? '#262624' : '#ffffff', show: false,
       webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false }
     })
+    if (process.platform === 'win32') {
+      const updateTitleBar = () => { if (!win.isDestroyed()) win.setTitleBarOverlay(titleBarColors()) }
+      nativeTheme.on('updated', updateTitleBar)
+      win.once('closed', () => nativeTheme.removeListener('updated', updateTitleBar))
+    }
     const shotPath = process.env.CLAUDE_DESK_SHOT
     win.once('ready-to-show', () => {
       if (this.quitting || !this.visibleWanted || win.isDestroyed()) return

@@ -158,7 +158,7 @@ it('shows the CLI version but not the account when advanced settings are opened'
   vi.mocked(window.desk.meta.get).mockResolvedValue({ models: [], claudeVersion: '2.1.301', subscriptionType: 'pro' })
   useDesk.setState({ view: { kind: 'settings', tab: 'advanced' } })
   render(<SettingsPage />)
-  await screen.findByText('应用内置 v2.1.301')
+  await screen.findByText('自动检测 v2.1.301 · 查看接入状态')
   expect(screen.queryByText('账户')).toBeNull()
 })
 it('does not offer Fast in desktop default model selection', async () => {

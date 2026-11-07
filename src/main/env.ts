@@ -50,6 +50,9 @@ export function adoptLoginShellEnv(): Promise<void> {
 }
 
 async function readShellEnv(): Promise<void> {
+  // Explorer already supplies the Windows user/system environment. Do not execute
+  // a Unix login shell or import WSL settings into a native Windows process.
+  if (process.platform === 'win32') return
   const shell = process.env.SHELL || '/bin/zsh'
   try {
     // 用标记包住 env 输出，忽略 shell 配置文件自己打印的内容

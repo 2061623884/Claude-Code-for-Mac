@@ -1,10 +1,15 @@
 # Claude Code for Mac
 
-基于 Electron、React 和 Claude Agent SDK 构建的第三方 macOS 桌面客户端，提供中文界面。此项目不是 Anthropic 官方桌面应用。
+基于 Electron、React 和 Claude Agent SDK 构建的第三方 macOS / Windows 桌面客户端，提供中文界面。此项目不是 Anthropic 官方桌面应用。
 
 ![主界面：思考摘要、工具调用、diff 与权限确认](docs/images/overview.png)
 
 ## 下载和安装
+
+Windows 原生预览版位于 `win` 分支，版本标记为 `v0.3.52-win.1`。原有 Mac `main` 分支与 v0.3.51 发布保留。两版共用 Electron / React 主体，平台差异集中在运行引擎、窗口与终端适配。
+
+Windows 使用 x64 便携目录：解压完整 ZIP 后启动 `Claude Code.exe`，不要单独移动 exe。官方认证、CLI 接续方式与限制见 [Windows 使用说明](docs/windows-native.md)。
+
 
 在 [Releases](https://github.com/Link557/Claude-Code-for-Mac/releases) 下载最新版本。
 
@@ -131,6 +136,8 @@ Claude-Code-for-Mac
 ```
 
 ## 本地开发
+
+Windows 原生官方接入正在适配中，接入方式、验证命令与已知限制见 [Windows 开发说明](docs/windows-native.md)。当前发布下载仍为 macOS 版本。
 
 建议使用 Node.js 24 LTS（24.15.0 或更高的 24.x 版本）。编译终端原生模块需要 Xcode Command Line Tools。
 

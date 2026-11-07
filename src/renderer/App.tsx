@@ -1,3 +1,4 @@
+import { isWindows, primaryModifier } from './platform'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { PanelLeft, SquarePen } from 'lucide-react'
 import { cancelFirstSend, isFirstSendTarget, syncFirstSend } from './motion/firstSend'
@@ -16,6 +17,7 @@ import { SkillsPage } from './components/skills/SkillsPage'
 import { startUsagePolling } from './usageStore'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { ChatView } from './components/chat/ChatView'
+import { CliHandoff } from './components/chat/CliHandoff'
 import { RightPanel, RightPanelToggle } from './components/right/RightPanel'
 import { ResizeHandle } from './components/ui/ResizeHandle'
 import { AddProjectDialog } from './components/dialogs/AddProjectDialog'
@@ -24,6 +26,12 @@ import { SearchDialog } from './components/dialogs/SearchDialog'
 import { SessionSummary } from './components/summary/SessionSummary'
 
 export function App() {
+  const windows = isWindows()
+  useLayoutEffect(() => {
+    const root = document.getElementById('root')
+    if (root && windows) root.dataset.platform = 'windows'
+    return () => { if (root) delete root.dataset.platform }
+  }, [windows])
   const { actionError, clearActionError, ready, view, sessions, sidebarCollapsed, pendingProjectPath, importCandidates, searchOpen, init, toggleSidebar, newChat, setSearchOpen } =
     useDesk()
 
@@ -69,7 +77,7 @@ export function App() {
   // ⌘K 搜索会话；⌘B 左栏、⌘⇧B 右栏
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (!e.metaKey) return
+      if (!primaryModifier(e)) return
       const key = e.key.toLowerCase()
       if (key === 'k') {
         e.preventDefault()
@@ -102,7 +110,13 @@ export function App() {
   const title = view.kind === 'session' ? sessions[view.projectId]?.find((s) => s.id === view.sessionId)?.title : undefined
 
   return (
-    <div className="relative flex h-full">
+    <div className={`relative flex h-full ${windows ? `pb-2 pr-2 ${sidebarCollapsed ? 'pl-2' : ''}` : ''}`}>
+      {windows && <div className="drag fixed inset-x-0 top-0 z-50 flex h-10 items-center bg-sidebar pl-3 pr-36" data-window-toolbar>
+        <div className="no-drag flex items-center gap-2">
+          <IconButton label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'} size="md" onClick={toggleSidebar}><PanelLeft size={18} /></IconButton>
+          {sidebarCollapsed && <IconButton label="新对话" size="md" onClick={() => newChat()}><SquarePen size={17} /></IconButton>}
+        </div>
+      </div>}
       {/* 侧栏收起/展开：宽度和透明度过渡，内容宽度固定只做裁切，避免文字挤压换行；拖动右边缘调宽 */}
       <div
         inert={sidebarCollapsed}
@@ -116,9 +130,10 @@ export function App() {
         </div>
         {!sidebarCollapsed && <ResizeHandle side="left" width={leftWidth} defaultWidth={LEFT.default} onResize={setLeftWidth} />}
       </div>
-      <main data-first-send-target={view.kind === 'session' && isFirstSendTarget(view.sessionId) ? '' : undefined} inert={rightOpen && expanded && view.kind === 'session'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''}`}>
-        <div className="drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 pl-[96px]">
-          {sidebarCollapsed && (
+      <div data-workspace-shell className={`relative flex min-w-0 flex-1 ${windows ? 'overflow-hidden rounded-2xl border border-line bg-bg' : ''}`}>
+      <main data-first-send-target={view.kind === 'session' && isFirstSendTarget(view.sessionId) ? '' : undefined} inert={rightOpen && expanded && view.kind === 'session'} className={`flex min-w-0 flex-1 flex-col bg-bg ${rightOpen && expanded ? 'overflow-hidden' : ''} ${windows && view.kind !== 'session' ? 'pt-3' : ''}`}>
+        {(!windows || view.kind === 'session') && <div className={`drag relative z-40 flex h-[52px] shrink-0 items-center gap-1 ${windows ? 'border-b border-line pl-5' : 'pl-[96px]'}`}>
+          {!windows && sidebarCollapsed && (
             <div className="no-drag animate-fade-in flex gap-1.5">
               <IconButton label="展开侧栏" size="md" onClick={toggleSidebar}>
                 <PanelLeft size={18} />
@@ -130,16 +145,17 @@ export function App() {
           )}
           {title && (
             <>
-              {sidebarCollapsed && <span aria-hidden className="mx-2.5 h-4 w-px shrink-0 bg-fg3/30" />}
+              {!windows && sidebarCollapsed && <span aria-hidden className="mx-2.5 h-4 w-px shrink-0 bg-fg3/30" />}
               <span className={`min-w-0 flex-1 truncate pr-6 font-serif text-[16px] font-normal tracking-[0.02em] text-fg ${sidebarCollapsed ? '' : 'pl-1'}`}>{title}</span>
             </>
           )}
           {view.kind !== 'settings' && (
             <div className={`ml-auto flex items-center gap-3 ${rightOpen ? 'pr-3' : 'pr-16'}`}>
+              {windows && view.kind === 'session' && <CliHandoff key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
               {view.kind === 'session' && <SessionSummary sessionId={view.sessionId} projectId={view.projectId} />}
             </div>
           )}
-        </div>
+        </div>}
         {actionError && <div role="alert" className="flex items-center justify-between bg-danger/10 px-4 py-2 text-sm text-danger"><span>{actionError}</span><button type="button" onClick={clearActionError}>关闭</button></div>}
         {view.kind === 'new' && <NewSessionPage />}
         {view.kind === 'settings' && <SettingsPage />}
@@ -150,6 +166,7 @@ export function App() {
       </main>
       {view.kind === 'session' && <RightPanel key={view.sessionId} sessionId={view.sessionId} projectId={view.projectId} />}
       {view.kind === 'session' && <div className="absolute right-3 top-[10px] z-40"><RightPanelToggle /></div>}
+      </div>
       {pendingProjectPath && <AddProjectDialog path={pendingProjectPath} />}
       {importCandidates && <ImportHistoryDialog candidates={importCandidates} />}
       {searchOpen && <SearchDialog />}

@@ -1,20 +1,23 @@
 {
   "name": "claude-desk",
   "productName": "Claude Code",
-  "version": "0.3.51",
+  "version": "0.3.52-win.1",
   "private": true,
-  "description": "Codex 风格的中文 Claude Code 桌面应用",
+  "description": "中文 Claude Code 桌面客户端，支持 macOS 与 Windows 原生环境",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",
+    "dev": "node scripts/launch.cjs dev",
     "build": "electron-vite build",
-    "start": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
-    "probe": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron . --probe",
+    "start": "node scripts/launch.cjs preview",
+    "probe": "electron-vite build && node scripts/launch.cjs electron . --probe",
+    "pack:win": "npm run build && electron-builder --win dir --x64 --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.test-web.json",
     "test": "vitest run",
     "install-app": "zsh scripts/install-app.sh",
     "rebuild-native": "electron-rebuild -f -w node-pty",
-    "postinstall": "npm run rebuild-native"
+    "postinstall": "node scripts/check-native.cjs",
+    "pack:mac": "npm run build && electron-builder --mac dir --arm64 --publish never",
+    "release:win": "npm run build && electron-builder --win zip --x64 --publish never"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.301",
@@ -73,6 +76,25 @@
       "node_modules/node-pty/**"
     ],
     "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "build/icon.ico",
+          "to": "icon.ico"
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false,
+      "artifactName": "Claude-Code-for-Windows-${version}-${arch}.${ext}"
+    },
     "mac": {
       "target": [
         {

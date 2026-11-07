@@ -22,6 +22,7 @@ export function parsePathRef(raw: string): PathRef | null {
   } catch {
     // 不是合法的 URL 编码，按原样处理
   }
+  if (/^\/[A-Za-z]:\//.test(s)) s = s.slice(1)
   let line: number | undefined
   const m = LINE_SUFFIX.exec(s)
   if (m) {
@@ -34,6 +35,7 @@ export function parsePathRef(raw: string): PathRef | null {
 
 /** 是否像文件路径：绝对路径、~ 开头、带目录的相对路径，或带扩展名的文件名 */
 export function looksLikePath(s: string): boolean {
+  s = s.replace(/\\/g, '/')
   if (!s || /[\n<>|*?"]/.test(s) || /^\.+$/.test(s)) return false
   if (s.startsWith('/') || s.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(s)) return s.length > 1
   if (/\s/.test(s)) return false // 相对路径里出现空格，多半是普通文字
@@ -49,7 +51,7 @@ export interface PathMatch {
 }
 
 // 正文里的路径：绝对路径（/、~/ 开头）和 @ 引用（发给 Claude 的文件引用）；前面必须是开头、空白或括号引号
-const BARE = /(^|[\s(（"'“‘「《[])(@[^\s"'`<>)\]（）“”‘’「」《》，。；：！？、]+|(?:~\/|\/)[^\s"'`<>)\]（）“”‘’「」《》，。；：！？、]+)/g
+const BARE = /(^|[\s(（"'“‘「《[])(@[^\s"'`<>)\]（）“”‘’「」《》，。；：！？、]+|(?:[A-Za-z]:[\\/]|\\\\|~[\\/]|\/)[^\s"'`<>)\]（）“”‘’「」《》，。；：！？、]+)/g
 
 /** 找出一段普通文字里的路径（末尾的句号、逗号等标点不算在内） */
 export function findBarePaths(text: string): PathMatch[] {
@@ -69,9 +71,9 @@ export function findBarePaths(text: string): PathMatch[] {
     const start = m.index! + m[1]!.length
     token = token.replace(/[.,;:!?)]+$/, (tail) => (LINE_SUFFIX.test(token) && /^:\d/.test(tail) ? tail : ''))
     const body = token.startsWith('@') ? token.slice(1) : token
-    if (token.startsWith('@') && !body.includes('/') && !/\.\w+$/.test(body)) continue // @某人，不是文件
+    if (token.startsWith('@') && !/[\\/]/.test(body) && !/\.\w+$/.test(body)) continue // @某人，不是文件
     const ref = parsePathRef(body)
-    if (!ref || (!token.startsWith('@') && !body.slice(1).includes('/'))) continue
+    if (!ref || (!token.startsWith('@') && !/[\\/]/.test(body.slice(1)))) continue
     out.push({ start, end: start + token.length, ref })
   }
   return out.sort((a, b) => a.start - b.start)
@@ -82,18 +84,19 @@ export function resolvePath(path: string, cwd?: string, home?: string): string |
   let p = path.replace(/\\/g, '/')
   if (p.startsWith('~/')) {
     if (!home) return null
-    p = home.replace(/\/$/, '') + p.slice(1)
-  } else if (!p.startsWith('/')) {
+    p = home.replace(/\\/g, '/').replace(/\/$/, '') + p.slice(1)
+  } else if (!p.startsWith('/') && !/^[A-Za-z]:\//.test(p)) {
     if (!cwd) return null
-    p = cwd.replace(/\/$/, '') + '/' + p
+    p = cwd.replace(/\\/g, '/').replace(/\/$/, '') + '/' + p
   }
+  const root = /^[A-Za-z]:\//.exec(p)?.[0] ?? /^\/\/[^/]+\/[^/]+\//.exec(p)?.[0] ?? '/'
   const parts: string[] = []
-  for (const seg of p.split('/')) {
+  for (const seg of p.slice(root.length).split('/')) {
     if (!seg || seg === '.') continue
     if (seg === '..') parts.pop()
     else parts.push(seg)
   }
-  return '/' + parts.join('/') + (p.endsWith('/') && parts.length ? '/' : '')
+  return root + parts.join('/') + (p.endsWith('/') && parts.length ? '/' : '')
 }
 
 /** 路径的最后一段（文件名），目录去掉末尾的 / */
@@ -104,6 +107,20 @@ export function fileName(path: string): string {
 
 /** 显示用的路径：项目内的文件去掉项目路径前缀 */
 export function relativePath(path: string, cwd?: string): string {
-  const root = cwd?.replace(/\/$/, '')
-  return root && path.startsWith(root + '/') ? path.slice(root.length + 1) : path
+  const normalized = path.replace(/\\/g, '/')
+  const root = cwd?.replace(/\\/g, '/').replace(/\/$/, '')
+  const windows = /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//')
+  const compare = (value: string) => windows ? value.toLowerCase() : value
+  return root && compare(normalized).startsWith(compare(root) + '/') ? normalized.slice(root.length + 1) : path
+}
+
+/** Clipboard file lists contain only complete paths, optionally quoted by Explorer. */
+export function pastedFilePaths(text: string, cwd?: string, home?: string): string[] | null {
+  const paths = text.trim().split(/\r?\n/).map(line => {
+    const value = line.trim().replace(/^"(.*)"$/, '$1')
+    if (!/^(?:[A-Za-z]:[\\/]|\\\\|\/|~[\\/]|file:\/\/)/i.test(value)) return null
+    const ref = parsePathRef(value)
+    return ref ? resolvePath(ref.path, cwd, home) : null
+  })
+  return paths.every((path): path is string => path !== null) ? paths : null
 }

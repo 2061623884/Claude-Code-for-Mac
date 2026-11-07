@@ -34,7 +34,7 @@ import {
   type Spread
 } from 'lexical'
 import { referenceFor } from '@shared/attachments'
-import { findBarePaths, parsePathRef, resolvePath } from '@shared/fileLinks'
+import { findBarePaths, pastedFilePaths, resolvePath } from '@shared/fileLinks'
 import { AttachmentCard } from '../files/AttachmentCard'
 
 /** 命令和 @ 补全的识别里，文件节点当作一个空白字符：光标紧跟在文件后面时不会被误认成正在输入 @ */
@@ -254,11 +254,8 @@ function Editor({ onFiles, value, onChange, onKey, placeholder, rows, autoFocus,
         }
         const text = event instanceof ClipboardEvent ? event.clipboardData?.getData('text/plain')?.trim() : ''
         if (!text) return false
-        const paths = text.split(/\r?\n/).map((line) => {
-          const ref = /^(\/|~\/|file:\/\/)/.test(line.trim()) ? parsePathRef(line) : null
-          return ref && resolvePath(ref.path, latest.current.cwd, latest.current.home)
-        })
-        if (!paths.every(Boolean)) return false
+        const paths = pastedFilePaths(text, latest.current.cwd, latest.current.home)
+        if (!paths) return false
         event.preventDefault()
         editor.update(() => {
           const sel = $getSelection()

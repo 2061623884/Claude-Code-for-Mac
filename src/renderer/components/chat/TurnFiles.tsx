@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { FileDiff } from 'lucide-react'
 import type { UiMessage } from '@shared/chat'
 import { collectFileChanges } from '@shared/fileChanges'
-import { relativePath } from '@shared/fileLinks'
+import { fileName, relativePath } from '@shared/fileLinks'
 import { useLayout } from '../../layoutStore'
 import { LineStats } from '../files/LineStats'
 
@@ -23,7 +23,7 @@ export function TurnFiles({ messages, cwd }: { messages: UiMessage[]; cwd?: stri
   }
   const added = changes.reduce((n, c) => n + c.added, 0)
   const removed = changes.reduce((n, c) => n + c.removed, 0)
-  const name = (path: string): string => relativePath(path, cwd).split('/').pop() ?? path
+  const name = fileName
   const shown = all ? changes : changes.slice(0, PREVIEW)
 
   return (

@@ -10,8 +10,8 @@ import { SessionManager } from './live/SessionManager'
 import * as files from './files'
 import { gitDiff } from './gitDiff'
 import * as meta from './meta'
-import { planUsage, toPlanUsage } from './usage'
-import { withIdleQuery } from './sdk'
+import { planUsage, toPlanUsage, withUsageQuery } from './usage'
+import { claudeRuntime } from './sdk'
 import { UsageWorkerClient } from './usageWorkerClient'
 import { UsageProfiles, usageAccount } from './usageProfile'
 import type { UsageOverview } from '../shared/usageAnalytics'
@@ -29,6 +29,7 @@ import { createHumanSubmissionRepository } from './humanSubmissionRepository'
 import { appNotificationHandlers } from './appNotifications'
 import { Scheduler } from './schedules'
 import { readSkillBody, readSkillCatalog, setPluginEnabled } from './skills'
+import { connectionStatus, openOfficialLogin, openInstallationHelp, pickClaudeExecutable, powershellResumeCommand } from './connection'
 
 export function applyTheme(theme: Settings['theme']): void {
   nativeTheme.themeSource = theme
@@ -43,7 +44,7 @@ let overviewRequest: Promise<UsageOverview> | null = null
 let activeAccountKey: string | null = null
 function overview(): Promise<UsageOverview> {
   if (overviewRequest) return overviewRequest
-  overviewRequest = withIdleQuery({ cwd: homedir() }, async q => {
+  overviewRequest = withUsageQuery(async q => {
     const account = usageAccount(await q.accountInfo())
     activeAccountKey = account.key
     const profile = await profiles().get(account)
@@ -94,6 +95,17 @@ export function projectMetadata(cwd: string) {
 
 
 export function registerIpc(demo: DemoState | null, focusWindow?: () => void): void {
+  registerNamespace('connection', {
+    status: async (_e, path) => {
+      const status = await connectionStatus(path)
+      meta.invalidate()
+      commandCatalog.invalidate()
+      return status
+    },
+    pickExecutable: () => pickClaudeExecutable(),
+    login: () => openOfficialLogin(),
+    installationHelp: () => openInstallationHelp()
+  })
   registerNamespace('app', {
     ...appNotificationHandlers(focusWindow),
     state: () => {
@@ -238,6 +250,14 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     setEffort: (_e, id, effort) => chats.setEffort(id, effort),
     respond: (_e, id, requestId, decision) => chats.respond(id, requestId, decision),
     checkExternal: (_e, id, path) => chats.checkExternal(id, path),
+    handoffToCli: async (_e, id, path) => {
+      if (process.platform !== 'win32') throw new Error('此接续入口适用于 Windows PowerShell')
+      const executable = claudeRuntime().path
+      const historyId = await chats.handoffToCli(id, path)
+      const command = powershellResumeCommand(executable, path, historyId)
+      await clipboard.writeText(command)
+      return command
+    },
     reload: (_e, id, path) => chats.reload(id, path),
     btw: (_e, id, path, question, history, options) => chats.sideQuestion(id, path, question, history, options),
     mcp: (_e, id, path) => chats.mcp(id, path),

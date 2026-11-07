@@ -1,6 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
-import { toPlanUsage } from '../src/main/usage'
+import { planUsage, toPlanUsage } from '../src/main/usage'
+
+const idle = vi.hoisted(() => vi.fn())
+vi.mock('../src/main/sdk', () => ({ withIdleQuery: idle }))
+
+it('reads official limits when the user disables nonessential CLI traffic, without changing the process environment', async () => {
+  vi.stubEnv('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', '1')
+  idle.mockImplementation(async (options, fn) => fn({
+    usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+      subscription_type: 'pro', rate_limits_available: true,
+      rate_limits: options.settings?.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === ''
+        ? { five_hour: { utilization: 0, resets_at: null }, seven_day: { utilization: 43, resets_at: null } } : null
+    })
+  }))
+  try {
+    expect((await planUsage()).windows.map(w => w.percent)).toEqual([0, 43])
+    expect(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+    expect(idle.mock.calls.at(-1)?.[0]).toMatchObject({ tools: [], strictMcpConfig: true, settings: { disableAllHooks: true, env: { DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1', DISABLE_AUTOUPDATER: '1' } } })
+  } finally { vi.unstubAllEnvs() }
+})
 
 const win = (utilization: number | null, resets_at: string | null = '2026-11-02T17:00:00Z') => ({ utilization, resets_at })
 

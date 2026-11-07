@@ -25,6 +25,24 @@ beforeEach(() => {
   manager = new SessionManager(emit)
 })
 afterEach(() => manager.closeAll())
+it('hands off persisted idle history and incorporates CLI additions before the next desktop send', async () => {
+  const original = { type: 'user', uuid: 'first', origin: { kind: 'human' }, message: { content: 'from CLI' } }
+  sdk.getSessionMessages.mockResolvedValue([original])
+  await manager.open('shared', '/tmp')
+  expect(await manager.handoffToCli('shared', '/tmp')).toBe('shared')
+  expect((await manager.open('shared', '/tmp')).live).toBe(false)
+  sdk.getSessionMessages.mockResolvedValue([original, { type: 'user', uuid: 'second', origin: { kind: 'human' }, message: { content: 'CLI continued' } }])
+  expect(await manager.checkExternal('shared', '/tmp')).toBe(true)
+  await manager.send('shared', '/tmp', 'back in desktop', options)
+  expect((await manager.open('shared', '/tmp')).messages.some(m => m.blocks.some(b => b.kind === 'text' && b.text === 'CLI continued'))).toBe(true)
+  await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledTimes(1))
+  expect(sdk.query.mock.calls[0][0].options.resume).toBe('shared')
+})
+it('does not hand off running or unsaved sessions', async () => {
+  await expect(manager.handoffToCli('unsaved', '/tmp')).rejects.toThrow('尚未保存')
+  const id = manager.start('/tmp', 'working', options)
+  await expect(manager.handoffToCli(id, '/tmp')).rejects.toThrow('等待当前任务')
+})
 it('recreates the SDK query after a stream error and consumes the retry', async () => {
   sdk.query.mockImplementationOnce(() => ({ close: vi.fn(), async *[Symbol.asyncIterator]() { throw new Error('process exited') } }))
   const id = manager.start('/tmp', 'first', options)
@@ -90,7 +108,7 @@ it('includes historical activity in snapshots and marks incomplete history', asy
     { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'read', content: 'text' }] } }
   ])
   const snapshot = await manager.open('history', '/tmp')
-  expect(snapshot.summary?.sections.sources).toEqual([expect.objectContaining({ path: '/tmp/source.md', description: '调用 1 次 · 成功 1' })])
+  expect(snapshot.summary?.sections.sources).toEqual([expect.objectContaining({ path: (await import('node:path')).resolve('/tmp/source.md'), description: '调用 1 次 · 成功 1' })])
   expect(snapshot.summary?.historyIncomplete).toBe(true)
 })
 it('emits and persists live summary changes, including SDK directory hooks', async () => {
@@ -105,7 +123,8 @@ it('emits and persists live summary changes, including SDK directory hooks', asy
   const hooks = sdk.query.mock.calls[0][0].options.hooks
   await hooks.DirectoryAdded[0].hooks[0]({ hook_event_name: 'DirectoryAdded', directory: '/other' })
   await hooks.CwdChanged[0].hooks[0]({ hook_event_name: 'CwdChanged', new_cwd: '/other/subdir' })
-  await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, expect.objectContaining({ kind: 'summary', summary: expect.objectContaining({ sections: expect.objectContaining({ sources: [expect.objectContaining({ path: '/tmp/live.md' })] }) }) })))
+  const livePath = (await import('node:path')).resolve('/tmp/live.md')
+  await vi.waitFor(() => expect(emit).toHaveBeenCalledWith(id, expect.objectContaining({ kind: 'summary', summary: expect.objectContaining({ sections: expect.objectContaining({ sources: [expect.objectContaining({ path: livePath })] }) }) })))
   expect(save).toHaveBeenCalledWith(id, expect.objectContaining({ version: 1, tools: [expect.objectContaining({ id: 'read' })] }))
   expect((await manager.open(id, '/tmp')).summary?.sections.projects.map((p) => p.path)).toEqual(['/tmp', '/other', '/other/subdir'])
 })

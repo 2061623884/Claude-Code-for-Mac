@@ -155,7 +155,7 @@ export async function statPaths(paths: string[]): Promise<Record<string, 'file' 
   const out: Record<string, 'file' | 'dir' | null> = {}
   await Promise.all(
     paths.slice(0, 500).map(async (p) => {
-      if (!p.startsWith('/')) return (out[p] = null)
+      if (!isAbsolute(p)) return (out[p] = null)
       try {
         const s = await stat(p)
         out[p] = s.isDirectory() ? 'dir' : s.isFile() ? 'file' : null
@@ -196,7 +196,7 @@ export const MEDIA: Record<string, { mime: string; media: 'video' | 'audio' }> =
 
 /** 右栏预览用：文本（超过 1MB 只读开头）、图片（data URL）、音视频（流式 URL），其余只返回类型和大小 */
 export async function readForPreview(path: string): Promise<FilePreview> {
-  if (!path.startsWith('/')) return { kind: 'missing' }
+  if (!isAbsolute(path)) return { kind: 'missing' }
   let info
   try {
     info = await stat(path)
@@ -244,7 +244,7 @@ async function readHead(path: string, bytes: number): Promise<Buffer> {
 const watchers = new Map<string, number>()
 
 export function watchFile(path: string, onChange: () => void): void {
-  if (!path.startsWith('/')) return
+  if (!isAbsolute(path)) return
   const count = watchers.get(path) ?? 0
   watchers.set(path, count + 1)
   if (count === 0) fsWatchFile(path, { interval: 1000 }, (cur, prev) => cur.mtimeMs !== prev.mtimeMs && onChange())

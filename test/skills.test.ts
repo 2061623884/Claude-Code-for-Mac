@@ -23,6 +23,17 @@ it('parses quoted and folded frontmatter fields', () => {
   expect(parseFrontmatter('---\ndescription: "say \\"hi\\" now"\nname: \'it\'\'s\'\n---')).toEqual({ description: 'say "hi" now', name: "it's" })
 })
 
+it('includes nested manifest skill directories and deduplicates default entries', async () => {
+  const install = join(config, 'plugins', 'kit')
+  write(join(install, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'kit', skills: ['./skills/engineering/tdd', './skills/direct'] }))
+  write(join(install, 'skills/engineering/tdd/SKILL.md'), '---\nname: tdd\ndescription: test first\n---\nBody')
+  write(join(install, 'skills/direct/SKILL.md'), '---\nname: direct\n---\nBody')
+  write(join(config, 'plugins/installed_plugins.json'), JSON.stringify({ plugins: { 'kit@m': [{ scope: 'user', installPath: install }] } }))
+  const catalog = await readSkillCatalog(null)
+  expect(catalog.skills.map(s => s.name)).toEqual(['kit:direct', 'kit:tdd'])
+  expect(await readSkillBody(catalog.skills[1].path)).toBe('Body')
+})
+
 it('collects user, project, synced and plugin skills with plugin enablement', async () => {
   write(join(config, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\ndescription: personal\n---')
   write(join(config, 'commands', 'git', 'ship.md'), '# Ship\nShip the branch')

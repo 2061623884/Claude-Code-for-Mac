@@ -1,3 +1,4 @@
+import { isWindows } from '../../platform'
 import { useEffect, useState, type CSSProperties } from 'react'
 import { Activity, Compass, FileText, FolderOpen, Globe, ListTree, Maximize2, MessageCircleQuestion, Minimize2, Plus, Terminal, X } from 'lucide-react'
 import { fileName } from '@shared/fileLinks'
@@ -32,7 +33,8 @@ export function RightPanel({ sessionId, projectId }: { sessionId: string; projec
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
-  const available = windowWidth - (leftShown ? layout.leftWidth : 0)
+  const frameWidth = isWindows() ? (leftShown ? 10 : 18) : 0
+  const available = windowWidth - (leftShown ? layout.leftWidth : 0) - frameWidth
   const rightWidth = expanded ? available : Math.max(RIGHT.min, Math.min(layout.rightWidth, available - 420))
   const cwd = useDesk((s) => s.projects.find((p) => p.id === projectId)?.path)
   const options = useChat((s) => sessionId ? s.chats[sessionId]?.options : undefined)

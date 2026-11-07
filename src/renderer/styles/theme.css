@@ -82,6 +82,13 @@ body,
   height: 100%;
 }
 
+/* The Windows caption and navigation share one frame around the workspace. */
+#root[data-platform="windows"] {
+  box-sizing: border-box;
+  padding-top: 44px;
+  background: var(--sidebar);
+}
+
 body {
   margin: 0;
   background: var(--bg);

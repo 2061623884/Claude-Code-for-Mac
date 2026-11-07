@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { fileName, findBarePaths, looksLikePath, parsePathRef, relativePath, resolvePath } from '../src/shared/fileLinks'
+import { fileName, findBarePaths, looksLikePath, parsePathRef, pastedFilePaths, relativePath, resolvePath } from '../src/shared/fileLinks'
+
+it('recognizes native Windows paths in prose and Explorer clipboard lists', () => {
+  expect(findBarePaths(String.raw`Read C:\project\a.ts:12 and @src\b.ts`).map(m => m.ref)).toEqual([
+    { path: String.raw`C:\project\a.ts`, line: 12 }, { path: String.raw`src\b.ts` }
+  ])
+  expect(pastedFilePaths('"C:\\Work Space\\a.ts"\r\n"D:\\b.md"')).toEqual(['C:/Work Space/a.ts', 'D:/b.md'])
+  expect(pastedFilePaths('/Users/me/a.ts\n~/b.md', undefined, '/Users/me')).toEqual(['/Users/me/a.ts', '/Users/me/b.md'])
+  expect(pastedFilePaths('See C:\\a.ts')).toBeNull()
+  expect(pastedFilePaths('C:\\a.ts\nordinary prose')).toBeNull()
+  expect(relativePath('c:\\Project\\src\\a.ts', 'C:\\Project')).toBe('src/a.ts')
+  expect(relativePath('/Project/a.ts', '/project')).toBe('/Project/a.ts')
+})
+
+it('preserves Windows drives, spaces and UNC share roots when resolving file links', () => {
+  expect(resolvePath('C:\\Work Space\\src\\a.ts', 'D:\\Other')).toBe('C:/Work Space/src/a.ts')
+  expect(resolvePath('src/../a.ts', 'C:\\Work Space')).toBe('C:/Work Space/a.ts')
+  expect(resolvePath('~/notes.md', undefined, 'C:\\Users\\name')).toBe('C:/Users/name/notes.md')
+  expect(resolvePath('\\\\server\\share\\..\\a.ts')).toBe('//server/share/a.ts')
+  expect(parsePathRef('file:///C:/Work%20Space/a.ts:12')).toEqual({ path: 'C:/Work Space/a.ts', line: 12 })
+})
 
 describe('parsePathRef', () => {
   it('识别各种写法的路径和行号', () => {

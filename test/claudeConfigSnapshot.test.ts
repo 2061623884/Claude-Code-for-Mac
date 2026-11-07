@@ -50,7 +50,7 @@ it('notifies settings consumers only after a validated native save', async () =>
     await runLocalCommand('/project-a', '/config')
     expect(changed).not.toHaveBeenCalled()
     await runLocalCommand('/project-a', '/config language=Chinese')
-    expect(changed).toHaveBeenCalledWith({ cwd: '/project-a', scope: 'unknown' })
+    expect(changed).toHaveBeenCalledWith({ cwd: (await import('node:path')).resolve('/project-a'), scope: 'unknown' })
     changed.mockClear()
     fixture.invalid = true
     await expect(runLocalCommand('/project-a', '/config language=invalid')).rejects.toThrow('Invalid value')

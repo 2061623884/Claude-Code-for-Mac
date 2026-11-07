@@ -1,3 +1,4 @@
+import { isWindows } from '../../platform'
 import { UsageNav } from '../usage/UsageNav'
 import { useState } from 'react'
 import {
@@ -26,6 +27,7 @@ import { SkillsIcon } from '../skills/SkillsIcon'
 const VISIBLE_SESSIONS = 5
 
 export function Sidebar({ width }: { width: number }) {
+  const windows = isWindows()
   const { projects, sessions, view, demo, newChat, pickProject, setView, toggleSidebar, setSearchOpen } = useDesk()
   const [archivedOpen, setArchivedOpen] = useState(false)
   const [removing, setRemoving] = useState<Project | null>(null)
@@ -36,14 +38,14 @@ export function Sidebar({ width }: { width: number }) {
   const archived = projects.flatMap((p) => (sessions[p.id] ?? []).filter((s) => s.archived).map((s) => ({ s, p })))
 
   return (
-    <aside style={{ width }} className="flex h-full shrink-0 flex-col border-r border-line bg-sidebar">
-      <div className="drag flex h-[52px] shrink-0 items-center justify-end px-3">
+    <aside style={{ width }} className={`flex h-full shrink-0 flex-col bg-sidebar ${windows ? 'pt-2' : 'border-r border-line'}`}>
+      {!windows && <div className="drag flex h-[52px] shrink-0 items-center justify-end px-3">
         <div className="no-drag">
           <IconButton label="收起侧栏" onClick={toggleSidebar}>
             <PanelLeft size={16} />
           </IconButton>
         </div>
-      </div>
+      </div>}
 
       <nav className="px-2">
         <NavItem
@@ -54,7 +56,7 @@ export function Sidebar({ width }: { width: number }) {
         />
         <NavItem icon={<SkillsIcon size={16} />} label="技能与插件" active={view.kind === 'skills'} onClick={() => setView({ kind: 'skills' })} />
         <NavItem icon={<ScheduleIcon size={16} />} label="定时任务" active={view.kind === 'schedules'} onClick={() => setView({ kind: 'schedules' })} />
-        <NavItem icon={<Search size={16} />} label="搜索" hint="⌘K" active={false} onClick={() => setSearchOpen(true)} />
+        <NavItem icon={<Search size={16} />} label="搜索" hint={isWindows() ? 'Ctrl+K' : '⌘K'} active={false} onClick={() => setSearchOpen(true)} />
       </nav>
 
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
