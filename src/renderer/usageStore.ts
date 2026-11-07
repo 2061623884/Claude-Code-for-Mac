@@ -37,19 +37,22 @@ export const useUsage = create<State>((set, get) => ({
   }
 }))
 
-/** One shared foreground poll for sidebar and page. Focus checks do not bypass backoff. */
+/** One shared poll for sidebar and page while the window is visible (focus not required). Focus checks do not bypass backoff; coming back online does. */
 export function startUsagePolling(): () => void {
   let stopped = false
   // Let the model handshake start before the sidebar opens another CLI to fetch quota.
   const firstPoll = Date.now() + 5000
   const tick = (): void => {
-    if (stopped || document.hidden || !document.hasFocus() || Date.now() < firstPoll) return
+    if (stopped || document.hidden || Date.now() < firstPoll) return
     const state = useUsage.getState()
     const interval = Math.min(300000, 60000 * 2 ** Math.min(state.failures, 3))
     if (!state.lastAttempt || Date.now() - state.lastAttempt >= interval) void state.refresh()
   }
+  // Waking from sleep usually means the network was just restored: refresh right away instead of waiting out the backoff.
+  const online = (): void => { if (!stopped && !document.hidden && Date.now() >= firstPoll) void useUsage.getState().refresh() }
   const timer = window.setInterval(tick, 5000)
   window.addEventListener('focus', tick)
+  window.addEventListener('online', online)
   document.addEventListener('visibilitychange', tick)
-  return () => { stopped = true; clearInterval(timer); window.removeEventListener('focus', tick); document.removeEventListener('visibilitychange', tick) }
+  return () => { stopped = true; clearInterval(timer); window.removeEventListener('focus', tick); window.removeEventListener('online', online); document.removeEventListener('visibilitychange', tick) }
 }

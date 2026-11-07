@@ -48,6 +48,8 @@ function overview(): Promise<UsageOverview> {
     const profile = await profiles().get(account)
     try {
       const usage = toPlanUsage(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }))
+      // 睡眠唤醒、网络未就绪时接口可能"成功"但不带任何窗口；按失败处理，渲染端会保留上次结果并退避重试。
+      if (usage.available && !usage.windows.length) return { account, usage: null, usageError: '额度接口未返回数据', profile, updatedAt: Date.now() }
       return { account, usage, profile, updatedAt: Date.now() }
     } catch (error: any) {
       return { account, usage: null, usageError: String(error.message ?? error), profile, updatedAt: Date.now() }
