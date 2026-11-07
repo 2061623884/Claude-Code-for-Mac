@@ -18,7 +18,7 @@ function snapshot(): ClaudeConfigSnapshot { return { cliVersion: '2.1.301', item
 beforeEach(() => {
   useDesk.setState({ home: '/home', view: { kind: 'session', sessionId: 's', projectId: 'p' }, projects: [{ id: 'p', name: 'Project', path: '/project', addedAt: 0, collapsed: false }], selectedProjectId: 'p', settings: { theme: 'light', defaultModel: 'sonnet', defaultEffort: 'low', defaultPermissionMode: 'default', claudePath: null, allowBypass: false } })
   values = { autoCompact: 'true', language: 'English' }
-  window.desk = { meta: { cachedModels: vi.fn().mockResolvedValue(null), get: vi.fn().mockResolvedValue({ models: [], claudeVersion: null, subscriptionType: null }), configSnapshot: vi.fn().mockImplementation(async () => snapshot()), config: vi.fn(async (_path, value) => { if (value) { const index = value.indexOf('='); values[value.slice(0, index)] = value.slice(index + 1) }; return value ? 'Saved' : config }) }, chat: { control: vi.fn().mockResolvedValue({state:{rules:[]}}), mcp: vi.fn().mockResolvedValue([{ name: 'files', status: 'connected', tools: 7, scope: 'project' }]) } } as unknown as Window['desk']
+  window.desk = { meta: { cachedModels: vi.fn().mockResolvedValue(null), get: vi.fn().mockResolvedValue({ models: [], claudeVersion: null, subscriptionType: null }), configSnapshot: vi.fn().mockImplementation(async () => snapshot()), config: vi.fn(async (_path, value) => { if (value) { const index = value.indexOf('='); values[value.slice(0, index)] = value.slice(index + 1) }; return value ? 'Saved' : config }) }, chat: { reloadConfiguration: vi.fn().mockResolvedValue(undefined), applySetting: vi.fn().mockResolvedValue(undefined), mcp: vi.fn().mockResolvedValue([{ name: 'files', status: 'connected', tools: 7, scope: 'project' }]) } } as unknown as Window['desk']
 })
 afterEach(cleanup)
 it('hides editable stale values during refresh and ignores superseded reads', async () => {
@@ -217,7 +217,7 @@ it('does not cancel the save or claim live application when receiving its own in
   render(<ClaudeConfigSettings cwd="/project" />)
   fireEvent.click(await screen.findByRole('switch', { name: '自动压缩对话' }))
   await screen.findByText('已保存 · 后续启动生效')
-  expect(window.desk.chat.control).not.toHaveBeenCalled()
+  expect(window.desk.chat.applySetting).not.toHaveBeenCalled()
   expect(screen.getByRole('switch', { name: '自动压缩对话' }).getAttribute('aria-checked')).toBe('false')
 })
 
@@ -239,13 +239,13 @@ it('keeps desktop execution and workflow controls but hides terminal and unknown
 
 it('drops informational-only rows and reports reload errors in the desktop context page', async () => {
   useDesk.setState({ view: { kind: 'settings', tab: 'context', sessionId: 's', projectId: 'p' } })
-  window.desk.chat.control = vi.fn().mockRejectedValue(new Error('请等待当前任务结束后重载'))
+  window.desk.chat.reloadConfiguration = vi.fn().mockRejectedValue(new Error('请等待当前任务结束后重载'))
   render(<SettingsPage />)
   await screen.findByRole('switch', { name: '自动压缩对话' })
   expect(screen.queryByText('遵循 .gitignore')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '重新加载当前对话设置' }))
   expect((await screen.findByRole('alert')).textContent).toContain('请等待当前任务结束后重载')
-  expect(window.desk.chat.control).toHaveBeenCalledWith('s', '/project', 'reloadConfiguration')
+  expect(window.desk.chat.reloadConfiguration).toHaveBeenCalledWith('s', '/project')
 })
 
 
@@ -256,7 +256,7 @@ it('does not claim success or apply a value to the current session when reread d
   const input = await screen.findByLabelText('回复语言')
   fireEvent.change(input, { target: { value: 'Japanese' } })
   expect((await screen.findByRole('alert')).textContent).toContain('读取结果与所选值不一致')
-  expect(window.desk.chat.control).not.toHaveBeenCalled()
+  expect(window.desk.chat.applySetting).not.toHaveBeenCalled()
   expect(screen.getByRole('alert').textContent).toContain('当前读取值：English')
   expect((screen.getByLabelText('回复语言') as HTMLSelectElement).value).toBe('English')
 })
@@ -266,7 +266,7 @@ it('confirms immediate language application only after persisted value agrees', 
   render(<SettingsPage />)
   fireEvent.change(await screen.findByLabelText('回复语言'), { target: { value: 'Japanese' } })
   await screen.findByText('已保存 · 当前对话配置已确认')
-  expect(window.desk.chat.control).toHaveBeenCalledWith('s', '/project', 'applySetting', JSON.stringify({ key: 'language', value: 'Japanese' }))
+  expect(window.desk.chat.applySetting).toHaveBeenCalledWith('s', '/project', 'language', 'Japanese')
 })
 
 it('reports native test delivery and provides a system-settings shortcut', async () => {

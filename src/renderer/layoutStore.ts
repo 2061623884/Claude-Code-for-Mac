@@ -6,12 +6,14 @@ import { onProjectRemoved } from './projectLifecycle'
 export type RightTab = `file:${string}` | `page:${string}`
 export interface SidePage {
   id: `page:${string}`
-  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary' | 'chat' | 'controls'
+  kind: 'start' | 'files' | 'terminal' | 'browser' | 'summary' | 'chat' | 'controls' | 'tasks'
   sessionId?: string
   projectId?: string
   section?: SummaryView
   cwd?: string
   turnDiff?: string
+  /** 后台任务页里选中的任务 */
+  taskId?: string
 }
 export interface OpenFile { path: string; line?: number; nonce: number }
 interface SessionLayout {
@@ -49,6 +51,7 @@ interface LayoutStore extends SessionLayout {
   changePage(id: SidePage['id'], kind: SidePage['kind'], cwd?: string): void
   closePage(id: SidePage['id']): void
   openSummary(sessionId: string, projectId: string, section: SummaryView): void
+  openTasks(sessionId: string, projectId: string, taskId?: string): void
   openFile(path: string, line?: number): void
   closeFile(path: string): void
   setLeftWidth(width: number): void
@@ -106,6 +109,14 @@ export const useLayout = create<LayoutStore>((set, get) => {
       const id = existing?.id ?? `page:${crypto.randomUUID()}` as const
       if (!existing) set({ pages: [...get().pages, { id, kind: 'summary', sessionId, projectId, section }] })
       set({ rightOpen: true, rightTab: id })
+    },
+    openTasks: (sessionId, projectId, taskId) => {
+      if (sessionId !== get().activeSessionId) return
+      const existing = get().pages.find((p) => p.kind === 'tasks')
+      if (!existing && sidebarPageCount(get()) >= MAX_SIDEBAR_PAGES) return
+      const id = existing?.id ?? `page:${crypto.randomUUID()}` as const
+      const page: SidePage = { ...existing, id, kind: 'tasks', sessionId, projectId, taskId: taskId ?? existing?.taskId }
+      set({ pages: existing ? get().pages.map((p) => p.id === id ? page : p) : [...get().pages, page], rightOpen: true, rightTab: id })
     },
     changePage: (id, kind, cwd) => {
       if (!get().activeSessionId) return

@@ -1,13 +1,12 @@
-import { backgroundTaskView } from '../backgroundTasks'
 import { parseDesktopCommand, assertChatPrompt, type DesktopCommand } from '../../shared/sessionCommand'
 import { runLocalCommand } from '../localCommand'
 import { changeRule } from '../permissionRules'
-import { gitDiff } from '../gitDiff'
 import { access } from 'node:fs/promises'
 import * as store from '../store'
 import { historyIds, recordEdit } from '../sessions'
 import type { SessionPreferences, SessionPreferencesRepository } from '../sessionPreferences'
 import { randomUUID } from 'node:crypto'
+import type { LiveSetting, RuleChange } from '../../shared/sessionControl'
 import type { CommandInfo } from '../../shared/types'
 import type { BtwTurn, ChatEvent, ChatSnapshot, ContextUsage, Decision, QueueAction, QueuedMessage, McpStatus, SessionOptions } from '../../shared/chat'
 import { peekContext } from '../context'
@@ -38,7 +37,7 @@ export class SessionManager {
   private transcriptLoads = new Map<string, Promise<Transcript>>()
   /** 最近一次和会话文件同步时，文件里的消息条数；用来发现别处（终端、VS Code）续写了这个会话 */
   private seen = new Map<string, number>()
-  private sweeper = setInterval(() => this.closeIdle(), 60_000)
+  private sweeper = setInterval(() => this.recycle(), 60_000)
 
   private preferences: SessionPreferencesState
   private revisions = new Map<string, number>()
@@ -95,6 +94,7 @@ export class SessionManager {
       runtime: session?.runtime,
       activity: session?.activity.snapshot(),
       summary: transcript.activity.snapshot(),
+      tasks: session?.backgroundTasks() ?? [],
       messages: structuredClone(transcript.messages),
       state: session?.state ?? 'idle',
       approvals: session?.approvals ?? [],
@@ -115,7 +115,7 @@ export class SessionManager {
   /** 正在回复、等待确认或仍有后台任务在跑 */
   isBusy(sessionId: string): boolean {
     const live = this.live.get(sessionId)
-    return Boolean(live && (live.state !== 'idle' || live.approvals.length || [...live.tasks.values()].some(task => task.status === 'running')))
+    return Boolean(live && (live.state !== 'idle' || live.approvals.length || live.hasBackgroundWork()))
   }
 
   edit(sessionId: string, projectPath: string, messageId: string, text: string): Promise<void> {
@@ -297,65 +297,94 @@ export class SessionManager {
   setWorkflows(sessionId: string, workflows: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { workflows })) }
   setFastMode(sessionId: string, enabled: boolean): Promise<void> { return this.lock(sessionId, () => this.applyOptions(sessionId, { fastMode: enabled }, true)) }
 
-  async control(sessionId: string, path: string, operation: string, value?: string): Promise<any> {
+  rules(sessionId: string, path: string) {
+    return this.withRuntime(sessionId, path, live => live.permissionRules())
+  }
+
+  taskOutput(sessionId: string, path: string, taskId: string) {
+    return this.withRuntime(sessionId, path, live => live.taskOutput(taskId))
+  }
+
+  stopTask(sessionId: string, path: string, taskId: string): Promise<void> {
+    return this.withRuntime(sessionId, path, live => live.stopTask(taskId))
+  }
+
+  rewindPreview(sessionId: string, path: string, target: string) {
+    return this.withRuntime(sessionId, path, live => live.rewind(target, true))
+  }
+
+  applySetting(sessionId: string, path: string, key: LiveSetting, value: string): Promise<void> {
     return this.lock(sessionId, async () => {
-      if (operation === 'diff') return gitDiff(path, value ?? 'working')
       const live = await this.ensureLive(sessionId, path, this.options(sessionId))
-      if (operation === 'tasks') return [...live.tasks.values()].map(backgroundTaskView)
-      if (operation === 'applySetting') {
-        const patch = JSON.parse(value ?? '{}')
-        if (typeof patch.key !== 'string' || typeof patch.value !== 'string') throw new Error('无效设置')
-        await live.applySetting(patch.key, patch.value)
-        await live.refreshRuntime()
-        return
+      await live.readyForControls()
+      await live.applySetting(key, value)
+      await live.refreshRuntime()
+    })
+  }
+
+  changeRule(sessionId: string, path: string, change: RuleChange) {
+    return this.lock(sessionId, async () => {
+      const live = await this.ensureLive(sessionId, path, this.options(sessionId))
+      const state = await live.permissionRules()
+      if (state.managedOnly) throw new Error('当前策略不允许编辑权限规则')
+      if (change.remove && !state.rules.some(r => r.rule === change.rule && r.source === change.source && r.behavior === change.behavior && r.editability === 'persistent')) throw new Error('该规则无法撤销')
+      await changeRule(path, change)
+      await live.refreshConfiguration()
+      return live.permissionRules()
+    })
+  }
+
+  reloadConfiguration(sessionId: string, path: string): Promise<void> {
+    return this.lock(sessionId, async () => {
+      this.assertInactive(sessionId, '重载')
+      this.closeSession(sessionId)
+      const live = await this.ensureLive(sessionId, path, this.options(sessionId))
+      await live.readyForControls()
+      await live.refreshRuntime()
+    })
+  }
+
+  restoreConversation(sessionId: string, path: string, messageId: string): Promise<string> {
+    return this.lock(sessionId, async () => {
+      this.assertInactive(sessionId, '恢复对话')
+      const original = await this.transcript(sessionId, path)
+      const message = original.messages.find(m => m.id === messageId && m.role === 'user')
+      if (!message || message.forkFrom === undefined) throw new Error('找不到可恢复的消息位置')
+      const options = { ...this.options(sessionId) }
+      if (message.forkFrom === null) {
+        const id = randomUUID()
+        const transcript = new Transcript(path)
+        this.transcripts.set(id, transcript)
+        this.updatePrefs(id, p => { p.options = options })
+        this.spawn(id, path, false, options, transcript)
+        return id
       }
-      if (operation === 'changeRule') {
-        const change = JSON.parse(value ?? '{}')
-        const reply = await live.control({ subtype: 'list_permission_rules' })
-        const state = reply.state ?? reply.response?.state
-        if (!state || state.managedOnly) throw new Error('当前策略不允许编辑权限规则')
-        if (change.remove && !state.rules.some((r: any) => r.rule === change.rule && r.source === change.source && r.behavior === change.behavior && r.editability === 'persistent')) throw new Error('该规则无法撤销')
-        await changeRule(path, change)
-        await live.refreshConfiguration()
-        return live.control({ subtype: 'list_permission_rules' })
-      }
-      if (operation === 'reloadConfiguration') {
-        if (live.state !== 'idle') throw new Error('请等待当前任务结束后重载')
-        this.closeSession(sessionId)
-        const replacement = await this.ensureLive(sessionId, path, this.options(sessionId))
-        await replacement.readyForControls()
-        await replacement.refreshRuntime()
-        return
-      }
-      if (operation === 'rules') return live.control({ subtype: 'list_permission_rules' })
-      if (operation === 'taskOutput') return live.taskOutput(value!)
-      if (operation === 'stopTask') { await live.stopTask(value!); return }
-      if (operation === 'rewindPreview') return live.rewind(value!, true)
-      if (operation === 'restoreConversation') {
-        if (live.state !== 'idle') throw new Error('请等待当前任务结束后恢复对话')
-        const target = JSON.parse(value ?? '{}')
-        const original = await this.transcript(sessionId, path)
-        const message = original.messages.find(m => m.id === target.messageId && m.role === 'user')
-        if (!message || message.forkFrom === undefined) throw new Error('找不到可恢复的消息位置')
-        const options = { ...this.options(sessionId) }
-        if (message.forkFrom === null) {
-          const id = randomUUID()
-          const transcript = new Transcript(path)
-          this.transcripts.set(id, transcript)
-          this.updatePrefs(id, p => { p.options = options })
-          this.spawn(id, path, false, options, transcript)
-          return id
-        }
-        const sdk = await loadSdk()
-        const result = await sdk.forkSession(this.historyId(sessionId), { dir: path, upToMessageId: message.forkFrom })
-        this.updatePrefs(result.sessionId, p => { p.options = options })
-        return result.sessionId
-      }
-      if (operation === 'rewindFiles') {
-        if (live.state !== 'idle') throw new Error('请等待当前任务结束后恢复文件')
-        return live.rewind(value!, false)
-      }
-      throw new Error('不支持的会话操作')
+      const sdk = await loadSdk()
+      const result = await sdk.forkSession(this.historyId(sessionId), { dir: path, upToMessageId: message.forkFrom })
+      this.updatePrefs(result.sessionId, p => { p.options = options })
+      return result.sessionId
+    })
+  }
+
+  rewindFiles(sessionId: string, path: string, target: string) {
+    return this.lock(sessionId, async () => {
+      this.assertInactive(sessionId, '恢复文件')
+      const live = await this.ensureLive(sessionId, path, this.options(sessionId))
+      return live.rewind(target, false)
+    })
+  }
+
+  private assertInactive(sessionId: string, action: string): void {
+    if (this.isBusy(sessionId)) throw new Error(`请等待当前任务及后台任务结束后${action}`)
+  }
+
+  /** Non-serial operations hold an eviction lease. Reload invalidates their late answers. */
+  private withRuntime<T>(sessionId: string, path: string, operation: (live: LiveSession) => Promise<T>): Promise<T> {
+    return this.live.use(sessionId, async () => {
+      const live = await this.ensureLive(sessionId, path, this.options(sessionId))
+      const result = await operation(live)
+      if (this.live.get(sessionId) !== live) throw new Error('会话已重载或结束，请重新读取')
+      return result
     })
   }
 
@@ -451,7 +480,7 @@ export class SessionManager {
     transcript: Transcript,
     fork?: { from: string; at: string }
   ): LiveSession {
-    this.evictIfFull()
+    this.recycle(1)
     const historyId = this.historyId(sessionId)
     const emit = (event: ChatEvent): void => {
       if (event.kind === 'summary') this.activityStore?.save(historyId, transcript.activity.export())
@@ -556,7 +585,7 @@ export class SessionManager {
     await runLocalCommand(cwd, `/config ${setting}`)
     try {
       if (key === 'model') await this.applyOptions(id, { model: ['auto', 'default'].includes(value) ? null : value }, true)
-      else if (['outputStyle', 'language', 'thinking'].includes(key)) {
+      else if (key === 'outputStyle' || key === 'language' || key === 'thinking') {
         const live = this.live.get(id)
         if (live) { await live.applySetting(key, value); await live.refreshRuntime() }
       }
@@ -628,17 +657,19 @@ export class SessionManager {
     }
   }
 
-  /** 同时运行的进程太多时，关掉最久没用的空闲会话 */
-  private evictIfFull(): void {
-    if (this.live.size < MAX_LIVE) return
-    const idle = this.live.idle().sort((a, b) => a[1].lastActive - b[1].lastActive)
-    const victim = idle[0]
-    if (victim) this.closeSession(victim[0])
-  }
-
-  private closeIdle(): void {
+  /**
+   * 运行中的会话超过 MAX_LIVE 个时，才回收闲置超过 IDLE_MS 的会话，从最久没用的开始。
+   * 没超出上限就全部保留；超出但都没闲置够时，暂时允许多开，等下一轮再回收。
+   * reserve 是即将新建、还没登记的会话数。
+   */
+  private recycle(reserve = 0): void {
+    const excess = this.live.size + reserve - MAX_LIVE
+    if (excess <= 0) return
     const now = Date.now()
-    for (const [id, s] of this.live.idle()) if (now - s.lastActive > IDLE_MS) this.closeSession(id)
+    const stale = this.live.idle()
+      .filter(([, s]) => now - s.lastActive > IDLE_MS)
+      .sort((a, b) => a[1].lastActive - b[1].lastActive)
+    for (const [id] of stale.slice(0, excess)) this.closeSession(id)
   }
 
   private closeSession(id: string): void {

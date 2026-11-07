@@ -122,6 +122,7 @@ export type ChatEvent = (
   | { kind: 'queue'; queue: SessionQueue }
   | { kind: 'activity'; activity: ChatActivity }
   | { kind: 'summary'; summary: SessionSummaryData }
+  | { kind: 'tasks'; tasks: BackgroundTask[] }
   | { kind: 'upsert'; messages: UiMessage[] }
   | { kind: 'replaceHistory'; snapshot: ChatSnapshot }
   | { kind: 'state'; state: ChatState }
@@ -130,6 +131,24 @@ export type ChatEvent = (
   | { kind: 'result'; resultId?: string; replyPreview?: string; durationMs: number; error: string | null; diagnostic?: { subtype: string; errors: string[]; terminalReason?: string; userMessageIds: string[]; userStopped: boolean } }
   | { kind: 'notice'; text: string }
 ) & { revision?: number }
+
+export type BackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped' | 'ended'
+/** 后台任务（后台命令、子 Agent、监控、工作流）在界面上需要的字段 */
+export interface BackgroundTask {
+  id: string
+  runId?: string
+  /** local_bash、local_agent、local_monitor、local_workflow 等 */
+  type?: string
+  description: string
+  status: BackgroundTaskStatus
+  startedAt: number
+  endedAt?: number
+  tokens?: number
+  toolUses?: number
+  lastTool?: string
+  summary?: string
+  agents: { id: string; label?: string; state?: string; tokens?: number }[]
+}
 
 /** 当前上下文窗口的占用情况 */
 export interface ContextUsage {
@@ -155,6 +174,8 @@ export interface ChatSnapshot {
   queue?: SessionQueue
   activity?: ChatActivity
   summary?: SessionSummaryData
+  /** 当前进程里的后台任务；会话进程结束后为空 */
+  tasks?: BackgroundTask[]
   messages: UiMessage[]
   state: ChatState
   approvals: ApprovalRequest[]

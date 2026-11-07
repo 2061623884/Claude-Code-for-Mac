@@ -2,7 +2,7 @@ import type { ChatEvent, ChatSnapshot, SessionOptions } from '@shared/chat'
 
 interface Version { received: number; revision?: number }
 type ApprovalEvent = Extract<ChatEvent, { kind: 'approval' | 'approvalDone' }>
-type Field = 'options' | 'runtime' | 'queue' | 'activity' | 'summary' | 'state' | 'error' | 'lastResult'
+type Field = 'options' | 'runtime' | 'queue' | 'activity' | 'summary' | 'tasks' | 'state' | 'error' | 'lastResult'
 interface SyncState {
   fields: Partial<Record<Field, Version>>
   messages: Record<string, Version>
@@ -42,6 +42,7 @@ export function applyChatEvent(current: ChatProjection, event: ChatEvent, receiv
     case 'queue': return fields(['queue'], { queue: event.queue })
     case 'activity': return fields(['activity'], (current.activity?.revision ?? 0) <= event.activity.revision ? { activity: event.activity } : {})
     case 'summary': return fields(['summary'], { summary: event.summary })
+    case 'tasks': return fields(['tasks'], { tasks: event.tasks })
     case 'state': return fields(['state'], { state: event.state })
     case 'notice': return fields(['error'], { error: event.text })
     case 'result': return fields(['error', 'lastResult'], { error: event.error, lastResult: event })
@@ -99,6 +100,7 @@ export function mergeChatSnapshot(current: ChatProjection, snapshot: ChatSnapsho
     state: newer(sync.fields.state) || (snapshot.revision === undefined && activityNewer) ? current.state : snapshot.state,
     activity: activityNewer ? current.activity : snapshot.activity,
     summary: newer(sync.fields.summary) ? current.summary : snapshot.summary,
+    tasks: newer(sync.fields.tasks) ? current.tasks : snapshot.tasks ?? [],
     messages: [...snapshot.messages.map(m => byId.get(m.id) ?? m), ...updates.filter(m => !known.has(m.id))],
     approvals,
     error: clearError && !newer(sync.fields.error) ? null : current.error,

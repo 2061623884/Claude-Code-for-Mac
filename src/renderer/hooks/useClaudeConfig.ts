@@ -60,9 +60,9 @@ export function useClaudeConfig(cwd: string) {
         return
       }
       let status = '已保存 · 后续启动生效'
-      if (route.kind === 'settings' && route.sessionId && ['outputStyle', 'language', 'thinking'].includes(key)) {
+      if (route.kind === 'settings' && route.sessionId && (key === 'outputStyle' || key === 'language' || key === 'thinking')) {
         try {
-          await window.desk.chat.control(route.sessionId, cwd, 'applySetting', JSON.stringify({ key, value }))
+          await window.desk.chat.applySetting(route.sessionId, cwd, key, value)
           status = '已保存 · 当前对话配置已确认'
         } catch (e) { status = '已保存 · 当前对话应用失败，请重载：' + errorText(e) }
       }

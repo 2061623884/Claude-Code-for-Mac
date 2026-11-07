@@ -4,20 +4,13 @@ import { createContext, useContext, useRef, useState, type ReactNode } from 'rea
 import { createPortal } from 'react-dom'
 import { FileText, Folder } from 'lucide-react'
 import { fileName, findBarePaths, resolvePath, type PathRef } from '@shared/fileLinks'
-import { useLayout } from '../../layoutStore'
+import { openPath } from '../../openPath'
 import { usePathKind } from '../../pathKinds'
 import { useDesk } from '../../store'
 import { AttachmentCard } from './AttachmentCard'
 
 /** 解析相对路径用的项目目录 */
 export const FileContext = createContext<{ cwd?: string }>({})
-
-/** 打开文件：普通点击在右栏预览，⌘ 点击用默认应用打开；文件夹在 Finder 中显示 */
-export function openPath(path: string, kind: 'file' | 'dir', line?: number, external = false): void {
-  if (kind === 'dir') void window.desk.projects.revealInFinder(path)
-  else if (external) void window.desk.files.open(path).catch(() => {})
-  else useLayout.getState().openFile(path, line)
-}
 
 export function FileLink({ pathRef, fallback, attachment = false }: { pathRef: PathRef; fallback: ReactNode; attachment?: boolean }) {
   const { cwd } = useContext(FileContext)

@@ -33,8 +33,9 @@ export class SessionRuntimes {
     }
   }
 
+  /** 可以回收的会话：空闲、没有进行中的操作，也没有后台任务在跑 */
   idle(): [string, LiveSession][] {
-    return [...this.sessions].filter(([id, session]) => session.state === 'idle' && !this.uses.has(id))
+    return [...this.sessions].filter(([id, session]) => session.state === 'idle' && !this.uses.has(id) && !session.hasBackgroundWork())
   }
 
   add(id: string, session: LiveSession): void {

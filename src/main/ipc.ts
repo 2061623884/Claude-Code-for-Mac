@@ -8,6 +8,7 @@ import type { DemoState, Settings } from '../shared/types'
 import { broadcast as broadcastEvent, registerNamespace } from './ipc/register'
 import { SessionManager } from './live/SessionManager'
 import * as files from './files'
+import { gitDiff } from './gitDiff'
 import * as meta from './meta'
 import { planUsage, toPlanUsage } from './usage'
 import { withIdleQuery } from './sdk'
@@ -176,6 +177,7 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
   })
 
   registerNamespace('files', {
+    diff: (_e, path, source) => gitDiff(path, source),
     saveImage: async (_e, bytes, mime) => {
       const extensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }
       const ext = extensions[mime]
@@ -220,7 +222,15 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
     interrupt: (_e, id) => chats.interrupt(id),
     setMode: (_e, id, mode) => chats.setMode(id, mode),
     setModel: (_e, id, model) => chats.setModel(id, model),
-    control: (_e, id, path, operation, value) => chats.control(id, path, operation, value),
+    rules: (_e, id, path) => chats.rules(id, path),
+    changeRule: (_e, id, path, change) => chats.changeRule(id, path, change),
+    applySetting: (_e, id, path, key, value) => chats.applySetting(id, path, key, value),
+    reloadConfiguration: (_e, id, path) => chats.reloadConfiguration(id, path),
+    taskOutput: (_e, id, path, taskId) => chats.taskOutput(id, path, taskId),
+    stopTask: (_e, id, path, taskId) => chats.stopTask(id, path, taskId),
+    rewindPreview: (_e, id, path, target) => chats.rewindPreview(id, path, target),
+    rewindFiles: (_e, id, path, target) => chats.rewindFiles(id, path, target),
+    restoreConversation: (_e, id, path, messageId) => chats.restoreConversation(id, path, messageId),
     setWorkflows: (_e, id, value) => chats.setWorkflows(id, value),
     setFastMode: (_e, id, value) => chats.setFastMode(id, value),
     setUltracode: (_e, id, enabled) => chats.setUltracode(id, enabled),

@@ -2,6 +2,7 @@ import { useComposerDrafts } from '../../composerDraftStore'
 import { useEffect, useRef, useState } from 'react'
 import { Ellipsis, FileClock, Files, GitBranch } from 'lucide-react'
 import type { UiMessage } from '@shared/chat'
+import type { FileRewindResult } from '@shared/sessionControl'
 import { useDesk } from '../../store'
 import { useChat } from '../../chatStore'
 
@@ -9,7 +10,7 @@ export function RestoreMessage({ message }: { message: UiMessage }) {
   const view = useDesk(s => s.view)
   const chat = useChat(s => view.kind === 'session' ? s.chats[view.sessionId] : undefined)
   const [open, setOpen] = useState(false)
-  const [preview, setPreview] = useState<any>()
+  const [preview, setPreview] = useState<FileRewindResult>()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmFiles, setConfirmFiles] = useState<'files' | 'both' | null>(null)
@@ -37,10 +38,9 @@ export function RestoreMessage({ message }: { message: UiMessage }) {
   const sessionId = view.sessionId
   const project = useDesk.getState().projects.find(p => p.id === chat.projectId)
   if (!project) return null
-  const control = (operation: string, target?: string) => window.desk.chat.control(sessionId, project.path, operation, target)
   async function show() {
     setPreview(undefined); setConfirmFiles(null); setOpen(true); setBusy(true); setError('')
-    try { setPreview(await control('rewindPreview', message.uuid ?? message.id)) }
+    try { setPreview(await window.desk.chat.rewindPreview(sessionId, project!.path, message.uuid ?? message.id)) }
     catch (e) { setError(String(e)) }
     finally { setBusy(false) }
   }
@@ -49,12 +49,12 @@ export function RestoreMessage({ message }: { message: UiMessage }) {
     let filesRestored = false
     try {
       if (files) {
-        const result = await control('rewindFiles', message.uuid ?? message.id)
+        const result = await window.desk.chat.rewindFiles(sessionId, project!.path, message.uuid ?? message.id)
         if (!result.canRewind || result.skippedLinks) throw new Error(result.error ?? '部分文件未恢复，请检查文件状态')
         filesRestored = true
       }
       if (conversation) {
-        const id = await control('restoreConversation', JSON.stringify({ messageId: message.id }))
+        const id = await window.desk.chat.restoreConversation(sessionId, project!.path, message.id)
 
         useComposerDrafts.getState().updateDraft(id, { text: message.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n') })
         useDesk.getState().addPendingSession(project!.id, id, '恢复的对话')

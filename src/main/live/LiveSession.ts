@@ -4,6 +4,8 @@ import type { CanUseTool, HookCallback, McpServerStatus, PermissionResult, Permi
 import { observeClaudeConfig, isConfigMutation } from '../claudeConfigChanges'
 import { runLocalCommand } from '../localCommand'
 import { readTrackedTaskOutput } from '../taskOutput'
+import { readPermissionRules, readTaskOutput } from '../sessionControlProtocol'
+import type { LiveSetting, PermissionRules, TaskOutput } from '../../shared/sessionControl'
 import { readConfigState } from '../claudeConfigProtocol'
 import type { RuntimeSettings } from '../../shared/chat'
 import { randomUUID } from 'node:crypto'
@@ -55,7 +57,8 @@ const debug = (...args: unknown[]): void => {
 
 export class LiveSession {
   readonly activity = new TurnActivity()
-  tasks = new Map<string, Record<string, unknown>>()
+  get tasks() { return this.init.transcript.activity.taskTracker.tasks }
+  private publishedTasks = '[]'
   runtime: RuntimeSettings = {}
   state: ChatState = 'idle'
   lastActive = Date.now()
@@ -246,13 +249,10 @@ export class LiveSession {
     }
   }
 
-  async control(request: Record<string, unknown>): Promise<any> {
-    const q = await this.query()
-    const bridge = q as unknown as { request(request: Record<string, unknown>): Promise<any> }
-    return bridge.request(request)
-  }
+  async permissionRules(): Promise<PermissionRules> { return readPermissionRules(await this.query()) }
+  async configurationState() { return readConfigState(await this.query()) }
 
-  async taskOutput(taskId: string): Promise<{ output: string }> {
+  async taskOutput(taskId: string): Promise<TaskOutput> {
     const task = this.tasks.get(taskId)
     if (task?.task_type === 'local_workflow') {
       const empty = ['stopped', 'killed'].includes(String(task.status)) ? '工作流已停止，尚未生成结果。'
@@ -261,10 +261,10 @@ export class LiveSession {
       try { return { output: (await readTrackedTaskOutput(task.output_file)) || empty } }
       catch (error: any) { if (error.code === 'ENOENT' && ['stopped', 'killed'].includes(String(task.status))) return { output: empty }; throw error }
     }
-    return this.control({ subtype: 'get_task_output', task_id: taskId })
+    return readTaskOutput(await this.query(), taskId)
   }
 
-  async applySetting(key: string, value: string): Promise<void> {
+  async applySetting(key: LiveSetting, value: string): Promise<void> {
     const settings: Record<string, unknown> = {}
     if (key === 'outputStyle' || key === 'language') settings[key] = value
     else if (key === 'thinking') settings.alwaysThinkingEnabled = value === 'true'
@@ -385,6 +385,7 @@ export class LiveSession {
     this.activity.finish()
     this.init.transcript.activity.markInactive()
     this.flush()
+    this.publishTasks()
     try {
       this.q?.close()
     } catch (error) {
@@ -470,18 +471,10 @@ export class LiveSession {
 
   private handle(m: SDKMessage): void {
     this.lastActive = Date.now()
-    if (m.type === 'system') {
-      const event = m as unknown as Record<string, any>
-      if (event.subtype === 'background_tasks_changed') {
-        for (const [id, task] of this.tasks) if (task.status === 'running' && !event.tasks.some((t: any) => t.task_id === id)) task.status = 'ended'
-        for (const task of event.tasks) this.tasks.set(task.task_id, { ...this.tasks.get(task.task_id), ...task, status: 'running' })
-      } else if (String(event.subtype).startsWith('task_') && event.task_id) {
-        this.tasks.set(event.task_id, { ...this.tasks.get(event.task_id), ...event, ...event.patch, status: event.status ?? event.patch?.status ?? (event.subtype === 'task_notification' ? 'completed' : 'running') })
-      }
-    }
     if (m.type === 'system' && m.subtype === 'commands_changed') { this.commandsChanged = true; this.publishCommands(m.commands) }
     this.activity.apply(m)
     this.init.transcript.apply(m, 'live')
+    if (m.type === 'system' && (m.subtype === 'background_tasks_changed' || m.subtype.startsWith('task_'))) this.publishTasks()
     this.activity.locate(this.init.transcript.messages, m)
     if (m.type === 'assistant' && !m.parent_tool_use_id) {
       const ids = [...(m.user_message_uuids ?? []), ...(m.user_message_uuid ? [m.user_message_uuid] : [])]
@@ -521,6 +514,21 @@ export class LiveSession {
     if (state === this.state) return
     this.state = state
     this.init.emit({ kind: 'state', state })
+  }
+
+  /** 有后台任务在跑（不含前台子 Agent 和 CLI 内部任务）。这样的会话不能因闲置被回收，否则任务会被一起停掉 */
+  hasBackgroundWork(): boolean {
+    return this.init.transcript.activity.taskTracker.hasBackgroundWork()
+  }
+
+  backgroundTasks() { return this.init.transcript.activity.taskTracker.list() }
+
+  private publishTasks(): void {
+    const tasks = this.backgroundTasks()
+    const text = JSON.stringify(tasks)
+    if (text === this.publishedTasks) return
+    this.publishedTasks = text
+    this.init.emit({ kind: 'tasks', tasks })
   }
 
   private scheduleFlush(): void {

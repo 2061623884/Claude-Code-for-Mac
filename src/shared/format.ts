@@ -166,6 +166,15 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** 时长：45 秒、3 分 12 秒、1 小时 5 分 */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60
+  if (h) return `${h} 小时${m ? ` ${m} 分` : ''}`
+  if (m) return `${m} 分${s ? ` ${s} 秒` : ''}`
+  return `${s} 秒`
+}
+
 /** 消息时间：今天的只显示时分，更早的带上日期 */
 export function formatClock(ms: number, now = Date.now()): string {
   const d = new Date(ms)

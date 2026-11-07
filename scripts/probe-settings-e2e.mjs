@@ -240,7 +240,7 @@ try {
    console.log('WRITE',value,await runLocalCommand(root,`/config workflows=${value}`))
    const snap=await readClaudeConfig(root);console.log('READ',JSON.stringify(snap.items.filter(i=>i.key==='workflows')))
    await start(undefined,false,{model:'opus',effort:'high'})
-   const r=await session.control({subtype:'get_settings'});const state=r.response??r
+   const state=await session.configurationState()
    console.log('EFFECTIVE',JSON.stringify({enableWorkflows:state.effective?.enableWorkflows,disableWorkflows:state.effective?.disableWorkflows,applied:state.applied}))
    for(const name of ['settings.json','.claude.json']){try{const d=JSON.parse(await readFile(join(config,name),'utf8'));console.log('FILE',name,JSON.stringify(Object.fromEntries(Object.entries(d).filter(([k])=>/workflow/i.test(k)))))}catch{}}
   }

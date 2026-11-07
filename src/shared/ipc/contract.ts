@@ -1,6 +1,7 @@
 // 渲染进程和主进程之间唯一的接口定义：preload 按它生成 window.desk，主进程按它注册和校验处理函数。
 // 通道名一律是「命名空间:方法名」，不要在别处手写通道字符串。
 import type { ClaudeConfigChange, ClaudeConfigSnapshot } from '../claudeConfig'
+import type { DiffSource, FileRewindResult, LiveSetting, PermissionRules, RuleChange, TaskOutput } from '../sessionControl'
 import type { UsageAnalytics, UsageOverview, UsageProfile } from '../usageAnalytics'
 import type { CommandCatalogSnapshot } from '../commandCatalog'
 import type { BrowserState, ViewBounds } from '../workspace'
@@ -108,6 +109,7 @@ export const contract = {
     onConfigChanged: event<[change: ClaudeConfigChange]>()
   },
   files: {
+    diff: invoke<[projectPath: string, source: DiffSource], string>(),
     /** Electron 44 不再在 File 对象上暴露 path，需要通过 webUtils 转换 */
     pathFor: local<(file: File) => string>(),
     saveImage: invoke<[bytes: Uint8Array, mime: string], string>(),
@@ -141,7 +143,15 @@ export const contract = {
     interrupt: invoke<[sessionId: string]>(),
     setMode: invoke<[sessionId: string, mode: PermissionMode]>(),
     setModel: invoke<[sessionId: string, model: string | null]>(),
-    control: invoke<[sessionId: string, path: string, operation: string, value?: string], any>(),
+    rules: invoke<[sessionId: string, path: string], PermissionRules>(),
+    changeRule: invoke<[sessionId: string, path: string, change: RuleChange], PermissionRules>(),
+    applySetting: invoke<[sessionId: string, path: string, key: LiveSetting, value: string]>(),
+    reloadConfiguration: invoke<[sessionId: string, path: string]>(),
+    taskOutput: invoke<[sessionId: string, path: string, taskId: string], TaskOutput>(),
+    stopTask: invoke<[sessionId: string, path: string, taskId: string]>(),
+    rewindPreview: invoke<[sessionId: string, path: string, target: string], FileRewindResult>(),
+    rewindFiles: invoke<[sessionId: string, path: string, target: string], FileRewindResult>(),
+    restoreConversation: invoke<[sessionId: string, path: string, messageId: string], string>(),
     setWorkflows: invoke<[sessionId: string, enabled: boolean]>(),
     prepareControls: invoke<[sessionId: string, projectPath: string]>(),
     setFastMode: invoke<[sessionId: string, enabled: boolean]>(),

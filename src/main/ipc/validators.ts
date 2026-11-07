@@ -4,6 +4,7 @@ import type { ArgsOf, InvokeChannel } from '../../shared/ipc/contract'
 import type { SessionOptions } from '../../shared/chat'
 import type { ScheduledTaskInput } from '../../shared/schedules'
 import type { Settings } from '../../shared/types'
+import type { RuleChange } from '../../shared/sessionControl'
 
 export type Validator<A extends unknown[]> = (raw: unknown[]) => A
 /** 对象的每个字段都要有 schema；类型新增字段而这里没跟上时编译失败，避免被 zod 悄悄剥掉 */
@@ -96,6 +97,7 @@ const scheduledTask = () => arg('task', z.object({
 const nullableModel = () => arg('model', z.string().nullish().transform(value => value ?? null))
 
 export const validators: { [C in InvokeChannel]: Validator<ArgsOf<C>> } = {
+  'files:diff': args(text('path'), arg('source', z.enum(['working', 'branch']))),
   'usage:overview': args(),
   'usage:stats': args(looseFlag('refresh')),
   'usage:saveProfile': args(text('accountKey'), arg('profile', z.object({ name: z.string(), avatar: z.string().nullable() }))),
@@ -176,7 +178,18 @@ export const validators: { [C in InvokeChannel]: Validator<ArgsOf<C>> } = {
   'chat:interrupt': args(text('id')),
   'chat:setMode': args(text('id'), arg('mode', permissionMode)),
   'chat:setModel': args(text('id'), nullableModel()),
-  'chat:control': args(text('id'), text('path'), text('operation'), arg('value', z.unknown().transform(value => typeof value === 'string' ? value : undefined))),
+  'chat:rules': args(text('id'), text('path')),
+  'chat:changeRule': args(text('id'), text('path'), arg('change', z.object({
+    source: z.enum(['userSettings', 'projectSettings', 'localSettings']),
+    behavior: z.enum(['allow', 'ask', 'deny']), rule: z.string().min(1).refine(value => Boolean(value.trim()) && !/[\r\n\0]/.test(value)), remove: z.boolean().optional()
+  } satisfies Shape<RuleChange>))),
+  'chat:applySetting': args(text('id'), text('path'), arg('key', z.enum(['outputStyle', 'language', 'thinking'])), text('value')),
+  'chat:reloadConfiguration': args(text('id'), text('path')),
+  'chat:taskOutput': args(text('id'), text('path'), text('taskId')),
+  'chat:stopTask': args(text('id'), text('path'), text('taskId')),
+  'chat:rewindPreview': args(text('id'), text('path'), text('target')),
+  'chat:rewindFiles': args(text('id'), text('path'), text('target')),
+  'chat:restoreConversation': args(text('id'), text('path'), text('messageId')),
   'chat:setWorkflows': args(text('id'), switchValue('workflows')),
   'chat:prepareControls': args(text('id'), text('path')),
   'chat:setFastMode': args(text('id'), switchValue('fastMode')),

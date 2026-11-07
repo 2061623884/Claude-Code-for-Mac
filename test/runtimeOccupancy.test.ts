@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { SessionManager } from '../src/main/live/SessionManager'
 import { PushQueue } from '../src/main/live/PushQueue'
+import type { SessionRuntimes } from '../src/main/live/SessionRuntimes'
 
 const sdk = vi.hoisted(() => ({ query: vi.fn(), getSessionMessages: vi.fn() }))
 vi.mock('../src/main/sdk', () => ({ loadSdk: async () => sdk, claudeExecutable: () => undefined }))
@@ -33,6 +34,10 @@ async function idleSession(id = 'side') {
   await manager.sideQuestion(id, '/tmp', 'warm up', [], options)
   return sdk.query.mock.results.at(-1)!.value as ReturnType<typeof query>
 }
+/** 把会话的最后活动时间往前拨，模拟已闲置超过 15 分钟 */
+function age(id = 'side') {
+  (manager as unknown as { live: SessionRuntimes }).live.get(id)!.lastActive -= 16 * 60_000
+}
 function fillCapacity() {
   for (let i = 0; i < 4; i++) manager.start('/tmp', 'task', options)
 }
@@ -51,6 +56,7 @@ it.each(['success', 'failure'] as const)('protects a side question from capacity
   if (outcome === 'failure') answer.reject(new Error('failed'))
   else answer.resolve({ response: 'done' })
   await checked
+  age()
   manager.start('/tmp', 'one more', options)
   expect(output.close).toHaveBeenCalledOnce()
 })
@@ -68,6 +74,7 @@ it('keeps the runtime occupied until every concurrent side question finishes', a
   expect(output.close).not.toHaveBeenCalled()
   second.resolve({ response: 'second' })
   await b
+  age()
   manager.start('/tmp', 'reclaim idle', options)
   expect(output.close).toHaveBeenCalledOnce()
 })
@@ -95,10 +102,34 @@ it('does not sweep an occupied runtime and measures idle time from completion', 
   const answer = deferred<{ response: string }>()
   output.askSideQuestion.mockReturnValueOnce(answer.promise)
   const pending = manager.sideQuestion('side', '/tmp', 'long question', [], options)
+  fillCapacity()
   await vi.advanceTimersByTimeAsync(16 * 60_000)
   expect(output.close).not.toHaveBeenCalled()
   answer.resolve({ response: 'done' })
   await pending
+  await vi.advanceTimersByTimeAsync(14 * 60_000)
+  expect(output.close).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(2 * 60_000)
+  expect(output.close).toHaveBeenCalledOnce()
+})
+
+it('keeps idle sessions while within the limit, however long they idle', async () => {
+  manager.closeAll()
+  vi.useFakeTimers()
+  manager = new SessionManager(() => {})
+  const output = await idleSession()
+  for (let i = 0; i < 3; i++) manager.start('/tmp', 'task', options)
+  await vi.advanceTimersByTimeAsync(60 * 60_000)
+  expect(output.close).not.toHaveBeenCalled()
+})
+
+it('lets a fifth session open without closing a recently idle one, then reclaims it after 15 minutes', async () => {
+  manager.closeAll()
+  vi.useFakeTimers()
+  manager = new SessionManager(() => {})
+  const output = await idleSession()
+  fillCapacity()
+  expect(output.close).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(14 * 60_000)
   expect(output.close).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(2 * 60_000)
@@ -123,6 +154,7 @@ it('does not release a replacement runtime when an old request completes after r
   expect(replacement.close).not.toHaveBeenCalled()
   newAnswer.resolve({ response: 'done' })
   await newRequest
+  age()
   manager.start('/tmp', 'reclaim idle', options)
   expect(replacement.close).toHaveBeenCalledOnce()
 })
@@ -150,6 +182,7 @@ it.each(['commands', 'mcp'] as const)('protects an in-flight %s read using the s
   expect(output.close).not.toHaveBeenCalled()
   result.resolve([])
   await pending
+  age()
   manager.start('/tmp', 'reclaim idle', options)
   expect(output.close).toHaveBeenCalledOnce()
 })
@@ -164,6 +197,7 @@ it('protects an idle session while a configuration command awaits SDK confirmati
   expect(output.close).not.toHaveBeenCalled()
   confirmation.resolve()
   await changing
+  age()
   manager.start('/tmp', 'reclaim idle', options)
   expect(output.close).toHaveBeenCalledOnce()
 })

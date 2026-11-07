@@ -74,6 +74,10 @@ it('rejects malformed structured arguments', () => {
   expect(() => validators['chat:start'](['/p', 'hi', { ...options, mode: 'root' }])).toThrow('参数 options 无效')
   expect(() => validators['chat:respond'](['s', 'r', { type: 'allow-all' }])).toThrow('参数 decision 无效')
   expect(() => validators['chat:queue'](['s', '/p', { type: 'move', id: 'a' }])).toThrow('参数 action 无效')
+  expect(() => validators['chat:changeRule'](['s', '/p', { source: 'policySettings', behavior: 'allow', rule: 'Read' }])).toThrow('参数 change 无效')
+  expect(() => validators['chat:changeRule'](['s', '/p', { source: 'localSettings', behavior: 'allow', rule: 'Read\nBash' }])).toThrow('参数 change 无效')
+  expect(() => validators['chat:applySetting'](['s', '/p', 'unknown', 'true'])).toThrow('参数 key 无效')
+  expect(() => validators['chat:stopTask'](['s', '/p', ''])).toThrow('参数 taskId 无效')
   expect(() => validators['settings:set']([{ executionLanguage: 'fr' }])).toThrow('参数 patch 无效')
   expect(() => validators['schedules:create']([{ name: 'n', projectPath: '/p', prompt: 'x', schedule: { kind: 'yearly' }, mode: 'default', enabled: true }])).toThrow('参数 task 无效')
 })
@@ -88,5 +92,7 @@ it('normalizes optional and loose arguments the way handlers used to', () => {
   expect(validators['chat:btw'](['s', '/p', 'q', undefined, options])[3]).toEqual([])
   expect(validators['files:stat']([['/a', 1, '/b']])).toEqual([['/a', '/b']])
   expect(validators['projects:setCollapsed'](['p', 'yes'])).toEqual(['p', false])
+  const change = { source: 'localSettings', behavior: 'allow', rule: ' Read ', remove: true }
+  expect(validators['chat:changeRule'](['s', '/p', change])).toEqual(['s', '/p', change])
   expect(validators['terminal:resize'](['page:a', Number.NaN, 10])).toEqual(['page:a', Number.NaN, 10])
 })

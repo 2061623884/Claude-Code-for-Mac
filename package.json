@@ -1,7 +1,7 @@
 {
   "name": "claude-desk",
   "productName": "Claude Code",
-  "version": "0.3.50",
+  "version": "0.3.51",
   "private": true,
   "description": "Codex 风格的中文 Claude Code 桌面应用",
   "main": "out/main/index.js",
@@ -65,6 +65,7 @@
     },
     "files": [
       "out/**",
+      "LICENSE",
       "package.json"
     ],
     "asarUnpack": [
@@ -89,5 +90,6 @@
       "category": "public.app-category.developer-tools",
       "darkModeSupport": true
     }
-  }
+  },
+  "license": "MIT"
 }

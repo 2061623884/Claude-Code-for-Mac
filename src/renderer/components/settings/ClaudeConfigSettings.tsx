@@ -24,7 +24,7 @@ export function ClaudeConfigSettings({ cwd, keys, excludeKeys, searchable = true
     </div>
     {sessionId && <button type="button" disabled={reloading || !!saving} className={`mb-3 ${settingsButtonClass}`} onClick={async () => {
       setReloading(true); setReloadResult(''); setReloadError(false)
-      try { await window.desk.chat.control(sessionId, cwd, 'reloadConfiguration'); setReloadResult('已重载当前会话') }
+      try { await window.desk.chat.reloadConfiguration(sessionId, cwd); setReloadResult('已重载当前会话') }
       catch (e) { setReloadError(true); setReloadResult(String(e)) }
       finally { setReloading(false) }
     }}>{reloading ? '正在应用…' : '重新加载当前对话设置'}</button>}

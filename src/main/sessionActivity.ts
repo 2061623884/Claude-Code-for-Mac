@@ -2,6 +2,7 @@
 import { diffLines } from 'diff'
 import { basename, resolve } from 'node:path'
 import type { ActivityStatus, SessionSummaryData, SummaryItem } from '../shared/sessionSummary'
+import { TaskTracker, type TrackedTask } from './taskTracker'
 
 type Json = Record<string, unknown>
 const obj = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {}
@@ -29,6 +30,7 @@ export interface ActivityState {
 }
 
 export class SessionActivity {
+  readonly taskTracker = new TaskTracker()
   private tools = new Map<string, ToolFact>()
   private references = new Map<string, SummaryItem>()
   private projects = new Map<string, SummaryItem>()
@@ -44,6 +46,7 @@ export class SessionActivity {
       for (const key of ['tools', 'references', 'projects', 'tasks', 'agents'] as const) {
         for (const item of saved[key]) (this[key] as Map<string, { id: string }>).set(item.id, item)
       }
+      for (const agent of saved.agents) if (agent.taskId) this.taskTracker.remember(agent.taskId, agent.runId, agent.status ?? 'unknown')
     }
     if (cwd) this.addProject(cwd)
   }
@@ -74,7 +77,7 @@ export class SessionActivity {
     const body = obj(message.message)
     if (message.type === 'system') {
       if (message.subtype === 'init') this.observeDirectory(str(message.cwd), true)
-      if (str(message.subtype).startsWith('task_')) this.agentEvent(message)
+      for (const task of this.taskTracker.apply(message)) this.agentEvent(task)
       return
     }
     if (message.type === 'assistant') {
@@ -189,20 +192,17 @@ export class SessionActivity {
       this.projects.set(id, { id, title: str(output.name), description: short(output.description) || 'Claude Projects 项目' })
     }
   }
-  private agentEvent(event: Json): void {
+  private agentEvent(event: TrackedTask): void {
     const taskId = str(event.task_id)
     const id = str(event.tool_use_id) || [...this.agents.values()].find((a) => a.taskId === taskId)?.id || `task:${taskId}`
     const existing = this.agents.get(id)
     // Shell、监控、MCP 后台任务不是子代理。
     if (!existing && event.task_type !== 'local_agent' && !event.subagent_type) return
-    const runId = str(event.run_id)
-    if (existing?.runId && runId && runId < existing.runId) return
-    if (terminal(existing?.status) && (!runId || existing?.runId === runId) && event.subtype !== 'task_notification') return
     const agent = existing ?? { id, title: short(event.description) || '子 Agent', description: str(event.subagent_type) || '类型未知' }
-    agent.taskId = taskId; agent.runId = runId || agent.runId
+    agent.taskId = taskId; agent.runId = str(event.run_id) || agent.runId
     if (event.description) agent.title = short(event.description)
     if (event.summary) agent.description = short(event.summary)
-    agent.status = event.subtype === 'task_notification' ? status(event.status) : event.subtype === 'task_updated' ? status(obj(event.patch).status ?? agent.status) : 'running'
+    agent.status = status(event.status)
     this.agents.set(id, agent); this.changed()
   }
   finishHistory(incomplete: boolean): void {
@@ -210,6 +210,7 @@ export class SessionActivity {
     this.markInactive()
   }
   markInactive(): void {
+    this.taskTracker.reset()
     for (const tool of this.tools.values()) if (tool.status === 'running') tool.status = 'unknown'
     for (const agent of this.agents.values()) if (agent.status === 'running') agent.status = 'unknown'
     this.changed()

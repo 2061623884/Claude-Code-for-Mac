@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { File, FileText, FileSpreadsheet, Presentation, Folder, Image, X } from 'lucide-react'
 import { fileName } from '@shared/fileLinks'
 import { formatBytes } from '@shared/format'
-import { openPath } from './FileLink'
+import { openPath } from '../../openPath'
 
 /** Shared visual representation for dropped files, mentions and sent attachments. */
 export function AttachmentCard({ path, kind = 'file', line, bytes, compact = false, onRemove }: {

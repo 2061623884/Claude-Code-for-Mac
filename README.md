@@ -6,13 +6,24 @@
 
 在 [Releases](https://github.com/2061623884/Claude-Code-for-Mac/releases) 下载最新版本。
 
-- `Claude-Code-for-Mac-0.3.45-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
-- `Claude-Code-for-Mac-0.3.45-arm64.zip`：解压后得到同一个应用。
+- `Claude-Code-for-Mac-0.3.51-arm64.dmg`：打开后将 `Claude Code.app` 拖到 Applications。
+- `Claude-Code-for-Mac-0.3.51-arm64.zip`：解压后得到同一个应用。
 - `SHA256SUMS.txt`：安装包 SHA-256 校验值。
 
 当前提供 **Apple Silicon（arm64）** 版本，不支持 Intel Mac。桌面应用使用 ad-hoc 签名，未获 Apple 公证。本机 Gatekeeper 默认检查结果为 `rejected`，通过浏览器下载后，macOS 可能拦截首次打开。
 
 首次使用需要在本机配置有效的 Claude Code 登录或 API 认证。安装包不包含账号、API Key 或聊天记录。
+
+## v0.3.51 更新
+
+- 后台任务列表、子代理摘要和会话忙碌判断共用任务状态模块。按运行版本过滤迟到事件，恢复任务后重置本轮计时和输出。
+- 后台任务尚未结束时，拒绝重载当前对话设置、恢复文件和恢复对话，避免关闭仍在运行的任务或并发覆盖文件。
+- 输出读取、权限查询与会话设置修改分开协调。慢输出读取不会阻塞权限回复和停止任务；输出轮询同一时间只保留一个在途请求，切换会话后丢弃旧结果。
+- 用明确的 IPC 方法和参数校验替代通用字符串控制入口。SDK 权限规则与输出响应在主进程内完成校验和转换。
+- 移除文件链接与附件卡片之间的循环依赖；后台任务使用独立侧栏页，支持查看输出、停止任务和子代理进度。
+- 增加 MIT 许可证。修复边界及验证记录见[架构审查修复记录](docs/code-review-2026-11-07.md)。
+
+验证：类型检查、96 个测试文件共 602 项测试及生产构建通过。安装包通过启动、版本与签名检查。
 
 ## v0.3.45 更新
 
@@ -183,3 +194,7 @@ node scripts/smoke-window.cjs
 - `scripts`：构建安装、原生模块和界面验证辅助脚本。
 
 应用设置存放在 `~/Library/Application Support/claude-desk`，不属于源码仓库或 Release 附件。
+
+## 开源许可
+
+本项目原创源码采用 [MIT License](LICENSE)。第三方依赖和随安装包分发的 Claude Code CLI 保留各自的许可证及使用条款，不适用本项目的 MIT 授权。项目为第三方客户端，与 Anthropic 无官方关联。
