@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Promo · 开屏 0–3s</title>
+<style>
+  :root { --orange: #d97757; --bg: #ffffff; --sidebar: #f8f8f7; --line: #37352f17; --chip: #f1f1ef; --m: min(100vw, 100vh); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--orange); }
+
+  /* 炸开后露出的主界面：默认是占位色块，?shot=截图路径 时换成真实界面截图 */
+  #page { position: fixed; inset: 0; display: flex; background: var(--bg); transform-origin: 50% 50%; }
+  #page.shot { background: center / cover no-repeat var(--bg); }
+  #page.shot > * { display: none; }
+  .side { width: 22%; max-width: 260px; background: var(--sidebar); border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .bar { height: 10px; border-radius: 5px; background: #37352f14; }
+  .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 56px 0 28px; gap: 16px; }
+  .row { width: min(720px, 80%); display: flex; }
+  .row.me { justify-content: flex-end; }
+  .bubble { height: 40px; border-radius: 14px; background: var(--chip); }
+  .lines { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .composer { margin-top: auto; width: min(720px, 80%); height: 112px; border-radius: 18px; background: #fff; box-shadow: 0 1px 2px #37352f0a, 0 4px 18px #37352f12, 0 0 0 1px var(--line); }
+  @media (max-aspect-ratio: 1/1) { .side { display: none; } }
+
+  #splash { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #caption {
+    position: fixed; left: 0; right: 0; top: calc(50% + var(--m) * 0.12); text-align: center;
+    font: 400 calc(var(--m) * 0.058)/1.2 ui-serif, "New York", Georgia, "Songti SC", serif;
+    letter-spacing: 0.04em; color: #fff; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<div id="page">
+  <aside class="side">
+    <div class="bar" style="width:70%;height:14px;margin-bottom:10px"></div>
+    <div class="bar" style="width:85%"></div><div class="bar" style="width:60%"></div><div class="bar" style="width:75%"></div>
+    <div class="bar" style="width:50%"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:65%"></div>
+  </aside>
+  <main class="main">
+    <div class="row me"><div class="bubble" style="width:46%"></div></div>
+    <div class="row"><div class="lines"><div class="bar" style="width:92%"></div><div class="bar" style="width:84%"></div><div class="bar" style="width:66%"></div></div></div>
+    <div class="row me"><div class="bubble" style="width:32%"></div></div>
+    <div class="row"><div class="lines"><div class="bar" style="width:88%"></div><div class="bar" style="width:72%"></div></div></div>
+    <div class="composer"></div>
+  </main>
+</div>
+
+<svg id="splash">
+  <defs>
+    <path id="spark"/>
+    <mask id="hole" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <g id="holeT" visibility="hidden"><use href="#spark" fill="#000"/></g>
+    </mask>
+  </defs>
+  <rect width="100%" height="100%" fill="#d97757" mask="url(#hole)"/>
+  <g id="logoT"><use href="#spark" fill="#fff"/></g>
+</svg>
+<div id="caption">Claude Code，看得见了</div>
+
+<script src="spark.js"></script>
+<script>
+// 参数沿用 design/splash/preview.html；加载时长固定，给字幕留出阅读时间
+const PERIOD = 900, ENTER = 260, EXIT = 1750, CHARGE = 90, BURST = 420
+const FADE_FROM = 0.25, FADE_TO = 0.75, CURVE = 1.8, LAND = 300, DURATION = 3000
+const CAP_IN = [450, 750], CAP_OUT = [1600, 1750]
+
+const $ = id => document.getElementById(id)
+const spark = $('spark'), logoT = $('logoT'), holeT = $('holeT'), splash = $('splash'), page = $('page'), caption = $('caption')
+const shot = new URLSearchParams(location.search).get('shot')
+if (shot) { page.classList.add('shot'); page.style.backgroundImage = `url("${shot}")` }
+
+function idle(t) {
+  const e = clamp01(t / ENTER)
+  return { s: lerp(0.4, 1, outBack(e)), rot: 15 * (1 - outCubic(e)), wo: outCubic(e), k: pulse(t / PERIOD) }
+}
+
+function render(t) {
+  const vw = innerWidth, vh = innerHeight
+  const unit = Math.min(vw, vh) * 0.12 / EXTENT
+  let s, rot, wo, k, hole = false, landing = 0
+
+  if (t < EXIT) ({ s, rot, wo, k } = idle(t))
+  else {
+    const snap = idle(EXIT), dt = t - EXIT
+    if (dt < CHARGE) {
+      const u = outCubic(dt / CHARGE)
+      s = lerp(snap.s, 0.82, u); rot = snap.rot - 22 * u; wo = lerp(snap.wo, 1, u); k = lerp(snap.k, 1, u)
+    } else {
+      const v = clamp01((dt - CHARGE) / BURST), ev = v ** CURVE
+      const sEnd = Math.hypot(vw, vh) / 2 / (CORE_R * unit) * 1.15
+      s = Math.exp(lerp(Math.log(0.82), Math.log(sEnd), ev))
+      rot = snap.rot - 22 + 100 * ev
+      wo = 1 - smooth(FADE_FROM, FADE_TO, v)
+      k = 1
+      hole = v < 1
+    }
+    landing = clamp01((dt - CHARGE - FADE_FROM * BURST) / LAND)
+  }
+  const gone = t >= EXIT + CHARGE + BURST
+
+  const tf = `translate(${vw / 2} ${vh / 2}) scale(${s * unit}) rotate(${rot})`
+  splash.style.display = gone ? 'none' : ''
+  logoT.setAttribute('transform', tf)
+  logoT.setAttribute('opacity', wo)
+  holeT.setAttribute('transform', tf)
+  holeT.setAttribute('visibility', hole ? 'visible' : 'hidden')
+  spark.setAttribute('d', sparkD(k))
+  page.style.transform = `scale(${lerp(1.05, 1, outCubic(landing))})`
+
+  const cin = smooth(CAP_IN[0], CAP_IN[1], t), cout = smooth(CAP_OUT[0], CAP_OUT[1], t)
+  caption.style.opacity = cin * (1 - cout)
+  caption.style.transform = `translateY(${(1 - cin) * 12 - cout * 8}px)`
+}
+
+mountTimeline(render, DURATION)
+</script>
+</body>
+</html>

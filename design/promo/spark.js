@@ -46,13 +46,13 @@ function sparkD(k) {
 
 /**
  * 确定性播放：页面实现 render(t)。
- * ?at=毫秒 定格单帧；默认实时循环播放（空格或点击重播）；导出脚本直接调用 window.render。
+ * ?at=毫秒 定格单帧；默认实时循环播放（空格或点击重播）；?render 时不自动播放，由 render.cjs 逐帧调用 window.render。
  */
 function mountTimeline(render, duration) {
   window.render = render
   window.DURATION = duration
-  const at = new URLSearchParams(location.search).get('at')
-  if (window.__RENDERING__) return
+  const params = new URLSearchParams(location.search), at = params.get('at')
+  if (params.has('render')) return
   if (at !== null) { render(Number(at)); return }
   let t0 = performance.now(), raf
   const loop = now => { render(Math.min(now - t0, duration)); raf = requestAnimationFrame(loop) }
