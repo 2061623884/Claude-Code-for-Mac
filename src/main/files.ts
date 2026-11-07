@@ -1,7 +1,7 @@
 // @ 引用文件：列出项目里的文件并按输入的关键词排序。git 仓库用 git ls-files（自动遵守 .gitignore），否则自己遍历。
 import { execFile } from 'node:child_process'
 import { existsSync, unwatchFile as fsUnwatchFile, watchFile as fsWatchFile } from 'node:fs'
-import { access, constants, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { access, constants, mkdir, open, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { FileInfo, FilePreview, ProjectEntry } from '../shared/types'
 
@@ -179,8 +179,22 @@ const IMAGES: Record<string, string> = {
   '.bmp': 'image/bmp',
   '.ico': 'image/x-icon'
 }
+/** Chromium 能直接播放的音视频；预览时不限大小，由 desk-media:// 流式读取 */
+export const MEDIA: Record<string, { mime: string; media: 'video' | 'audio' }> = {
+  '.mp4': { mime: 'video/mp4', media: 'video' },
+  '.m4v': { mime: 'video/mp4', media: 'video' },
+  '.mov': { mime: 'video/quicktime', media: 'video' },
+  '.webm': { mime: 'video/webm', media: 'video' },
+  '.mp3': { mime: 'audio/mpeg', media: 'audio' },
+  '.m4a': { mime: 'audio/mp4', media: 'audio' },
+  '.aac': { mime: 'audio/aac', media: 'audio' },
+  '.wav': { mime: 'audio/wav', media: 'audio' },
+  '.ogg': { mime: 'audio/ogg', media: 'audio' },
+  '.oga': { mime: 'audio/ogg', media: 'audio' },
+  '.flac': { mime: 'audio/flac', media: 'audio' }
+}
 
-/** 右栏预览用：文本（1MB 以内）、图片（data URL），其余只返回类型和大小 */
+/** 右栏预览用：文本（超过 1MB 只读开头）、图片（data URL）、音视频（流式 URL），其余只返回类型和大小 */
 export async function readForPreview(path: string): Promise<FilePreview> {
   if (!path.startsWith('/')) return { kind: 'missing' }
   let info
@@ -204,13 +218,26 @@ export async function readForPreview(path: string): Promise<FilePreview> {
     if (size > IMAGE_LIMIT) return { kind: 'too-large', size }
     return { kind: 'image', size, dataUrl: `data:${mime};base64,${(await readFile(path)).toString('base64')}` }
   }
-  if (size > TEXT_LIMIT) return { kind: 'too-large', size }
-  const buf = await readFile(path)
-  if (buf[0] === 0xff && buf[1] === 0xfe) return { kind: 'text', size, content: buf.subarray(2).toString('utf16le') }
-  if (buf[0] === 0xfe && buf[1] === 0xff && buf.length % 2 === 0) return { kind: 'text', size, content: buf.subarray(2).swap16().toString('utf16le') }
+  const media = MEDIA[extension]
+  if (media) return { kind: 'media', size, media: media.media, url: `desk-media://file/?path=${encodeURIComponent(path)}&v=${info.mtimeMs}` }
+  const truncated = size > TEXT_LIMIT
+  const buf = truncated ? await readHead(path, TEXT_LIMIT) : await readFile(path)
+  if (buf[0] === 0xff && buf[1] === 0xfe) return { kind: 'text', size, content: buf.subarray(2).toString('utf16le'), ...(truncated && { truncated }) }
+  if (buf[0] === 0xfe && buf[1] === 0xff && buf.length % 2 === 0) return { kind: 'text', size, content: buf.subarray(2).swap16().toString('utf16le'), ...(truncated && { truncated }) }
   // 前 8KB 里有空字节，基本就是二进制文件
   if (buf.subarray(0, 8192).includes(0)) return { kind: 'binary', size }
-  return { kind: 'text', size, content: buf.toString('utf8') }
+  return { kind: 'text', size, content: buf.toString('utf8'), ...(truncated && { truncated }) }
+}
+
+async function readHead(path: string, bytes: number): Promise<Buffer> {
+  const handle = await open(path, 'r')
+  try {
+    const buf = Buffer.alloc(bytes)
+    const { bytesRead } = await handle.read(buf, 0, bytes, 0)
+    return buf.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
 }
 
 // 预览中的文件：轮询修改时间（编辑器和 Claude 常用「写临时文件再改名」的方式保存，fs.watch 容易丢）

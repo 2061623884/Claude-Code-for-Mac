@@ -40,6 +40,7 @@ export function AttachmentCard({ path, kind = 'file', line, bytes, compact = fal
         title={path}
         aria-label={`预览 ${name}`}
         onClick={(event) => openPath(path, kind, line, event.metaKey)}
+        onContextMenu={(event) => { event.preventDefault(); void window.desk.files.contextMenu(path, kind).catch(() => {}) }}
         className={`flex overflow-hidden rounded-xl border border-line bg-card text-left shadow-sm transition-colors hover:border-accent/50 focus-visible:outline-2 focus-visible:outline-accent ${isImage && url ? (compact ? 'w-[112px] flex-col' : 'w-[160px] flex-col') : compact ? 'h-[44px] w-[180px] max-w-full items-center gap-2 px-2' : 'h-[64px] w-[230px] max-w-full items-center gap-3 px-3'}`}
       >
         {isImage && url ? <img src={url} alt={name} className={`${compact ? 'h-[72px]' : 'h-[104px]'} w-full bg-chip object-contain`} /> : <span className={`flex shrink-0 items-center justify-center rounded-lg ${compact ? 'size-7' : 'size-9'} ${color}`}><Icon size={compact ? 16 : 22} /></span>}

@@ -10,7 +10,7 @@ import { FileContext } from './FileLink'
 import { PdfPreview } from './PdfPreview'
 import { OfficePreview } from './OfficePreview'
 
-/** 右栏的文件预览：代码高亮带行号、Markdown 渲染、图片；文件变了自动刷新 */
+/** 右栏的文件预览：代码高亮带行号、Markdown 渲染、图片、音视频；文件变了自动刷新 */
 export function FilePreview({ path, line, nonce, cwd }: { path: string; line?: number; nonce: number; cwd?: string }) {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -98,8 +98,19 @@ export function FilePreview({ path, line, nonce, cwd }: { path: string; line?: n
               </div>
             </FileContext.Provider>
           ) : (
-            <CodeLines code={preview.content} path={path} line={line} nonce={nonce} />
+            <>
+              {preview.truncated && <Note>文件较大（{formatBytes(preview.size)}），只显示开头 1 MB。完整内容请用默认应用打开。</Note>}
+              <CodeLines code={preview.content} path={path} line={line} nonce={nonce} />
+            </>
           )
+        ) : preview.kind === 'media' ? (
+          <div className="flex min-h-full items-center justify-center p-4">
+            {preview.media === 'video' ? (
+              <video key={preview.url} src={preview.url} controls preload="metadata" className="max-h-full max-w-full rounded-md bg-black shadow-card" />
+            ) : (
+              <audio key={preview.url} src={preview.url} controls preload="metadata" className="w-full" />
+            )}
+          </div>
         ) : preview.kind === 'docx' || preview.kind === 'spreadsheet' ? (
           <OfficePreview base64={preview.base64} format={preview.kind} />
         ) : preview.kind === 'pdf' ? (

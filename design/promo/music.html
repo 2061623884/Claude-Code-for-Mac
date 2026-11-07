@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Promo · 配乐</title>
+<style>
+  body { margin: 0; height: 100vh; display: grid; place-items: center; background: #faf9f5; font: 15px -apple-system, "PingFang SC", sans-serif; color: #3d3d3a; }
+  button { padding: 10px 28px; border: 0; border-radius: 999px; background: #d97757; color: #fff; font: inherit; cursor: pointer; }
+  p { color: #87867f; font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div><button id="play">播放配乐（30 秒）</button><p>原创合成：毛毡钢琴 · Pad · 八音盒 · 黑胶底噪<br>F 大调 · 120 BPM · 剪辑点对拍</p></div>
+<script>
+// 全部由 Web Audio 合成，没有采样素材。时间单位：秒，与成片时间轴一致。
+const DURATION = 30, BEAT = 0.5
+const mtof = m => 440 * 2 ** ((m - 69) / 12)
+
+// 可复现的伪随机数，用于人性化的时值与力度
+let seed = 7
+const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
+const human = (t, v) => [t + (rand() - 0.5) * 0.016, Math.max(0.05, v + (rand() - 0.5) * 0.1)]
+
+// ── 和声：每小节 2 秒 ──
+const CH = {
+  Fmaj7: { bass: 41, voice: [53, 57, 60, 64] },
+  Bbmaj9: { bass: 46, voice: [50, 53, 57, 60] },
+  CE: { bass: 40, voice: [52, 55, 60, 64] },
+  Dm9: { bass: 38, voice: [53, 57, 60, 64] },
+  Am7: { bass: 45, voice: [57, 60, 64, 67] },
+  Csus: { bass: 48, voice: [53, 55, 60, 65] },
+  C: { bass: 48, voice: [52, 55, 60, 67] },
+  Fmaj9: { bass: 41, voice: [57, 60, 64, 67] }
+}
+const BARS = ['Fmaj7', 'Fmaj7', 'Bbmaj9', 'Fmaj7', 'CE', 'Dm9', 'Bbmaj9', 'Fmaj7', 'Am7', 'Dm9', 'Dm9', 'Bbmaj9', 'Csus', 'Fmaj9', 'Fmaj9']
+
+// 主旋律（14–26 秒）：[音高, 起拍, 拍数]，起拍从 14 秒算
+const MELODY = [
+  [69, 0, 1], [72, 1, 1], [76, 2, 1.5], [74, 3.5, 0.5],
+  [72, 4, 1], [69, 5, 1], [67, 6, 2],
+  [65, 8, 0.5], [69, 8.5, 0.5], [74, 9, 1], [76, 10, 1], [77, 11, 1],
+  [76, 12, 1.5], [74, 13.5, 0.5], [72, 14, 2],
+  [74, 16, 1], [77, 17, 1], [81, 18, 1.5], [79, 19.5, 0.5],
+  [79, 20, 1], [77, 21, 1], [76, 22, 2],
+  [77, 24, 4]
+]
+
+function compose(ctx) {
+  // ── 总线：干声 + 混响 → 暖色低通 → 压缩 → 总音量 ──
+  const master = ctx.createGain()
+  master.gain.setValueAtTime(0, 0)
+  master.gain.linearRampToValueAtTime(1, 0.25)
+  master.gain.setValueAtTime(1, 28.4)
+  master.gain.exponentialRampToValueAtTime(0.0008, DURATION)
+  const warm = ctx.createBiquadFilter(); warm.type = 'lowpass'; warm.frequency.value = 9000; warm.Q.value = 0.4
+  const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.3
+  warm.connect(comp).connect(master).connect(ctx.destination)
+  const dry = ctx.createGain(); dry.gain.value = 0.8; dry.connect(warm)
+
+  const reverb = ctx.createConvolver()
+  const len = Math.round(ctx.sampleRate * 3.6), ir = ctx.createBuffer(2, len, ctx.sampleRate)
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (rand() * 2 - 1) * Math.exp(-i / ctx.sampleRate / 0.85) }
+  reverb.buffer = ir
+  const wetTone = ctx.createBiquadFilter(); wetTone.type = 'lowpass'; wetTone.frequency.value = 4500
+  const wet = ctx.createGain(); wet.gain.value = 0.42
+  reverb.connect(wetTone).connect(wet).connect(warm)
+  const bus = (send = 0.5) => { const g = ctx.createGain(); g.connect(dry); const s = ctx.createGain(); s.gain.value = send; g.connect(s).connect(reverb); return g }
+
+  const pianoBus = bus(0.55), padBus = bus(0.7), bellBus = bus(0.8), bassBus = bus(0.15), fxBus = bus(0.9)
+
+  // ── 音色 ──
+  // 毛毡钢琴：轻微非谐泛音 + 指数衰减 + 力度控制亮度
+  function piano(t, m, vel, dur, out = pianoBus) {
+    [t, vel] = human(t, vel)
+    const f = mtof(m), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700 + vel * 2600; lp.connect(out)
+    const tau = 1.6 * (261 / f) ** 0.35
+    ;[1, 0.45, 0.2, 0.1, 0.05].forEach((amp, i) => {
+      const n = i + 1, o = ctx.createOscillator(), g = ctx.createGain()
+      o.frequency.value = f * n * (1 + 0.0003 * n * n)
+      g.gain.setValueAtTime(0, t)
+      g.gain.linearRampToValueAtTime(vel * amp * 0.16, t + 0.008)
+      g.gain.setTargetAtTime(0, t + 0.008, tau / Math.sqrt(n))
+      g.gain.setTargetAtTime(0, t + dur, 0.18)
+      o.connect(g).connect(lp); o.start(t); o.stop(t + dur + 1.4)
+    })
+  }
+  // 八音盒：基音 + 高泛音，快速衰减
+  function bell(t, m, vel = 0.5, out = bellBus) {
+    const f = mtof(m)
+    ;[[1, 1, 0.9], [4.01, 0.28, 0.12], [2.76, 0.12, 0.2]].forEach(([ratio, amp, tau]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain()
+      o.frequency.value = f * ratio
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel * amp * 0.12, t + 0.004); g.gain.setTargetAtTime(0, t + 0.004, tau)
+      o.connect(g).connect(out); o.start(t); o.stop(t + tau * 8)
+    })
+  }
+  // Pad / 弦乐：两支失谐锯齿波经低通，慢起慢收
+  function pad(t, dur, notes, level, cutoff, attack = 1.2, out = padBus) {
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff; lp.Q.value = 0.3
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(level, t + attack); g.gain.setValueAtTime(level, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 1.6)
+    lp.connect(g).connect(out)
+    for (const m of notes) for (const cents of [-7, 6]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = cents
+      o.connect(lp); o.start(t); o.stop(t + dur + 1.8)
+    }
+  }
+  function bass(t, m, dur, level = 0.06) {
+    const o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), g2 = ctx.createGain()
+    o.frequency.value = mtof(m); o2.frequency.value = mtof(m) * 2; g2.gain.value = 0.25
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(level, t + 0.06); g.gain.setTargetAtTime(level * 0.6, t + 0.06, 0.6); g.gain.setTargetAtTime(0, t + dur - 0.1, 0.15)
+    o.connect(g); o2.connect(g2).connect(g); g.connect(bassBus)
+    for (const x of [o, o2]) { x.start(t); x.stop(t + dur + 1) }
+  }
+  const noiseBuffer = (seconds) => { const b = ctx.createBuffer(1, Math.round(ctx.sampleRate * seconds), ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = rand() * 2 - 1; return b }
+
+  // ── 0–3 秒：开屏 ──
+  pad(0, 3.6, CH.Fmaj7.voice.map(m => m + 12), 0.035, 1400, 1.4)
+  bell(0.45, 84, 0.35); bell(1.35, 81, 0.35)                       // Spark 跳动
+  { // 炸开前的气声渐强
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer(1.2)
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2
+    bp.frequency.setValueAtTime(500, 0.8); bp.frequency.exponentialRampToValueAtTime(5000, 1.88)
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, 0.8); g.gain.linearRampToValueAtTime(0.09, 1.84); g.gain.linearRampToValueAtTime(0, 1.98)
+    src.connect(bp).connect(g).connect(fxBus); src.start(0.8)
+  }
+  { // 炸开：一记很轻的低频
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(70, 1.9); o.frequency.exponentialRampToValueAtTime(40, 2.6)
+    g.gain.setValueAtTime(0.0001, 1.9); g.gain.exponentialRampToValueAtTime(0.07, 1.93); g.gain.exponentialRampToValueAtTime(0.0001, 2.9)
+    o.connect(g).connect(dry); o.start(1.9); o.stop(3)
+  }
+  ;[60, 64, 67, 69, 72, 76].forEach((m, i) => piano(1.92 + i * 0.035, m, 0.55 - i * 0.04, 2.4))  // 和弦绽放
+  ;[88, 91, 93].forEach((m, i) => bell(2.0 + i * 0.07, m, 0.18))
+
+  // ── 3 秒起：分解和弦铺底，14 秒后让位给旋律 ──
+  const ARP = [0, 1, 2, 3, 4, 3, 2, 1]
+  for (let bar = 1; bar <= 12; bar++) {
+    const ch = CH[BARS[bar]], tones = [ch.bass + 12, ...ch.voice]
+    for (let i = 0; i < 8; i++) {
+      const t = bar * 2 + i * 0.25
+      if (t < 3 || t >= 26) continue
+      const soft = t >= 14 ? 0.55 : 0.75
+      piano(t, tones[ARP[i]] + (ARP[i] ? 12 : 0), (i % 4 === 0 ? 0.45 : 0.32) * soft, 0.45)
+    }
+  }
+  // 低音与 Pad
+  for (let bar = 2; bar <= 12; bar++) {
+    const ch = CH[BARS[bar]]
+    bass(bar * 2, ch.bass, bar === 12 ? 1 : 2)
+    pad(bar * 2, 2, ch.voice, 0.022, bar >= 7 ? 1500 : 1100, 0.6)
+  }
+  bass(25, CH.C.bass, 1)
+
+  // ── 6–14 秒：螃蟹 ──
+  ;[[81, 84], [84, 86], [86, 89], [89, 91], [91, 93]].forEach(([a, b], i) => { const t = 6 + i * 1.1; bell(t, a, 0.45); bell(t + 0.12, b, 0.5) })
+  bell(11.5, 79, 0.4); bell(12.05, 79, 0.3)                        // 停下来等
+  ;[[12.8, 81], [13.15, 77], [13.55, 72]].forEach(([t, m], i) => bell(t, m, 0.42 - i * 0.08))   // 歇会儿
+
+  // ── 14–26 秒：主旋律，20 秒加弦乐 ──
+  for (const [m, beat, len] of MELODY) {
+    const t = 14 + beat * BEAT, d = len * BEAT
+    piano(t, m, 0.62, d)
+    piano(t, m - 12, 0.22, d)
+  }
+  pad(20, 5.6, [65, 69, 72, 77], 0.018, 2200, 1.6)
+  pad(20, 6, [57, 62, 65], 0.016, 1800, 2)
+  bell(22, 96, 0.16); bell(24, 96, 0.16)                           // 数据镜头切换
+
+  // ── 26–30 秒：片尾 ──
+  bass(26, 41, 3.6, 0.07)
+  pad(26, 3.4, CH.Fmaj9.voice, 0.03, 1600, 0.4)
+  ;[53, 60, 64, 67, 69, 72].forEach((m, i) => piano(26 + i * 0.05, m, 0.5 - i * 0.03, 3.5))
+  bell(26.02, 77, 0.45); bell(26.14, 84, 0.5)                      // 螃蟹落下
+  bell(27.3, 93, 0.22); bell(27.7, 96, 0.2)                        // 挥钳
+
+  // ── 黑胶底噪：极轻的嘶声 + 稀疏的爆点 ──
+  {
+    const src = ctx.createBufferSource(), b = noiseBuffer(DURATION), d = b.getChannelData(0)
+    for (let i = 0; i < d.length; i++) d[i] = d[i] * 0.012 + (rand() < 0.00012 ? (rand() - 0.5) * 0.9 : 0)
+    src.buffer = b
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1200
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6000
+    const g = ctx.createGain(); g.gain.value = 0.35
+    src.connect(hp).connect(lp).connect(g).connect(warm); src.start(0)
+  }
+}
+
+// 离线渲染为 16 位立体声 WAV，返回 base64（供 music.cjs 调用）
+async function renderWav(rate = 48000) {
+  seed = 7
+  const ctx = new OfflineAudioContext(2, rate * DURATION, rate)
+  compose(ctx)
+  const buffer = await ctx.startRendering()
+  const L = buffer.getChannelData(0), R = buffer.getChannelData(1), n = L.length
+  const view = new DataView(new ArrayBuffer(44 + n * 4))
+  const str = (o, s) => [...s].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)))
+  str(0, 'RIFF'); view.setUint32(4, 36 + n * 4, true); str(8, 'WAVEfmt ')
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 2, true); view.setUint32(24, rate, true)
+  view.setUint32(28, rate * 4, true); view.setUint16(32, 4, true); view.setUint16(34, 16, true); str(36, 'data'); view.setUint32(40, n * 4, true)
+  for (let i = 0; i < n; i++) {
+    view.setInt16(44 + i * 4, Math.max(-1, Math.min(1, L[i])) * 32767, true)
+    view.setInt16(46 + i * 4, Math.max(-1, Math.min(1, R[i])) * 32767, true)
+  }
+  const bytes = new Uint8Array(view.buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binary)
+}
+
+document.getElementById('play').onclick = () => { seed = 7; const ctx = new AudioContext(); compose(ctx) }
+</script>
+</body>
+</html>

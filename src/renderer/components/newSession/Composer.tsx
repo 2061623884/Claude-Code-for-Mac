@@ -308,7 +308,7 @@ export function Composer({
       <div data-composer-surface data-ultracode={rainbow || undefined} data-cache={cacheMinutes === null ? undefined : cacheWarm ? 'warm' : 'cold'} className={`relative rounded-[20px] border bg-card shadow-card transition-colors ${cacheMinutes === null ? 'border-line-strong focus-within:border-accent/45' : cacheWarm ? 'border-accent/35 focus-within:border-accent/60' : 'border-line-strong focus-within:border-fg3/45'}`}>
         {cacheMinutes !== null && (
           <span data-cache-badge title={cacheWarm ? `提示缓存约剩 ${cacheMinutes} 分钟，期间发送可命中缓存` : '提示缓存已过期，下一条消息会重新写入缓存'}
-            className={`pointer-events-none absolute right-6 top-0 z-20 -translate-y-1/2 bg-card px-1.5 font-display text-[13px] italic leading-none tabular-nums ${cacheWarm ? 'text-accent' : 'text-fg3'}`}>
+            className={`pointer-events-none absolute right-6 bottom-full z-20 mb-1 px-1.5 font-display text-[13px] italic leading-none tabular-nums ${cacheWarm ? 'text-accent' : 'text-fg3'}`}>
             {cacheMinutes}m
           </span>
         )}

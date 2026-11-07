@@ -48,6 +48,12 @@ export function FileChip({ path, kind, line, onClick }: { path: string; kind: 'f
           if (onClick) onClick()
           else openPath(path, kind, line, e.metaKey)
         }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          if (hover.current) clearTimeout(hover.current)
+          setTip(null)
+          void window.desk.files.contextMenu(path, kind).catch(() => {})
+        }}
         onMouseEnter={() => {
           hover.current = setTimeout(() => el.current && setTip(el.current.getBoundingClientRect()), 250)
         }}

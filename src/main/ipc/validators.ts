@@ -162,6 +162,7 @@ export const validators: { [C in InvokeChannel]: Validator<ArgsOf<C>> } = {
   'files:list': args(text('projectPath'), text('directory')),
   'files:create': args(text('projectPath'), text('directory'), arg('kind', z.enum(['file', 'dir'])), text('name')),
   'files:open': args(text('path')),
+  'files:contextMenu': args(text('path'), arg('kind', z.enum(['file', 'dir']))),
   'files:read': args(text('path')),
   'files:watch': args(text('path')),
   'files:unwatch': args(text('path')),

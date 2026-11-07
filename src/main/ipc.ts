@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { app, BrowserWindow, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, clipboard, Menu, nativeTheme, shell } from 'electron'
 import type { ChatEvent } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
 import { broadcast as broadcastEvent, registerNamespace } from './ipc/register'
@@ -197,6 +197,15 @@ export function registerIpc(demo: DemoState | null, focusWindow?: () => void): v
       if (!isAbsolute(path)) throw new Error('参数 path 无效')
       const error = await shell.openPath(path)
       if (error) throw new Error(error)
+    },
+    contextMenu: (e, path, kind) => {
+      if (!isAbsolute(path)) throw new Error('参数 path 无效')
+      Menu.buildFromTemplate([
+        ...(kind === 'file' ? [{ label: '用默认应用打开', click: () => void shell.openPath(path) }] : []),
+        { label: '在 Finder 中显示', click: () => shell.showItemInFolder(path) },
+        { type: 'separator' as const },
+        { label: '复制路径', click: () => clipboard.writeText(path) }
+      ]).popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined })
     },
     describe: (_e, paths) => files.describePaths(paths)
   })

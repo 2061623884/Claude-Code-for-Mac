@@ -53,8 +53,10 @@ export type { CommandInfo } from './commandCatalog'
 
 /** 右栏文件预览的内容 */
 export type FilePreview =
-  | { kind: 'text'; size: number; content: string }
+  | { kind: 'text'; size: number; content: string; truncated?: boolean }
   | { kind: 'image'; size: number; dataUrl: string }
+  /** 音视频不读进内存，由 desk-media:// 协议按需流式读取 */
+  | { kind: 'media'; size: number; media: 'video' | 'audio'; url: string }
   | { kind: 'pdf' | 'docx' | 'spreadsheet'; size: number; base64: string }
   | { kind: 'binary'; size: number }
   | { kind: 'too-large'; size: number; limit?: number }

@@ -120,6 +120,8 @@ export const contract = {
     create: invoke<[projectPath: string, directory: string, kind: ProjectEntry['kind'], name: string], string>(),
     /** 用默认应用打开文件 */
     open: invoke<[path: string]>(),
+    /** 文件链接的右键菜单（原生菜单）：默认应用打开、在 Finder 中显示、复制路径 */
+    contextMenu: invoke<[path: string, kind: 'file' | 'dir']>(),
     /** 右栏预览：读取文件内容 */
     read: invoke<[path: string], FilePreview>(),
     /** 预览期间监听文件变化（成对调用 unwatch） */
