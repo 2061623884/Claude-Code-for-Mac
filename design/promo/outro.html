@@ -4,71 +4,35 @@
 <meta charset="utf-8">
 <title>Promo · 片尾 26–30s</title>
 <style>
-  :root { --m: min(100vw, 100vh); --fg: #1f1e1d; --fg3: #87867f; --accent: #d97757; }
+  :root { --m: min(100vw, 100vh); --fg: #1f1e1d; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #faf9f5; color: var(--fg); }
   #card { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
   #card > * { will-change: opacity, transform; }
-  #crab { width: calc(var(--m) * 0.2); height: auto; overflow: visible; margin-bottom: calc(var(--m) * 0.045); }
   #title { margin: 0; font: 400 calc(var(--m) * 0.085)/1.1 ui-serif, "New York", Georgia, serif; letter-spacing: -0.01em; }
-  #tagline { margin-top: calc(var(--m) * 0.03); font: 400 calc(var(--m) * 0.034)/1.4 ui-serif, "New York", "Songti SC", serif; letter-spacing: 0.08em; color: #3d3d3a; }
-  #tagline b { font-weight: 400; color: var(--accent); }
-  #url { margin-top: calc(var(--m) * 0.055); padding: calc(var(--m) * 0.012) calc(var(--m) * 0.026); border-radius: 999px; background: #f0eee6; font: 500 calc(var(--m) * 0.022)/1.3 "SF Mono", Menlo, monospace; color: #3d3d3a; }
-  #note { position: fixed; left: 0; right: 0; bottom: calc(var(--m) * 0.05); text-align: center; font: 400 calc(var(--m) * 0.022)/1.4 -apple-system, "PingFang SC", sans-serif; color: var(--fg3); letter-spacing: 0.04em; }
+  #url { margin-top: calc(var(--m) * 0.05); padding: calc(var(--m) * 0.012) calc(var(--m) * 0.026); border-radius: 999px; background: #f0eee6; font: 500 calc(var(--m) * 0.022)/1.3 "SF Mono", Menlo, monospace; color: #3d3d3a; }
 </style>
 </head>
 <body>
 <div id="card">
-  <!-- 与 Crab.tsx 的待机形象一致：18×10 像素网格 -->
-  <svg id="crab" viewBox="0 0 18 10" shape-rendering="crispEdges" aria-hidden="true">
-    <g fill="#d97757">
-      <g id="legs"></g>
-      <g id="body"></g>
-      <rect id="clawL" x="1" y="4" width="1" height="2"/>
-      <rect id="clawR" x="16" y="4" width="1" height="2"/>
-    </g>
-    <g id="eyes" fill="#2b2a27"><rect x="5" y="2" width="1" height="2"/><rect x="12" y="2" width="1" height="2"/></g>
-  </svg>
   <h1 id="title">Claude Code for Mac</h1>
-  <div id="tagline">中文 · 原生 · <b>看得见的</b> Agent</div>
   <div id="url">github.com/2061623884/Claude-Code-for-Mac</div>
 </div>
-<div id="note">第三方客户端，非 Anthropic 官方产品</div>
 
 <script src="spark.js"></script>
 <script>
 const DURATION = 4000
-const BODY = ['...############...', '...##.######.##...', '..##############..', '...############...']
-const NS = 'http://www.w3.org/2000/svg'
 const $ = id => document.getElementById(id)
-const rect = (parent, x, y, w, h) => { const r = document.createElementNS(NS, 'rect'); Object.entries({ x, y, width: w, height: h }).forEach(([k, v]) => r.setAttribute(k, v)); parent.appendChild(r) }
-BODY.forEach((row, y) => [...row].forEach((p, x) => p === '#' && rect($('body'), x, y * 2, 1, 2)))
-for (const x of [4, 6, 11, 13]) rect($('legs'), x, 8, 1, 2)
 
-// [元素, 入场开始, 入场结束]
-const ENTER = [['title', 250, 700], ['tagline', 550, 1000], ['url', 850, 1250], ['note', 1050, 1450]]
-
-function fadeUp(el, t, a, b, dist) {
-  const p = smooth(a, b, t)
-  el.style.opacity = p
-  el.style.transform = `translateY(${(1 - outCubic(p)) * dist}px)`
-}
+// [元素, 入场开始, 入场结束]；配乐在 26.15s、26.5s 各有一声对应
+const ENTER = [['title', 150, 650], ['url', 500, 950]]
 
 function render(t) {
   const m = Math.min(innerWidth, innerHeight)
-  // 螃蟹：落下回弹 → 两次举钳 → 呼吸 → 眨眼
-  const drop = clamp01(t / 450)
-  const breathe = t > 2000 && (t - 2000) % 1600 > 1000 ? -0.5 : 0
-  $('crab').style.opacity = smooth(0, 120, t)
-  $('crab').style.transform = `translateY(${(1 - outBack(drop)) * -m * 0.04}px)`
-  $('body').setAttribute('transform', `translate(0 ${breathe})`)
-  const wave = t > 1300 && t < 2100 && Math.floor((t - 1300) / 200) % 2 === 0 ? -1.5 : 0
-  $('clawL').setAttribute('y', 4 + wave + breathe)
-  $('clawR').setAttribute('y', 4 + wave + breathe)
-  const blink = t > 2900 && t < 3020
-  $('eyes').setAttribute('transform', `translate(0 ${breathe + (blink ? 1.5 : 0)})`)
-  for (const r of $('eyes').children) r.setAttribute('height', blink ? 0.4 : 2)
-
-  for (const [id, a, b] of ENTER) fadeUp($(id), t, a, b, m * 0.02)
+  for (const [id, a, b] of ENTER) {
+    const p = smooth(a, b, t), el = $(id)
+    el.style.opacity = p
+    el.style.transform = `translateY(${(1 - outCubic(p)) * m * 0.02}px)`
+  }
 }
 
 mountTimeline(render, DURATION)
