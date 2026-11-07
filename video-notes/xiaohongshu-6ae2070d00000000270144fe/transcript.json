@@ -1,0 +1,1887 @@
+{
+  "source": "local_asr",
+  "language": "en",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 5.04,
+      "text": "Cloud has just been completely revamped by Anthropec and they've added several new features,"
+    },
+    {
+      "start": 5.04,
+      "end": 10.56,
+      "text": "shared some official tips, and even some hidden functionalities that make the desktop app a completely"
+    },
+    {
+      "start": 10.56,
+      "end": 15.76,
+      "text": "different experience. Enough that one of their lead engineers called a Cloud 2.0. You can now"
+    },
+    {
+      "start": 15.76,
+      "end": 21.04,
+      "text": "have a master session that runs the rest of your Cloud chats for you, add and build mods that literally"
+    },
+    {
+      "start": 21.04,
+      "end": 25.76,
+      "text": "change how Cloud works, and they've even shipped practically full replacements for software you"
+    },
+    {
+      "start": 25.76,
+      "end": 30.1,
+      "text": "you might be using, like Google Docs or even some of your video editing tools, like the"
+    },
+    {
+      "start": 30.1,
+      "end": 33.56,
+      "text": "animations in this video, for example, which were made with the new cloud."
+    },
+    {
+      "start": 33.56,
+      "end": 37.32,
+      "text": "So today I'll show you the 11 most important updates that they shipped so that you too"
+    },
+    {
+      "start": 37.32,
+      "end": 42.16,
+      "text": "can get more done with cloud 2.0 and fully take advantage of everything that it can do"
+    },
+    {
+      "start": 42.16,
+      "end": 43.16,
+      "text": "now."
+    },
+    {
+      "start": 43.16,
+      "end": 44.16,
+      "text": "And if you're new, my name is Jay."
+    },
+    {
+      "start": 44.16,
+      "end": 47.44,
+      "text": "I spent over a decade working with brands you probably know have been in AI since my"
+    },
+    {
+      "start": 47.44,
+      "end": 52.24,
+      "text": "master's in data science and now I'm leading our AI business in one of the largest AI communities"
+    },
+    {
+      "start": 52.24,
+      "end": 53.24,
+      "text": "globally."
+    },
+    {
+      "start": 53.24,
+      "end": 57.16,
+      "text": "open the new Cloud Desktop app, you'll now see that there's only chat and code."
+    },
+    {
+      "start": 57.16,
+      "end": 58.68,
+      "text": "And that's because as of last month,"
+    },
+    {
+      "start": 58.68,
+      "end": 60.6,
+      "text": "code work has been folded into chat."
+    },
+    {
+      "start": 60.6,
+      "end": 64.52,
+      "text": "Now, if you want to make full use of Cloud, you have to use Cloud Code."
+    },
+    {
+      "start": 64.52,
+      "end": 68.36,
+      "text": "Because Cloud Code is clearly where Anthropic is shipping the best and"
+    },
+    {
+      "start": 68.36,
+      "end": 71.8,
+      "text": "the most updates because they know that it's their star product."
+    },
+    {
+      "start": 71.8,
+      "end": 74.6,
+      "text": "And if you're new, don't be intimidated by the word code, by the way,"
+    },
+    {
+      "start": 74.6,
+      "end": 76.76,
+      "text": "because that's really just a misnomer."
+    },
+    {
+      "start": 76.76,
+      "end": 79.48,
+      "text": "Anyone can use Cloud Code because you just prompt and"
+    },
+    {
+      "start": 79.48,
+      "end": 81.84,
+      "text": "direct Cloud in plain English anyway."
+    },
+    {
+      "start": 81.84,
+      "end": 84.4,
+      "text": "so you don't have to become a developer to use Cloud Code."
+    },
+    {
+      "start": 84.4,
+      "end": 85.8,
+      "text": "So just go and switch to that tab"
+    },
+    {
+      "start": 85.8,
+      "end": 87.32,
+      "text": "because that's also where we'll start"
+    },
+    {
+      "start": 87.32,
+      "end": 90.52,
+      "text": "with the latest updates, which is around the interface."
+    },
+    {
+      "start": 90.52,
+      "end": 92.36,
+      "text": "Now, the big one that they shipped in the interface"
+    },
+    {
+      "start": 92.36,
+      "end": 94.0,
+      "text": "is what they call the session rail."
+    },
+    {
+      "start": 94.0,
+      "end": 96.68,
+      "text": "It's this panel on the right side of your window."
+    },
+    {
+      "start": 96.68,
+      "end": 97.52,
+      "text": "And if you don't see it,"
+    },
+    {
+      "start": 97.52,
+      "end": 100.64,
+      "text": "just click show session rail at the top right of the UI"
+    },
+    {
+      "start": 100.64,
+      "end": 101.92,
+      "text": "and it pops open for you."
+    },
+    {
+      "start": 101.92,
+      "end": 104.6,
+      "text": "Now, the session rail in essence is just a set of cards"
+    },
+    {
+      "start": 104.6,
+      "end": 107.48,
+      "text": "that tell you what is going on in this particular session."
+    },
+    {
+      "start": 107.48,
+      "end": 110.72,
+      "text": "The environment card shows which folder this chat is working in"
+    },
+    {
+      "start": 110.72,
+      "end": 113.76,
+      "text": "and whether it's running on your computer or in the cloud."
+    },
+    {
+      "start": 113.76,
+      "end": 115.32,
+      "text": "Inside it, a very useful switch"
+    },
+    {
+      "start": 115.32,
+      "end": 117.12,
+      "text": "is this remote control button."
+    },
+    {
+      "start": 117.12,
+      "end": 119.08,
+      "text": "Toggle it on and you can keep going"
+    },
+    {
+      "start": 119.08,
+      "end": 121.6,
+      "text": "with this exact session from your phone."
+    },
+    {
+      "start": 121.6,
+      "end": 123.04,
+      "text": "So you can start something at your desk"
+    },
+    {
+      "start": 123.04,
+      "end": 125.1,
+      "text": "and check on it while you're away."
+    },
+    {
+      "start": 125.1,
+      "end": 126.28,
+      "text": "Now, here's a pro tip"
+    },
+    {
+      "start": 126.28,
+      "end": 128.16,
+      "text": "because in settings under Cloud Code,"
+    },
+    {
+      "start": 128.16,
+      "end": 131.3,
+      "text": "you can turn on connect new sessions to remote control."
+    },
+    {
+      "start": 131.3,
+      "end": 133.08,
+      "text": "So what that does is that every chat"
+    },
+    {
+      "start": 133.08,
+      "end": 134.92,
+      "text": "is now going to be ready for your phone"
+    },
+    {
+      "start": 134.92,
+      "end": 137.28,
+      "text": "and you don't have to manually toggle this every time."
+    },
+    {
+      "start": 137.28,
+      "end": 140.08,
+      "text": "It can also turn on keep computer awake while Cloud works"
+    },
+    {
+      "start": 140.08,
+      "end": 143.44,
+      "text": "so that your computer doesn't go to sleep halfway through a task."
+    },
+    {
+      "start": 143.44,
+      "end": 145.68,
+      "text": "Then at the bottom of that, there's the context card."
+    },
+    {
+      "start": 145.68,
+      "end": 148.9,
+      "text": "Now think of context as Claude's working memory for this chat."
+    },
+    {
+      "start": 148.9,
+      "end": 150.84,
+      "text": "The card just shows you how full it is"
+    },
+    {
+      "start": 150.84,
+      "end": 152.52,
+      "text": "and what's taking up the space"
+    },
+    {
+      "start": 152.52,
+      "end": 154.28,
+      "text": "because with the newest models of Claude,"
+    },
+    {
+      "start": 154.28,
+      "end": 156.52,
+      "text": "they have a one million token context window,"
+    },
+    {
+      "start": 156.52,
+      "end": 158.16,
+      "text": "which to put that into perspective,"
+    },
+    {
+      "start": 158.16,
+      "end": 160.84,
+      "text": "that's roughly the length of four Harry Potter books"
+    },
+    {
+      "start": 160.84,
+      "end": 161.88,
+      "text": "put side by side."
+    },
+    {
+      "start": 161.88,
+      "end": 163.7,
+      "text": "And what's great with this view is you can see,"
+    },
+    {
+      "start": 163.7,
+      "end": 165.8,
+      "text": "apart from your messages, which are your prompts,"
+    },
+    {
+      "start": 165.8,
+      "end": 167.04,
+      "text": "you can view your memory files,"
+    },
+    {
+      "start": 167.04,
+      "end": 169.4,
+      "text": "your skills and your MCP connectors"
+    },
+    {
+      "start": 169.4,
+      "end": 172.26,
+      "text": "in how much they are already taking up space in your chat."
+    },
+    {
+      "start": 172.26,
+      "end": 174.56,
+      "text": "Now that's important because those actually use up"
+    },
+    {
+      "start": 174.56,
+      "end": 177.1,
+      "text": "your usage limits on your very first prompt"
+    },
+    {
+      "start": 177.1,
+      "end": 179.78,
+      "text": "because they get preloaded on every chat that you start."
+    },
+    {
+      "start": 179.78,
+      "end": 182.14,
+      "text": "So with this view, you can see if they're becoming too long"
+    },
+    {
+      "start": 182.14,
+      "end": 184.24,
+      "text": "and that you might need to clean them up."
+    },
+    {
+      "start": 184.24,
+      "end": 185.74,
+      "text": "And you can get started with a cleanup"
+    },
+    {
+      "start": 185.74,
+      "end": 187.1,
+      "text": "with this prompt on the screen."
+    },
+    {
+      "start": 187.1,
+      "end": 188.74,
+      "text": "You'll also see your connectors here,"
+    },
+    {
+      "start": 188.74,
+      "end": 190.8,
+      "text": "which are the apps that you've plugged into Cloud"
+    },
+    {
+      "start": 190.8,
+      "end": 193.74,
+      "text": "and an outputs card for every file that this chat has made."
+    },
+    {
+      "start": 193.74,
+      "end": 196.54,
+      "text": "Now to keep all of your chats and sessions tidy,"
+    },
+    {
+      "start": 196.54,
+      "end": 198.5,
+      "text": "you can now sort them into sections here"
+    },
+    {
+      "start": 198.5,
+      "end": 200.98,
+      "text": "and the left sidebar, kind of like folders."
+    },
+    {
+      "start": 200.98,
+      "end": 203.86,
+      "text": "If you click the three dots, the ellipses next to any chat,"
+    },
+    {
+      "start": 203.86,
+      "end": 205.94,
+      "text": "then choose move to new section,"
+    },
+    {
+      "start": 205.94,
+      "end": 207.94,
+      "text": "then you can create that section and give it a name."
+    },
+    {
+      "start": 207.94,
+      "end": 210.18,
+      "text": "Then after that, you could just drag any session"
+    },
+    {
+      "start": 210.18,
+      "end": 211.46,
+      "text": "into that folder."
+    },
+    {
+      "start": 211.46,
+      "end": 213.26,
+      "text": "So instead of scrolling through 50 chats"
+    },
+    {
+      "start": 213.26,
+      "end": 214.7,
+      "text": "to find the one that you need,"
+    },
+    {
+      "start": 214.7,
+      "end": 217.46,
+      "text": "you can have one section per project, per client,"
+    },
+    {
+      "start": 217.46,
+      "end": 219.22,
+      "text": "or per part of your business."
+    },
+    {
+      "start": 219.22,
+      "end": 221.86,
+      "text": "And something related to that is this awesome feature"
+    },
+    {
+      "start": 221.86,
+      "end": 223.46,
+      "text": "called nested sessions."
+    },
+    {
+      "start": 223.46,
+      "end": 224.94,
+      "text": "Now a session is just one of the chats"
+    },
+    {
+      "start": 224.94,
+      "end": 226.02,
+      "text": "in your sidebar right,"
+    },
+    {
+      "start": 226.02,
+      "end": 228.84,
+      "text": "But now a session can start its own sessions."
+    },
+    {
+      "start": 228.84,
+      "end": 231.14,
+      "text": "And what that will do is have those sub-sessions"
+    },
+    {
+      "start": 231.14,
+      "end": 232.62,
+      "text": "sit right underneath it."
+    },
+    {
+      "start": 232.62,
+      "end": 235.14,
+      "text": "And when each one of these sub-sessions finish,"
+    },
+    {
+      "start": 235.14,
+      "end": 237.7,
+      "text": "they report back to the main session that started them."
+    },
+    {
+      "start": 237.7,
+      "end": 239.06,
+      "text": "And to try out this new feature,"
+    },
+    {
+      "start": 239.06,
+      "end": 241.74,
+      "text": "you can just ask Claude to do a few tasks at the same time"
+    },
+    {
+      "start": 241.74,
+      "end": 245.02,
+      "text": "and also ask it to start nested sessions for each one."
+    },
+    {
+      "start": 245.02,
+      "end": 247.5,
+      "text": "So let's say you're launching a new marketing campaign,"
+    },
+    {
+      "start": 247.5,
+      "end": 250.34,
+      "text": "then you can just have one main session start a sub-session"
+    },
+    {
+      "start": 250.34,
+      "end": 253.54,
+      "text": "for your sales page, another sub-session for your emails,"
+    },
+    {
+      "start": 253.54,
+      "end": 255.66,
+      "text": "and another one to create your ads."
+    },
+    {
+      "start": 255.66,
+      "end": 258.7,
+      "text": "Now it's important to differentiate this versus subagents."
+    },
+    {
+      "start": 258.7,
+      "end": 259.52,
+      "text": "And if you're new,"
+    },
+    {
+      "start": 259.52,
+      "end": 260.98,
+      "text": "subagents are basically helpers"
+    },
+    {
+      "start": 260.98,
+      "end": 263.62,
+      "text": "that a session can send off to do one job."
+    },
+    {
+      "start": 263.62,
+      "end": 264.66,
+      "text": "And they're still useful,"
+    },
+    {
+      "start": 264.66,
+      "end": 266.3,
+      "text": "but basically how a sub agent works"
+    },
+    {
+      "start": 266.3,
+      "end": 268.7,
+      "text": "is they're more like a one-way order."
+    },
+    {
+      "start": 268.7,
+      "end": 270.7,
+      "text": "The main session can send it a prompt"
+    },
+    {
+      "start": 270.7,
+      "end": 272.3,
+      "text": "and you get a result back."
+    },
+    {
+      "start": 272.3,
+      "end": 273.94,
+      "text": "Sure, you can peek at its progress,"
+    },
+    {
+      "start": 273.94,
+      "end": 276.82,
+      "text": "but you can't really jump in and talk to that sub agent"
+    },
+    {
+      "start": 276.82,
+      "end": 279.22,
+      "text": "the same way that you can with nested sessions."
+    },
+    {
+      "start": 279.22,
+      "end": 280.42,
+      "text": "Because with nested sessions,"
+    },
+    {
+      "start": 280.42,
+      "end": 283.34,
+      "text": "each one of these is a real chat in your sidebar"
+    },
+    {
+      "start": 283.34,
+      "end": 284.42,
+      "text": "that you can click into it,"
+    },
+    {
+      "start": 284.42,
+      "end": 287.58,
+      "text": "see everything it did and keep working with it directly."
+    },
+    {
+      "start": 287.58,
+      "end": 289.12,
+      "text": "So let's say you want to steer the session"
+    },
+    {
+      "start": 289.12,
+      "end": 291.48,
+      "text": "that is creating your ads more directly,"
+    },
+    {
+      "start": 291.48,
+      "end": 293.12,
+      "text": "then you can just jump into that chat"
+    },
+    {
+      "start": 293.12,
+      "end": 294.52,
+      "text": "and do that more directly."
+    },
+    {
+      "start": 294.52,
+      "end": 295.52,
+      "text": "And on top of this,"
+    },
+    {
+      "start": 295.52,
+      "end": 297.64,
+      "text": "here's a tip that most people don't know yet"
+    },
+    {
+      "start": 297.64,
+      "end": 298.96,
+      "text": "because in Cloud Code,"
+    },
+    {
+      "start": 298.96,
+      "end": 302.32,
+      "text": "one session can actually see your other sessions."
+    },
+    {
+      "start": 302.32,
+      "end": 306.12,
+      "text": "And so what this enables is the concept of a master session"
+    },
+    {
+      "start": 306.12,
+      "end": 308.64,
+      "text": "so that if you want to stop jumping between 10"
+    },
+    {
+      "start": 308.64,
+      "end": 310.52,
+      "text": "or 12 chats in your sidebar,"
+    },
+    {
+      "start": 310.52,
+      "end": 312.12,
+      "text": "you can just pick one session."
+    },
+    {
+      "start": 312.12,
+      "end": 313.44,
+      "text": "You can even pin it to the top"
+    },
+    {
+      "start": 313.44,
+      "end": 314.64,
+      "text": "so it's always visible."
+    },
+    {
+      "start": 314.64,
+      "end": 316.24,
+      "text": "And just tell Claude that this is going"
+    },
+    {
+      "start": 316.24,
+      "end": 317.48,
+      "text": "to be your master session."
+    },
+    {
+      "start": 317.48,
+      "end": 318.6,
+      "text": "Now, once this is set,"
+    },
+    {
+      "start": 318.6,
+      "end": 320.44,
+      "text": "there are now a few ways that you can use this."
+    },
+    {
+      "start": 320.44,
+      "end": 322.52,
+      "text": "For example, you can ask your master session"
+    },
+    {
+      "start": 322.52,
+      "end": 324.0,
+      "text": "for the critical decisions"
+    },
+    {
+      "start": 324.0,
+      "end": 326.12,
+      "text": "that your other chats are waiting on."
+    },
+    {
+      "start": 326.12,
+      "end": 328.0,
+      "text": "What it will now do is to go and look"
+    },
+    {
+      "start": 328.0,
+      "end": 329.48,
+      "text": "through all of those chats,"
+    },
+    {
+      "start": 329.48,
+      "end": 331.2,
+      "text": "pick up the ones that are actually waiting on you"
+    },
+    {
+      "start": 331.2,
+      "end": 333.6,
+      "text": "for a decision and summarize them for you"
+    },
+    {
+      "start": 333.6,
+      "end": 335.4,
+      "text": "from within just that master session."
+    },
+    {
+      "start": 335.4,
+      "end": 337.4,
+      "text": "So in a way, this pin chat can now be sort"
+    },
+    {
+      "start": 337.4,
+      "end": 340.0,
+      "text": "of your personal assistant that orchestrates Claude"
+    },
+    {
+      "start": 340.0,
+      "end": 342.56,
+      "text": "and all of the other chats that you have previously started."
+    },
+    {
+      "start": 342.56,
+      "end": 344.88,
+      "text": "you can even let it start new sessions for you"
+    },
+    {
+      "start": 344.88,
+      "end": 347.56,
+      "text": "and control them from just this one master session."
+    },
+    {
+      "start": 347.56,
+      "end": 349.3,
+      "text": "And if you want to tidy up your workspace"
+    },
+    {
+      "start": 349.3,
+      "end": 350.34,
+      "text": "and your cloud app,"
+    },
+    {
+      "start": 350.34,
+      "end": 353.62,
+      "text": "you can also ask it to group your chats into sections."
+    },
+    {
+      "start": 353.62,
+      "end": 356.14,
+      "text": "For example, I just asked mine to make a new section"
+    },
+    {
+      "start": 356.14,
+      "end": 358.42,
+      "text": "for all of the chats related to this video"
+    },
+    {
+      "start": 358.42,
+      "end": 360.9,
+      "text": "and it just did it without me clicking anything."
+    },
+    {
+      "start": 360.9,
+      "end": 362.58,
+      "text": "Just to note, this feature by default,"
+    },
+    {
+      "start": 362.58,
+      "end": 365.46,
+      "text": "it can see your 20 most recently active sessions,"
+    },
+    {
+      "start": 365.46,
+      "end": 367.0,
+      "text": "but you can of course just ask cloud"
+    },
+    {
+      "start": 367.0,
+      "end": 368.8,
+      "text": "to look further back if you wish."
+    },
+    {
+      "start": 368.8,
+      "end": 372.04,
+      "text": "Now closely related update is cloud code projects."
+    },
+    {
+      "start": 372.04,
+      "end": 374.56,
+      "text": "It's the same idea where you have one main session"
+    },
+    {
+      "start": 374.56,
+      "end": 377.4,
+      "text": "that is running a whole team of chats for you,"
+    },
+    {
+      "start": 377.4,
+      "end": 379.08,
+      "text": "but there are a few big differences."
+    },
+    {
+      "start": 379.08,
+      "end": 381.34,
+      "text": "The biggest one is that projects run in the cloud."
+    },
+    {
+      "start": 381.34,
+      "end": 384.32,
+      "text": "So they keep working even when you close your device."
+    },
+    {
+      "start": 384.32,
+      "end": 385.86,
+      "text": "NetSense sessions on the other hand,"
+    },
+    {
+      "start": 385.86,
+      "end": 387.04,
+      "text": "run on your computer."
+    },
+    {
+      "start": 387.04,
+      "end": 388.48,
+      "text": "So obviously if it's not awake,"
+    },
+    {
+      "start": 388.48,
+      "end": 390.08,
+      "text": "then those sessions would not run."
+    },
+    {
+      "start": 390.08,
+      "end": 392.38,
+      "text": "However, NetSense sessions do have access"
+    },
+    {
+      "start": 392.38,
+      "end": 395.78,
+      "text": "to all of your skills, files, and tools in your device,"
+    },
+    {
+      "start": 395.78,
+      "end": 397.96,
+      "text": "which is really useful if you're doing tasks"
+    },
+    {
+      "start": 397.96,
+      "end": 399.76,
+      "text": "that need your business context."
+    },
+    {
+      "start": 399.76,
+      "end": 403.0,
+      "text": "Cloud Code projects can of course use your skills and files too,"
+    },
+    {
+      "start": 403.0,
+      "end": 405.08,
+      "text": "but you need to add them to the project first."
+    },
+    {
+      "start": 405.08,
+      "end": 407.7,
+      "text": "Now you can of course upload those files manually,"
+    },
+    {
+      "start": 407.7,
+      "end": 409.92,
+      "text": "but the best way to do this is to just ask Cloud"
+    },
+    {
+      "start": 409.92,
+      "end": 412.08,
+      "text": "to get all of those skills and context"
+    },
+    {
+      "start": 412.08,
+      "end": 413.88,
+      "text": "that is necessary for that project"
+    },
+    {
+      "start": 413.88,
+      "end": 415.68,
+      "text": "so that it can get them from your computer"
+    },
+    {
+      "start": 415.68,
+      "end": 416.84,
+      "text": "while it's still awake."
+    },
+    {
+      "start": 416.84,
+      "end": 417.88,
+      "text": "Do note that natively,"
+    },
+    {
+      "start": 417.88,
+      "end": 420.84,
+      "text": "since Cloud Code projects run on Anthropics Cloud,"
+    },
+    {
+      "start": 420.84,
+      "end": 423.28,
+      "text": "that also means that any business file that you upload"
+    },
+    {
+      "start": 423.28,
+      "end": 425.84,
+      "text": "is going to go into Anthropics servers."
+    },
+    {
+      "start": 425.84,
+      "end": 427.34,
+      "text": "The other difference is that projects"
+    },
+    {
+      "start": 427.34,
+      "end": 429.64,
+      "text": "also have shared custom memory."
+    },
+    {
+      "start": 429.64,
+      "end": 432.2,
+      "text": "So you can set the rule once for the entire project"
+    },
+    {
+      "start": 432.2,
+      "end": 434.96,
+      "text": "and every chat session that you start within this project"
+    },
+    {
+      "start": 434.96,
+      "end": 436.6,
+      "text": "would adopt that rule."
+    },
+    {
+      "start": 436.6,
+      "end": 438.84,
+      "text": "In projects, you also get a nice overview page"
+    },
+    {
+      "start": 438.84,
+      "end": 441.0,
+      "text": "that shows what's done, what's still working"
+    },
+    {
+      "start": 441.0,
+      "end": 442.56,
+      "text": "and what's waiting on for you."
+    },
+    {
+      "start": 442.56,
+      "end": 445.32,
+      "text": "So a good rule of thumb is if the work needs your computer"
+    },
+    {
+      "start": 445.32,
+      "end": 447.06,
+      "text": "or if you prefer to work locally,"
+    },
+    {
+      "start": 447.06,
+      "end": 448.92,
+      "text": "then just use nested sessions."
+    },
+    {
+      "start": 448.92,
+      "end": 451.68,
+      "text": "If it's a big ongoing project or job that you want running"
+    },
+    {
+      "start": 451.68,
+      "end": 452.86,
+      "text": "even while you're away,"
+    },
+    {
+      "start": 452.86,
+      "end": 455.1,
+      "text": "then go and explore Cloud Code projects."
+    },
+    {
+      "start": 455.1,
+      "end": 456.76,
+      "text": "Now an important bit is that right now"
+    },
+    {
+      "start": 456.76,
+      "end": 458.84,
+      "text": "projects is still being rolled out."
+    },
+    {
+      "start": 458.84,
+      "end": 461.14,
+      "text": "So while message sessions work on any plan,"
+    },
+    {
+      "start": 461.14,
+      "end": 462.62,
+      "text": "projects is still on beta,"
+    },
+    {
+      "start": 462.62,
+      "end": 465.5,
+      "text": "and right now they're only on Pro and Max."
+    },
+    {
+      "start": 465.5,
+      "end": 467.32,
+      "text": "And if you don't see projects in your sidebar,"
+    },
+    {
+      "start": 467.32,
+      "end": 468.84,
+      "text": "just check under more,"
+    },
+    {
+      "start": 468.84,
+      "end": 470.44,
+      "text": "which is where you will usually find them."
+    },
+    {
+      "start": 470.44,
+      "end": 471.4,
+      "text": "And if it's not there either,"
+    },
+    {
+      "start": 471.4,
+      "end": 472.96,
+      "text": "you may need to join the wait list"
+    },
+    {
+      "start": 472.96,
+      "end": 474.56,
+      "text": "with the link that you see on the screen,"
+    },
+    {
+      "start": 474.56,
+      "end": 476.04,
+      "text": "which is also in the PDF guide."
+    },
+    {
+      "start": 476.04,
+      "end": 477.56,
+      "text": "And by the way, if you want to learn how to build"
+    },
+    {
+      "start": 477.56,
+      "end": 480.54,
+      "text": "and sell AI systems that businesses actually pay for,"
+    },
+    {
+      "start": 480.54,
+      "end": 481.92,
+      "text": "then that's pretty much all we do"
+    },
+    {
+      "start": 481.92,
+      "end": 483.46,
+      "text": "over at the RoboNuggets community,"
+    },
+    {
+      "start": 483.46,
+      "end": 484.9,
+      "text": "where not only do you get access"
+    },
+    {
+      "start": 484.9,
+      "end": 486.54,
+      "text": "to the Claude Living Masterclass,"
+    },
+    {
+      "start": 486.54,
+      "end": 487.72,
+      "text": "which we update every week"
+    },
+    {
+      "start": 487.72,
+      "end": 492.28,
+      "text": "takes you from zero to mastery with the latest on AI, but you also get access to our Agents as a"
+    },
+    {
+      "start": 492.28,
+      "end": 496.76,
+      "text": "service course, which walks you through how to actually get paid for all these AI skills that"
+    },
+    {
+      "start": 496.76,
+      "end": 501.32,
+      "text": "you are learning. You also get to be part of a genuinely great community of AI builders. In fact,"
+    },
+    {
+      "start": 501.32,
+      "end": 505.16,
+      "text": "you can see just some of the recent wins our members are getting from the program right here."
+    },
+    {
+      "start": 505.16,
+      "end": 508.36,
+      "text": "So if you want to start earning from AI, then check that just in the pinned comment below."
+    },
+    {
+      "start": 508.36,
+      "end": 513.08,
+      "text": "Now back to the video. Now let's say Claude is in the middle of a long task and a question pops up"
+    },
+    {
+      "start": 513.08,
+      "end": 517.4,
+      "text": "into your head. Like you want to know for example how long still until this build finishes,"
+    },
+    {
+      "start": 517.4,
+      "end": 521.32,
+      "text": "or you just want to remember what this build is even about. If you ask it in the main chat,"
+    },
+    {
+      "start": 521.32,
+      "end": 525.4,
+      "text": "that is not advisable for a lot of reasons because you interrupt the work, and you also"
+    },
+    {
+      "start": 525.4,
+      "end": 530.76,
+      "text": "spend more tokens. Now that is what side chats are for. To open one, you just click the ellipses at"
+    },
+    {
+      "start": 530.76,
+      "end": 536.36,
+      "text": "the top right, or even type slash BTW. Once you do that, a new chat window would pop up next to your"
+    },
+    {
+      "start": 536.36,
+      "end": 541.72,
+      "text": "main one, and this side chat, the main benefit of it, is that it can read your whole main session."
+    },
+    {
+      "start": 541.72,
+      "end": 546.2,
+      "text": "so you can ask it to explain what Claude has done so far or to check the work status."
+    },
+    {
+      "start": 546.2,
+      "end": 552.12,
+      "text": "Now this is a great upgrade because before, slash BTW or slash by the way would just pop up a temporary"
+    },
+    {
+      "start": 552.12,
+      "end": 556.84,
+      "text": "chat that didn't really get saved anywhere but now you can start as many sidechats as you want"
+    },
+    {
+      "start": 556.84,
+      "end": 561.24,
+      "text": "and each one is kept so you can go back to it whenever you need to. Now if you're always clicking"
+    },
+    {
+      "start": 561.24,
+      "end": 566.28,
+      "text": "back and forth between chats on the left sidebar, split view, put several of them on one screen at"
+    },
+    {
+      "start": 566.28,
+      "end": 571.56,
+      "text": "the same time. To do it just hold Alt or Option on Mac and click a chat on your sidebar. You can"
+    },
+    {
+      "start": 571.56,
+      "end": 575.44,
+      "text": "You can also right click the chat, choose open in split view, and it will show several"
+    },
+    {
+      "start": 575.44,
+      "end": 579.36,
+      "text": "pains in your cloud app so that you can manage multiple sessions at once."
+    },
+    {
+      "start": 579.36,
+      "end": 583.4,
+      "text": "And if you want to really squeeze in as many as you can, you can actually zoom out by pressing"
+    },
+    {
+      "start": 583.4,
+      "end": 586.72,
+      "text": "control and minus or command minus on a Mac."
+    },
+    {
+      "start": 586.72,
+      "end": 591.18,
+      "text": "And when I did this, I could fit up to 10 different chats on my screen at once."
+    },
+    {
+      "start": 591.18,
+      "end": 594.98,
+      "text": "But of course, be careful because having that many things on your screen fills up your own"
+    },
+    {
+      "start": 594.98,
+      "end": 596.6,
+      "text": "brain's context window."
+    },
+    {
+      "start": 596.6,
+      "end": 598.8,
+      "text": "So this one's definitely not for beginners."
+    },
+    {
+      "start": 598.8,
+      "end": 603.44,
+      "text": "You can probably start with two side by side and just add more once that feels easy."
+    },
+    {
+      "start": 603.44,
+      "end": 607.8,
+      "text": "Now let's talk about what you can make inside cloud because on Tropic now has its own take"
+    },
+    {
+      "start": 607.8,
+      "end": 613.64,
+      "text": "on Google Docs and Google Slides plus tools for design, dashboards and videos."
+    },
+    {
+      "start": 613.64,
+      "end": 616.32,
+      "text": "Each one of these makes what they call an artifact."
+    },
+    {
+      "start": 616.32,
+      "end": 620.28,
+      "text": "Think of it like a canvas where you and your cloud agent are working on the same design"
+    },
+    {
+      "start": 620.28,
+      "end": 624.08,
+      "text": "or dashboard and you can even leave comments for cloud to fix it."
+    },
+    {
+      "start": 624.08,
+      "end": 628.16,
+      "text": "And just like Google Docs, you can publish any of these as a live link or you can share"
+    },
+    {
+      "start": 628.16,
+      "end": 633.2,
+      "text": "them with your team or a client. Docs of course work like Google Docs where you and Claude"
+    },
+    {
+      "start": 633.2,
+      "end": 637.28,
+      "text": "write the same document together. Slides makes presentations and you can also download them"
+    },
+    {
+      "start": 637.28,
+      "end": 642.32,
+      "text": "as a PowerPoint or even present straight from Claude. Design is sort of Claude's answer to Canva"
+    },
+    {
+      "start": 642.32,
+      "end": 646.64,
+      "text": "where you can create social posts, websites, and anything visual really. And very clearly,"
+    },
+    {
+      "start": 646.64,
+      "end": 652.16,
+      "text": "Anthropic is moving Claude design in here for good because the old standalone Claude design site,"
+    },
+    {
+      "start": 652.16,
+      "end": 657.28,
+      "text": "the one at claude.ai slash design is actually closing by the 14th of December. In fact,"
+    },
+    {
+      "start": 657.28,
+      "end": 662.0,
+      "text": "If you go to settings, you can even upload your own design systems right here now in Cloud Code,"
+    },
+    {
+      "start": 662.0,
+      "end": 665.84,
+      "text": "or you can do what most people do and just have a skill that brings in your design system."
+    },
+    {
+      "start": 665.84,
+      "end": 670.4,
+      "text": "Then a new artifact that they just added is dashboards, so dashboards can pull live data"
+    },
+    {
+      "start": 670.4,
+      "end": 674.48,
+      "text": "from your connected apps. So every time that you open the link to this dashboard artifact,"
+    },
+    {
+      "start": 674.48,
+      "end": 680.0,
+      "text": "the numbers are going to be up to date. And finally, Cloud Motion makes animated videos with code"
+    },
+    {
+      "start": 680.0,
+      "end": 685.2,
+      "text": "instead of a video model, which makes it much cheaper because you're not paying per generation."
+    },
+    {
+      "start": 685.2,
+      "end": 690.4,
+      "text": "and it also makes these videos more malleable. I actually did a full tutorial on Claude motion,"
+    },
+    {
+      "start": 690.4,
+      "end": 695.2,
+      "text": "so I'll just link that as part of this video if you want to learn more. Now, not every plan gets"
+    },
+    {
+      "start": 695.2,
+      "end": 700.4,
+      "text": "every one of these, by the way, so here's a quick table of which plans get what. As a quick headline,"
+    },
+    {
+      "start": 700.4,
+      "end": 705.36,
+      "text": "if you're on Pro or Max, right now the only thing you don't have access to is Claude motion,"
+    },
+    {
+      "start": 705.36,
+      "end": 709.84,
+      "text": "but for sure it'll be added real soon because of how popular it is. Now to take artifacts to the"
+    },
+    {
+      "start": 709.84,
+      "end": 714.72,
+      "text": "next level, you can actually now use Claude to create what Entropic is calling AI-powered"
+    },
+    {
+      "start": 714.72,
+      "end": 720.08,
+      "text": "artifacts. To turn this on, just go to settings, then under capabilities, you can switch on AI-powered"
+    },
+    {
+      "start": 720.08,
+      "end": 724.96,
+      "text": "artifacts right in the toggle. With this on, the artifacts that Claude is building for you"
+    },
+    {
+      "start": 724.96,
+      "end": 730.08,
+      "text": "can have Claude inside them. So if you want LLM capabilities from within the artifacts that you"
+    },
+    {
+      "start": 730.08,
+      "end": 734.16,
+      "text": "make, then this is definitely a future that you want to try. And because you can share artifacts"
+    },
+    {
+      "start": 734.16,
+      "end": 738.64,
+      "text": "with your teammates, this is where it gets really useful. Because let's say you have a dashboard that"
+    },
+    {
+      "start": 738.64,
+      "end": 743.36,
+      "text": "you and your team are using all the time, you can actually ask Claude to add a chat window or a"
+    },
+    {
+      "start": 743.36,
+      "end": 747.84,
+      "text": "a search bar right inside it where anyone can just type a question and Claude answers"
+    },
+    {
+      "start": 747.84,
+      "end": 752.96,
+      "text": "it using the data on the dashboard. So in this way, you just made this artifact AI powered"
+    },
+    {
+      "start": 752.96,
+      "end": 756.84,
+      "text": "or LLM powered, which means that your teammates, especially if you're sharing it with a wider"
+    },
+    {
+      "start": 756.84,
+      "end": 761.32,
+      "text": "audience who may not necessarily know how to use cloud code, they can just go to that"
+    },
+    {
+      "start": 761.32,
+      "end": 765.36,
+      "text": "dashboard and ask it questions to get the data that they want without having to learn"
+    },
+    {
+      "start": 765.36,
+      "end": 769.64,
+      "text": "cloud code. They just go to that link that you shared to them in that dashboard app itself"
+    },
+    {
+      "start": 769.64,
+      "end": 771.16,
+      "text": "will be LLM enabled."
+    },
+    {
+      "start": 771.16,
+      "end": 774.06,
+      "text": "Now, CloudTode also has a bunch of new slash commands"
+    },
+    {
+      "start": 774.06,
+      "end": 775.32,
+      "text": "that are worth knowing."
+    },
+    {
+      "start": 775.32,
+      "end": 777.64,
+      "text": "A slash command is basically a shortcut that you type"
+    },
+    {
+      "start": 777.64,
+      "end": 779.3,
+      "text": "and Entropic actually published new ones"
+    },
+    {
+      "start": 779.3,
+      "end": 781.88,
+      "text": "and even updated some of the more useful ones from the past."
+    },
+    {
+      "start": 781.88,
+      "end": 783.06,
+      "text": "And here are some of them."
+    },
+    {
+      "start": 783.06,
+      "end": 785.2,
+      "text": "Slash output style changes how basically"
+    },
+    {
+      "start": 785.2,
+      "end": 786.16,
+      "text": "Cloud talks to you."
+    },
+    {
+      "start": 786.16,
+      "end": 789.24,
+      "text": "So if its responses feel too long or too technical,"
+    },
+    {
+      "start": 789.24,
+      "end": 791.52,
+      "text": "you can actually switch it to a shorter, planer style"
+    },
+    {
+      "start": 791.52,
+      "end": 793.32,
+      "text": "like this ELI5 style that I've shared"
+    },
+    {
+      "start": 793.32,
+      "end": 794.68,
+      "text": "in another video before,"
+    },
+    {
+      "start": 794.68,
+      "end": 797.08,
+      "text": "which just makes Cloud speak in a non-technical way."
+    },
+    {
+      "start": 797.08,
+      "end": 798.64,
+      "text": "And of course, you can always ask Cloud"
+    },
+    {
+      "start": 798.64,
+      "end": 800.98,
+      "text": "to make your own unique output style as well."
+    },
+    {
+      "start": 800.98,
+      "end": 802.94,
+      "text": "Slash Doctor is also really useful."
+    },
+    {
+      "start": 802.94,
+      "end": 804.7,
+      "text": "It runs a checkup on your setup,"
+    },
+    {
+      "start": 804.7,
+      "end": 806.9,
+      "text": "looking at your settings, your claw.md,"
+    },
+    {
+      "start": 806.9,
+      "end": 809.58,
+      "text": "and offers to fix any problems it finds."
+    },
+    {
+      "start": 809.58,
+      "end": 812.38,
+      "text": "And relatedly, Slash Skill Doctor shows"
+    },
+    {
+      "start": 812.38,
+      "end": 815.42,
+      "text": "what each of your skills costs in Clawd's working memory"
+    },
+    {
+      "start": 815.42,
+      "end": 817.3,
+      "text": "and how often you actually use them."
+    },
+    {
+      "start": 817.3,
+      "end": 819.3,
+      "text": "So you can switch off the ones that you never use"
+    },
+    {
+      "start": 819.3,
+      "end": 821.54,
+      "text": "so that you can save on some tokens."
+    },
+    {
+      "start": 821.54,
+      "end": 825.28,
+      "text": "Slash Advisor is also a useful but underutilized command"
+    },
+    {
+      "start": 825.28,
+      "end": 827.8,
+      "text": "because it lets Clawd call in a stronger model"
+    },
+    {
+      "start": 827.8,
+      "end": 831.48,
+      "text": "like opus or even fable, but only when a big decision comes up."
+    },
+    {
+      "start": 831.48,
+      "end": 833.84,
+      "text": "So you can run a cheaper model like Sonnet, for example,"
+    },
+    {
+      "start": 833.84,
+      "end": 836.26,
+      "text": "most of the time, and it will automatically just use"
+    },
+    {
+      "start": 836.26,
+      "end": 839.72,
+      "text": "a higher model if it deems that decision to be critical."
+    },
+    {
+      "start": 839.72,
+      "end": 842.08,
+      "text": "So that way you won't have to burn through your limits"
+    },
+    {
+      "start": 842.08,
+      "end": 843.6,
+      "text": "on the big models."
+    },
+    {
+      "start": 843.6,
+      "end": 845.0,
+      "text": "And lastly, three more quick ones."
+    },
+    {
+      "start": 845.0,
+      "end": 847.4,
+      "text": "Slash Insights gives you a report on how you use"
+    },
+    {
+      "start": 847.4,
+      "end": 849.32,
+      "text": "cloud code and features to try."
+    },
+    {
+      "start": 849.32,
+      "end": 851.44,
+      "text": "Slash Recap gives you a one line summary"
+    },
+    {
+      "start": 851.44,
+      "end": 854.08,
+      "text": "of where a chat is up to so that you can remember"
+    },
+    {
+      "start": 854.08,
+      "end": 855.88,
+      "text": "what it is that you're talking about with cloud."
+    },
+    {
+      "start": 855.88,
+      "end": 860.76,
+      "text": "And slash rewind takes you back to an earlier point in the chat, which is sort of like Claude's"
+    },
+    {
+      "start": 860.76,
+      "end": 861.76,
+      "text": "undo button."
+    },
+    {
+      "start": 861.76,
+      "end": 865.44,
+      "text": "And the next one is mods, which is one of my favorite new features in the Claude desktop"
+    },
+    {
+      "start": 865.44,
+      "end": 866.44,
+      "text": "app."
+    },
+    {
+      "start": 866.44,
+      "end": 871.28,
+      "text": "A mod is basically a small add on the changes how the Claude code app looks or works."
+    },
+    {
+      "start": 871.28,
+      "end": 873.52,
+      "text": "And you can make one just by describing it to Claude."
+    },
+    {
+      "start": 873.52,
+      "end": 876.76,
+      "text": "The first one that I use every day is this mod I made called Ribbon."
+    },
+    {
+      "start": 876.76,
+      "end": 881.24,
+      "text": "It's a slim bar above my chat box that shows what's left of my usage for the week."
+    },
+    {
+      "start": 881.24,
+      "end": 885.68,
+      "text": "And it also shows me if my prompt cache for that chat is warm or cold, which really helps"
+    },
+    {
+      "start": 885.68,
+      "end": 889.24,
+      "text": "cut down my token burn. Now, if you don't know what the prompt cache is, it's basically"
+    },
+    {
+      "start": 889.24,
+      "end": 893.32,
+      "text": "shorter memory that Claude keeps during your chat so that it doesn't have to reread your"
+    },
+    {
+      "start": 893.32,
+      "end": 897.88,
+      "text": "entire conversation every time that you send it a message. Because after an hour, that"
+    },
+    {
+      "start": 897.88,
+      "end": 902.56,
+      "text": "prompt cache goes cold and then the next message makes Claude reread your entire conversation"
+    },
+    {
+      "start": 902.56,
+      "end": 907.44,
+      "text": "at the normal cost, which can really eat into your limits. So seeing that at a glance through"
+    },
+    {
+      "start": 907.44,
+      "end": 911.64,
+      "text": "this mod actually saves you tokens in the long term. This one's free and open source,"
+    },
+    {
+      "start": 911.64,
+      "end": 914.64,
+      "text": "by the way. So I'll leave the link down below for that if you need it. And the second one"
+    },
+    {
+      "start": 914.64,
+      "end": 917.24,
+      "text": "that I really like is this one called Savvy Progress."
+    },
+    {
+      "start": 917.24,
+      "end": 918.84,
+      "text": "And apart from putting a progress bar"
+    },
+    {
+      "start": 918.84,
+      "end": 921.0,
+      "text": "above your chat box, so you can see how close"
+    },
+    {
+      "start": 921.0,
+      "end": 923.08,
+      "text": "Claude is to finishing long tasks."
+    },
+    {
+      "start": 923.08,
+      "end": 925.96,
+      "text": "For bigger jobs where a team of helpers or sub agents"
+    },
+    {
+      "start": 925.96,
+      "end": 929.12,
+      "text": "is also doing the work, it actually shows you a live panel"
+    },
+    {
+      "start": 929.12,
+      "end": 930.84,
+      "text": "of every one of them here at the right,"
+    },
+    {
+      "start": 930.84,
+      "end": 933.04,
+      "text": "complete with little pixel Claude crabs"
+    },
+    {
+      "start": 933.04,
+      "end": 934.42,
+      "text": "that you can even customize."
+    },
+    {
+      "start": 934.42,
+      "end": 936.36,
+      "text": "Now I did a full video on Claude mods,"
+    },
+    {
+      "start": 936.36,
+      "end": 938.28,
+      "text": "so check that out if you want to go deeper"
+    },
+    {
+      "start": 938.28,
+      "end": 939.48,
+      "text": "in this new feature."
+    },
+    {
+      "start": 939.48,
+      "end": 942.04,
+      "text": "And finally, a feature that is underrated in my view"
+    },
+    {
+      "start": 942.04,
+      "end": 944.2,
+      "text": "is learning a few keyboard shortcuts"
+    },
+    {
+      "start": 944.2,
+      "end": 945.98,
+      "text": "that actually saved me a lot of time."
+    },
+    {
+      "start": 945.98,
+      "end": 948.4,
+      "text": "So for example, if you press control, all then space,"
+    },
+    {
+      "start": 948.4,
+      "end": 950.82,
+      "text": "you can open Cloud from anywhere on your computer."
+    },
+    {
+      "start": 950.82,
+      "end": 953.12,
+      "text": "So if you're halfway to an email and one Cloud's help,"
+    },
+    {
+      "start": 953.12,
+      "end": 955.34,
+      "text": "you just press those three keys and ask your question,"
+    },
+    {
+      "start": 955.34,
+      "end": 957.3,
+      "text": "and that opens a new chat in your app."
+    },
+    {
+      "start": 957.3,
+      "end": 958.9,
+      "text": "If you press escape twice,"
+    },
+    {
+      "start": 958.9,
+      "end": 960.86,
+      "text": "that actually triggers slash rewinds"
+    },
+    {
+      "start": 960.86,
+      "end": 962.78,
+      "text": "so that you can go back to an earlier prompt"
+    },
+    {
+      "start": 962.78,
+      "end": 964.46,
+      "text": "if you want to undo any conversation"
+    },
+    {
+      "start": 964.46,
+      "end": 965.72,
+      "text": "after that certain prompt."
+    },
+    {
+      "start": 965.72,
+      "end": 967.44,
+      "text": "And if you press control and D,"
+    },
+    {
+      "start": 967.44,
+      "end": 968.82,
+      "text": "you can talk instead of type"
+    },
+    {
+      "start": 968.82,
+      "end": 970.12,
+      "text": "because that is the shortcut"
+    },
+    {
+      "start": 970.12,
+      "end": 972.4,
+      "text": "to enable voice transcription in Cloud."
+    },
+    {
+      "start": 972.4,
+      "end": 973.74,
+      "text": "And to see every shortcut there is,"
+    },
+    {
+      "start": 973.74,
+      "end": 977.46,
+      "text": "there's actually quite a lot. You can just press control and slash or command and slash"
+    },
+    {
+      "start": 977.46,
+      "end": 981.3,
+      "text": "on a Mac. And that will show you the full list. Keyboard shortcuts may be a small thing,"
+    },
+    {
+      "start": 981.3,
+      "end": 985.38,
+      "text": "but if you use cloud a lot, then I think learning them is definitely worth your while. So there"
+    },
+    {
+      "start": 985.38,
+      "end": 989.78,
+      "text": "you go. Those are the 11 biggest updates to the new cloud desktop app. And as usual, thanks"
+    },
+    {
+      "start": 989.78,
+      "end": 993.6,
+      "text": "for watching till the end. I do more of these sessions where the whole intention is to let"
+    },
+    {
+      "start": 993.6,
+      "end": 996.86,
+      "text": "you use cloud better for your business. So if that's something that you're into, then"
+    },
+    {
+      "start": 996.86,
+      "end": 999.5,
+      "text": "feel free to subscribe down below. That's it for this one. I'll see you all next"
+    }
+  ],
+  "coverage": {
+    "timed_fraction": 0.998,
+    "gaps_over_30s": [],
+    "interpretation": "Timestamp occupancy only; gaps may be silence or missing speech. Not a quality/completeness score."
+  },
+  "warnings": []
+}

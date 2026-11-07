@@ -7,6 +7,7 @@ import { captureFirstSend } from '../../motion/firstSend'
 import { useDesk } from '../../store'
 import { draftSessionOptions } from '../../sessionOptions'
 import { useChat } from '../../chatStore'
+import { EMPTY_DRAFT, NEW_CHAT_DRAFT, useComposerDrafts } from '../../composerDraftStore'
 import { openAppPanel, usePanel } from '../../panelStore'
 import { CommandPanel } from '../commands/CommandPanel'
 import { Button } from '../ui/Dialog'
@@ -20,8 +21,13 @@ export function NewSessionPage() {
   const { projects, selectedProjectId, pickProject, setDraft } = desk
   const options = draftSessionOptions(desk)
   const start = useChat((s) => s.start)
-  const [text, setText] = useState(() => useDesk.getState().takeNewChatPrefill())
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+  useState(() => {
+    const prefill = useDesk.getState().takeNewChatPrefill()
+    if (prefill) useComposerDrafts.getState().updateDraft(NEW_CHAT_DRAFT, { text: prefill })
+  })
+  const { text, attachments } = useComposerDrafts((s) => s.drafts[NEW_CHAT_DRAFT] ?? EMPTY_DRAFT)
+  const setText = (text: string): void => useComposerDrafts.getState().updateDraft(NEW_CHAT_DRAFT, { text })
+  const setAttachments = (attachments: ComposerAttachment[]): void => useComposerDrafts.getState().updateDraft(NEW_CHAT_DRAFT, { attachments })
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [configStatus, setConfigStatus] = useState<string | null>(null)

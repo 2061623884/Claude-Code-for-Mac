@@ -15,15 +15,18 @@ beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation(() => ({ get matches() { return reduced }, addEventListener: (_name: string, listener: () => void) => { motionChanged = listener }, removeEventListener: vi.fn() }))
 })
 afterEach(cleanup)
-it('shows a compact live summary automatically and preserves explicit expansion on completion', () => {
-  const view = render(<ThinkingSummary text={'一\n二\n三\n四'} streaming />)
+it('shows a four-line live window, expands to the full text and folds back to the window', () => {
+  const view = render(<ThinkingSummary text={'一\n二\n三\n四\n五'} streaming />)
   const body = screen.getByLabelText('思考摘要内容')
-  expect(body.className).toContain('max-h-[63px]')
+  expect(body.style.maxHeight).toBe('84px')
+  expect(body.className).toContain('overflow-y-auto')
   fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
-  view.rerender(<ThinkingSummary text={'一\n二\n三\n四'} />)
-  expect(screen.getByLabelText('思考摘要内容').className).toContain('overflow-y-auto')
+  view.rerender(<ThinkingSummary text={'一\n二\n三\n四\n五'} />)
+  const full = screen.getByLabelText('思考摘要内容')
+  expect(full.style.maxHeight).toBe('')
+  expect(full.className).not.toContain('overflow-y-auto')
   fireEvent.click(screen.getByRole('button', { name: '收起思考摘要' }))
-  expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
+  expect(screen.getByLabelText('思考摘要内容').style.maxHeight).toBe('84px')
 })
 it('keeps a preview in place when its block finishes streaming', () => {
   const view = render(<ThinkingSummary text="主会话" streaming />)
@@ -34,9 +37,8 @@ it('keeps a preview in place when its block finishes streaming', () => {
   expect(screen.getByRole('button', { name: '展开思考摘要' })).toBe(header)
 })
 
-it('leaves the reader in place while viewing earlier text in an expanded summary', () => {
+it('leaves the reader in place while reviewing earlier text in the live window', () => {
   const view = render(<ThinkingSummary text={'first'} streaming />)
-  fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
   const body = screen.getByLabelText('思考摘要内容')
   Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 1000 })
   Object.defineProperty(body, 'clientHeight', { configurable: true, value: 252 })
@@ -53,6 +55,34 @@ it('omits empty summaries and keeps summaries from history folded', () => {
   view.rerender(<ThinkingSummary text="已保存的摘要" />)
   expect(screen.getByRole('button', { name: '展开思考摘要' })).toBeTruthy()
   expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
+  expect(screen.getByLabelText('思考摘要内容').style.maxHeight).toBe('')
+  fireEvent.click(screen.getByRole('button', { name: '收起思考摘要' }))
+  expect(screen.queryByLabelText('思考摘要内容')).toBeNull()
+})
+
+it('shows a drag rail only when the live window overflows and scrolls proportionally when dragged', () => {
+  const view = render(<ThinkingSummary text={'短'} streaming />)
+  expect(view.container.querySelector('[data-thinking-rail]')).toBeNull()
+  const body = screen.getByLabelText('思考摘要内容')
+  Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 336 })
+  Object.defineProperty(body, 'clientHeight', { configurable: true, value: 84 })
+  body.scrollTop = 252; fireEvent.scroll(body)
+  const rail = view.container.querySelector('[data-thinking-rail]') as HTMLElement
+  const thumb = rail.lastElementChild as HTMLElement
+  expect(thumb.style.height).toBe('21px')
+  expect(thumb.style.top).toBe('63px')
+  expect(body.style.maskImage).toContain('linear-gradient')
+  fireEvent.pointerDown(rail, { button: 0, clientY: 70, pointerId: 1 })
+  fireEvent.pointerMove(rail, { clientY: 49, pointerId: 1 })
+  expect(body.scrollTop).toBe(168)
+  fireEvent.scroll(body) // 浏览器修改 scrollTop 会派发 scroll，jsdom 需手动补发
+  expect(thumb.style.top).toBe('42px')
+  fireEvent.pointerUp(rail, { pointerId: 1 })
+  fireEvent.pointerMove(rail, { clientY: 0, pointerId: 1 })
+  expect(body.scrollTop).toBe(168)
+  view.rerender(<ThinkingSummary text={'短\n更多'} streaming />)
+  expect(body.scrollTop).toBe(168)
 })
 
 it('stops Spark on reduced motion, hidden documents and inactive side pages', () => {
@@ -99,10 +129,9 @@ it('keeps session activity isolated and rejects an older activity snapshot', asy
 
 it('does not follow when the reader scrolls just one line above the bottom', () => {
   const view = render(<ThinkingSummary text={'first'} streaming />)
-  fireEvent.click(screen.getByRole('button', { name: '展开思考摘要' }))
   const body = screen.getByLabelText('思考摘要内容')
-  Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 273 })
-  Object.defineProperty(body, 'clientHeight', { configurable: true, value: 252 })
+  Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 105 })
+  Object.defineProperty(body, 'clientHeight', { configurable: true, value: 84 })
   body.scrollTop = 0; fireEvent.scroll(body)
   view.rerender(<ThinkingSummary text={'first\nnew'} streaming />)
   expect(body.scrollTop).toBe(0)

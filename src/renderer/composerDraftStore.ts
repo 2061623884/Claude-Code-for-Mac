@@ -4,6 +4,8 @@ import type { QueuedMessage } from '@shared/chat'
 export interface ComposerDraft { text: string; attachments: ComposerAttachment[] }
 export interface QueueEditDraft extends ComposerDraft { id: string; originalPaths: string[] }
 export const EMPTY_DRAFT: ComposerDraft = { text: '', attachments: [] }
+/** 新建会话页还没有会话 ID，草稿统一存在这个键下，切走再回来不丢。 */
+export const NEW_CHAT_DRAFT = '__new_chat__'
 interface DraftStore {
   drafts: Record<string, ComposerDraft>
   edits: Record<string, QueueEditDraft>

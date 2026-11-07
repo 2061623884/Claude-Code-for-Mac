@@ -38,6 +38,10 @@ export function connectSessionSignals(): () => void {
   })
   const stopEvents = chat.onEvent((sessionId, event) => {
     if (!useChat.getState().handle(sessionId, event)) return
+    if (event.kind === 'state' && event.state === 'running') {
+      const projectId = useChat.getState().chats[sessionId]?.projectId
+      if (projectId) useDesk.getState().touchSession(projectId, sessionId)
+    }
     if (event.kind === 'result') {
       const projectId = useChat.getState().chats[sessionId]?.projectId
       if (projectId) refreshSessionsInBackground(projectId)

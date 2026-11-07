@@ -7,6 +7,18 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- 启动开屏骨架，动画见 motion/splash.ts -->
+    <svg id="splash" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;display:block;z-index:2147483647">
+      <defs>
+        <path id="splash-spark" />
+        <mask id="splash-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+          <rect width="100%" height="100%" fill="#fff" />
+          <g id="splash-hole-t" visibility="hidden"><use href="#splash-spark" fill="#000" /></g>
+        </mask>
+      </defs>
+      <rect width="100%" height="100%" fill="#d97757" mask="url(#splash-hole)" />
+      <g id="splash-logo" opacity="0"><use href="#splash-spark" fill="#fff" /></g>
+    </svg>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

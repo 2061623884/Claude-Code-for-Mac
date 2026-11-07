@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Splash Preview</title>
+<style>
+  :root { --orange: #d97757; --bg: #ffffff; --sidebar: #f8f8f7; --line: #37352f17; --chip: #f1f1ef; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--orange); }
+
+  /* 假主界面：只有色块，没有文字 */
+  #page { position: fixed; inset: 0; display: flex; background: var(--bg); transform-origin: 50% 50%; will-change: transform; }
+  .side { width: 260px; background: var(--sidebar); border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .bar { height: 10px; border-radius: 5px; background: #37352f14; }
+  .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 56px 0 28px; gap: 16px; }
+  .row { width: min(720px, 80%); display: flex; }
+  .row.me { justify-content: flex-end; }
+  .bubble { height: 40px; border-radius: 14px; background: var(--chip); }
+  .lines { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .composer { margin-top: auto; width: min(720px, 80%); height: 112px; border-radius: 18px; background: #fff; box-shadow: 0 1px 2px #37352f0a, 0 4px 18px #37352f12, 0 0 0 1px var(--line); }
+
+  #splash { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* 调参面板：默认隐藏，按 D 打开 */
+  #panel { position: fixed; right: 16px; bottom: 16px; width: 280px; padding: 14px; border-radius: 12px; background: #1f1e1dee; color: #f5f4ee; font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; display: none; z-index: 10; }
+  #panel.open { display: block; }
+  #panel label { display: grid; grid-template-columns: 1fr 52px; gap: 2px 8px; margin-bottom: 8px; }
+  #panel input { grid-column: 1 / -1; width: 100%; }
+  #panel output { text-align: right; color: #bfbdb4; }
+  #panel button { margin-top: 4px; width: 100%; padding: 6px; border: 0; border-radius: 6px; background: #d97757; color: #fff; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="page">
+  <aside class="side">
+    <div class="bar" style="width:70%;height:14px;margin-bottom:10px"></div>
+    <div class="bar" style="width:85%"></div><div class="bar" style="width:60%"></div><div class="bar" style="width:75%"></div>
+    <div class="bar" style="width:50%"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:65%"></div>
+  </aside>
+  <main class="main">
+    <div class="row me"><div class="bubble" style="width:46%"></div></div>
+    <div class="row"><div class="lines"><div class="bar" style="width:92%"></div><div class="bar" style="width:84%"></div><div class="bar" style="width:66%"></div></div></div>
+    <div class="row me"><div class="bubble" style="width:32%"></div></div>
+    <div class="row"><div class="lines"><div class="bar" style="width:88%"></div><div class="bar" style="width:72%"></div></div></div>
+    <div class="composer"></div>
+  </main>
+</div>
+
+<svg id="splash">
+  <defs>
+    <path id="spark"/>
+    <mask id="hole" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <g id="holeT" visibility="hidden"><use href="#spark" fill="#000"/></g>
+    </mask>
+  </defs>
+  <rect width="100%" height="100%" fill="#d97757" mask="url(#hole)"/>
+  <g id="logoT"><use href="#spark" fill="#fff"/></g>
+</svg>
+
+<div id="panel"></div>
+
+<script>
+// Claude spark：按官方 logo（Simple Icons claude.svg，24×24）逐条实测重建
+// 每条光芒 [轴线角度°, 长度, 中段测点, 中段宽, 中段偏移, 端头测点, 端头宽, 端头偏移]，原点为光芒汇聚中心
+const RAYS = [
+  [-179.2, 11.59, 7, 1.38, -0.26, 10.39, 1.44, -0.11],
+  [-143.6, 11.83, 7, 2.23, -0.05, 10.63, 2.37, -0.05],
+  [-114.6, 12.93, 7, 2.49, 0.34, 11.73, 2.79, 0.19],
+  [-76.7, 11.82, 7, 1.83, 0.31, 10.62, 2.00, 0.01],
+  [-46.0, 12.53, 7, 2.97, 0.56, 11.33, 2.62, 0.18],
+  [-8.6, 12.43, 7, 1.86, 0.31, 11.23, 1.72, 0.10],
+  [11.8, 12.67, 7, 1.45, 0.41, 11.47, 2.10, 0.21],
+  [43.8, 12.66, 7, 1.45, -0.65, 11.46, 1.18, -0.88],
+  [53.7, 12.14, 7, 2.01, 0.35, 10.94, 1.96, 0.51],
+  [90.8, 12.08, 7, 1.58, -0.55, 10.88, 2.02, -0.02],
+  [121.0, 11.75, 7, 1.59, -0.72, 10.55, 1.49, -0.23],
+  [144.5, 11.06, 7, 1.81, -0.29, 9.86, 1.82, -0.16],
+]
+const CORE_R = 2.1, ROOT = 0.8, KEEP = 2.4, EXTENT = 26.4, LOGO_PX = 120
+
+const P = {
+  loadMs: 1600,     // 模拟加载时长
+  minShowMs: 500,   // 最短展示
+  periodMs: 900,    // 跳动周期
+  wave: 1,          // 光芒收缩深度：1 = 像官方一样缩回成圆点
+  enterMs: 260,     // 入场
+  chargeMs: 90,     // 蓄力
+  burstMs: 420,     // 炸开
+  fadeFrom: 0.25,   // logo 内白色开始变透（炸开进度）
+  fadeTo: 0.75,     // logo 内白色完全透明
+  curve: 1.8,       // 炸开加速指数（对数缩放空间）
+  landMs: 300,      // 主界面落地
+  weight: 1,        // 光芒粗细倍率
+}
+
+const NS = 'http://www.w3.org/2000/svg'
+const $ = id => document.getElementById(id)
+const spark = $('spark'), logoT = $('logoT'), holeT = $('holeT'), splash = $('splash'), page = $('page')
+
+const f3 = v => +v.toFixed(3)
+
+// 一条光芒：中心线从根部延伸到端头，宽度和偏移按两处实测点线性插值；端头为整圆半圆，根部收细后埋进圆核
+function rayD([deg, len, a1, w1, o1, a2, w2, o2], k, weight) {
+  const ax = deg * Math.PI / 180, c = Math.cos(ax), s = Math.sin(ax)
+  const lerpAt = (v1, v2, a) => v1 + (v2 - v1) * (a - a1) / (a2 - a1)
+  const reach = KEEP + (len - KEEP) * k
+  const rt = w2 * weight / 2
+  const tip = Math.max(reach - rt, ROOT)
+  const off = a => lerpAt(o1, o2, Math.min(a, a2))
+  const w0 = Math.max(lerpAt(w1, w2, ROOT), w1 * 0.6) * weight, r0 = w0 / 2
+  const pt = (a, o) => `${f3(a * c - o * s)} ${f3(a * s + o * c)}`
+  return `M${pt(ROOT, off(ROOT) - r0)}L${pt(tip, off(tip) - rt)}A${f3(rt)} ${f3(rt)} 0 0 1 ${pt(tip, off(tip) + rt)}`
+    + `L${pt(ROOT, off(ROOT) + r0)}A${f3(r0)} ${f3(r0)} 0 0 1 ${pt(ROOT, off(ROOT) - r0)}Z`
+}
+
+// k 为全部光芒统一的伸出比例（0 = 缩成圆点，1 = 原始 logo）。所有子路径同为顺时针，nonzero 填充即取并集
+function sparkD(k) {
+  // 光芒收回时圆核同步胀大，盖住残留的根部，收成官方那样圆润的圆点
+  const r = (CORE_R + 1.3 * (1 - k)) * P.weight
+  let d = `M${f3(r)} 0A${f3(r)} ${f3(r)} 0 1 1 ${f3(-r)} 0A${f3(r)} ${f3(r)} 0 1 1 ${f3(r)} 0Z`
+  for (const ray of RAYS) {
+    d += rayD(ray, k, P.weight)
+  }
+  return d
+}
+
+const clamp01 = x => Math.min(1, Math.max(0, x))
+const lerp = (a, b, t) => a + (b - a) * t
+const outCubic = t => 1 - (1 - t) ** 3
+const outBack = t => { const c = 1.9; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2 }
+const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t) }
+// 官方 thinking 动画：从圆点快速伸出、在全长附近停留、再收回（对照参考 GIF 的 9 帧）
+const pulse = phase => Math.sin(Math.PI * (phase - Math.floor(phase))) ** 0.6
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+let t0 = 0, exitAt, cur, snap, raf
+// ?at=毫秒：逐帧推进到该时刻后定格，便于检查单帧
+const AT = new URLSearchParams(location.search).get('at')
+for (const [key, value] of new URLSearchParams(location.search)) if (key in P) P[key] = Number(value)
+
+function restart() {
+  cancelAnimationFrame(raf)
+  t0 = performance.now()
+  exitAt = undefined
+  splash.style.display = ''
+  splash.style.opacity = 1
+  if (AT !== null) { for (let x = 0; x <= Number(AT); x += 16) frame(t0 + x, true); return }
+  raf = requestAnimationFrame(frame)
+}
+
+function frame(now, frozen) {
+  const t = now - t0
+  const vw = innerWidth, vh = innerHeight
+  const unit = LOGO_PX / EXTENT
+  if (exitAt === undefined && t >= Math.max(P.loadMs, P.minShowMs)) { exitAt = t; snap = cur }
+
+  let s, rot, wo, k, hole = false, landing = 0, finished = false
+
+  if (exitAt === undefined) {
+    const e = clamp01(t / P.enterMs)
+    const phase = t / P.periodMs
+    s = lerp(0.4, 1, outBack(e))
+    rot = reduced() ? 0 : 15 * (1 - outCubic(e))
+    wo = outCubic(e)
+    k = reduced() ? 1 : 1 - P.wave * (1 - pulse(phase))
+    cur = { s, rot, wo, k }
+  } else if (reduced()) {
+    ({ s, rot, wo, k } = snap)
+    const f = clamp01((t - exitAt) / 200)
+    splash.style.opacity = 1 - f
+    landing = 1
+    finished = f >= 1
+  } else {
+    const dt = t - exitAt
+    if (dt < P.chargeMs) {
+      const u = outCubic(dt / P.chargeMs)
+      s = lerp(snap.s, 0.82, u)
+      rot = snap.rot - 22 * u
+      wo = lerp(snap.wo, 1, u)
+      k = lerp(snap.k, 1, u)
+    } else {
+      const v = clamp01((dt - P.chargeMs) / P.burstMs)
+      const ev = v ** P.curve
+      // 实心核盖住半条对角线时，橙色已被完全推出屏幕
+      const sEnd = Math.hypot(vw, vh) / 2 / (CORE_R * P.weight * unit) * 1.15
+      s = Math.exp(lerp(Math.log(0.82), Math.log(sEnd), ev))
+      rot = snap.rot - 22 + 100 * ev
+      wo = 1 - smooth(P.fadeFrom, P.fadeTo, v)
+      k = 1
+      hole = true
+      if (v >= 1) splash.style.display = 'none'
+    }
+    landing = clamp01((dt - P.chargeMs - P.fadeFrom * P.burstMs) / P.landMs)
+    finished = dt >= P.chargeMs + P.burstMs && landing >= 1
+  }
+
+  const tf = `translate(${vw / 2} ${vh / 2}) scale(${s * unit}) rotate(${rot})`
+  logoT.setAttribute('transform', tf)
+  logoT.setAttribute('opacity', wo)
+  holeT.setAttribute('transform', tf)
+  holeT.setAttribute('visibility', hole ? 'visible' : 'hidden')
+  spark.setAttribute('d', sparkD(k))
+
+  const l = outCubic(landing)
+  page.style.transform = reduced() ? '' : `scale(${lerp(1.05, 1, l)})`
+
+  if (!finished && !frozen) raf = requestAnimationFrame(frame)
+}
+
+// 调参面板
+const SPEC = [
+  ['loadMs', '模拟加载时长', 0, 5000, 50],
+  ['minShowMs', '最短展示', 0, 1500, 50],
+  ['periodMs', '跳动周期', 300, 1500, 10],
+  ['wave', '光芒收缩深度', 0, 1, 0.02],
+  ['enterMs', '入场', 100, 600, 10],
+  ['chargeMs', '蓄力', 0, 300, 10],
+  ['burstMs', '炸开', 200, 1000, 10],
+  ['fadeFrom', '白色开始变透', 0, 1, 0.05],
+  ['fadeTo', '白色完全透明', 0, 1, 0.05],
+  ['curve', '炸开加速', 1, 4, 0.1],
+  ['landMs', '主界面落地', 100, 800, 10],
+  ['weight', '光芒粗细', 0.7, 1.6, 0.05],
+]
+const panel = $('panel')
+for (const [key, label, min, max, step] of SPEC) {
+  const el = document.createElement('label')
+  el.innerHTML = `<span>${label}</span><output>${P[key]}</output><input type="range" min="${min}" max="${max}" step="${step}" value="${P[key]}">`
+  const input = el.querySelector('input'), out = el.querySelector('output')
+  input.addEventListener('input', () => { P[key] = Number(input.value); out.textContent = input.value })
+  input.addEventListener('change', restart)
+  panel.appendChild(el)
+}
+const copy = document.createElement('button')
+copy.textContent = '复制参数'
+copy.addEventListener('click', () => { const json = JSON.stringify(P, null, 2); navigator.clipboard?.writeText(json).catch(() => {}); console.log(json) })
+panel.appendChild(copy)
+panel.addEventListener('pointerdown', e => e.stopPropagation())
+
+addEventListener('keydown', e => {
+  if (e.key === 'd' || e.key === 'D') panel.classList.toggle('open')
+  if (e.key === ' ' || e.key === 'r' || e.key === 'R') { e.preventDefault(); restart() }
+})
+addEventListener('pointerdown', restart)
+
+restart()
+</script>
+</body>
+</html>

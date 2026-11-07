@@ -2,9 +2,10 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
-import type { BtwTurn, ChatEvent, Decision, QueueAction, SessionOptions } from '../shared/chat'
+import { app, BrowserWindow, nativeTheme, shell } from 'electron'
+import type { ChatEvent } from '../shared/chat'
 import type { DemoState, Settings } from '../shared/types'
+import { broadcast as broadcastEvent, registerNamespace } from './ipc/register'
 import { SessionManager } from './live/SessionManager'
 import * as files from './files'
 import * as meta from './meta'
@@ -24,15 +25,9 @@ import { readMetadata } from './metadataQuery'
 import { activityRepository } from './activityRepository'
 import { createSessionPreferencesRepository } from './sessionPreferences'
 import { createHumanSubmissionRepository } from './humanSubmissionRepository'
-import { registerAppNotifications } from './appNotifications'
+import { appNotificationHandlers } from './appNotifications'
 import { Scheduler } from './schedules'
-import type { ScheduledTaskInput } from '../shared/schedules'
 import { readSkillBody, readSkillCatalog, setPluginEnabled } from './skills'
-
-function str(value: unknown, name: string): string {
-  if (typeof value !== 'string' || value === '') throw new Error(`参数 ${name} 无效`)
-  return value
-}
 
 export function applyTheme(theme: Settings['theme']): void {
   nativeTheme.themeSource = theme
@@ -63,25 +58,19 @@ function overview(): Promise<UsageOverview> {
 function broadcast(sessionId: string, event: ChatEvent): void {
   if (event.kind === 'result') void statistics().recordDuration(event.durationMs).catch(error => console.error('Usage statistics:', error))
   if (process.env.CLAUDE_DESK_DEBUG) console.log('[emit]', sessionId.slice(0, 8), event.kind)
-  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('chat:event', sessionId, event)
+  broadcastEvent('chat:onEvent', sessionId, event)
 }
 
-onClaudeConfigChanged(change => {
-  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('meta:configChanged', change)
-})
+onClaudeConfigChanged(change => broadcastEvent('meta:onConfigChanged', change))
 
 const commandConfiguration = (): string => JSON.stringify([store.read().settings.claudePath ?? null, app.getVersion()])
 export const commandCatalog: CommandCatalog = new CommandCatalog({
   directory: () => join(app.getPath('userData'), 'command-catalog'),
   configuration: commandConfiguration,
   load: (cwd, signal, configuration) => chats.commandsFor(cwd, configuration) ?? readMetadata(cwd, signal).then((init) => init.commands),
-  publish: (snapshot) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('meta:commands', snapshot) }
+  publish: (snapshot) => broadcastEvent('meta:onCommands', snapshot)
 })
 export const chats: SessionManager = new SessionManager(broadcast, activityRepository, { configuration: commandConfiguration, publisher: (cwd) => commandCatalog.publisher(cwd) }, createHumanSubmissionRepository(() => join(app.getPath('userData'), 'human-submissions')), createSessionPreferencesRepository(() => join(app.getPath('userData'), 'session-preferences')))
-
-function sendAll(channel: string, ...args: unknown[]): void {
-  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send(channel, ...args)
-}
 
 export const scheduler: Scheduler = new Scheduler({
   file: () => join(app.getPath('userData'), 'schedules.json'),
@@ -92,163 +81,146 @@ export const scheduler: Scheduler = new Scheduler({
   },
   start: (projectPath, prompt, options) => chats.start(projectPath, prompt, options),
   isBusy: (sessionId) => chats.isBusy(sessionId),
-  onStarted: (run) => sendAll('schedules:started', run),
-  onChanged: (tasks) => sendAll('schedules:changed', tasks)
+  onStarted: (run) => broadcastEvent('schedules:onStarted', run),
+  onChanged: (tasks) => broadcastEvent('schedules:onChanged', tasks)
 })
 
 export function projectMetadata(cwd: string) {
   return meta.get(cwd, commandCatalog.seedFromMetadata(cwd))
 }
 
+
 export function registerIpc(demo: DemoState | null, focusWindow?: () => void): void {
-  const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
-    ipcMain.handle(channel, (_e, ...args) => fn(...args))
-  }
-
-  registerAppNotifications(focusWindow)
-  handle('app:state', () => {
-    let username: string | null = null
-    try { username = userInfo().username } catch { /* greeting may omit the name */ }
-    return { seededFromHistory: store.read().seededFromHistory, demo, home: homedir(), username }
-  })
-  ipcMain.handle('app:focus', (e) => {
-    if (focusWindow) { focusWindow(); return }
-    const win = BrowserWindow.fromWebContents(e.sender)
-    if (win?.isMinimized()) win.restore()
-    win?.show()
-    app.focus({ steal: true })
-  })
-
-  ipcMain.handle('projects:pickFolder', (e) => projects.pickFolder(BrowserWindow.fromWebContents(e.sender)!))
-  handle('projects:list', () => projects.list())
-  handle('projects:add', (path) => projects.add(str(path, 'path')))
-  handle('projects:remove', (id) => projects.remove(str(id, 'id')))
-  handle('projects:setCollapsed', (id, collapsed) => projects.setCollapsed(str(id, 'id'), collapsed === true))
-  handle('projects:detectFromHistory', () => projects.detectFromHistory())
-  handle('projects:markSeeded', () => projects.markSeeded())
-  handle('projects:revealInFinder', (path) => projects.revealInFinder(str(path, 'path')))
-
-  const task = (value: unknown): ScheduledTaskInput => {
-    if (!value || typeof value !== 'object') throw new Error('参数 task 无效')
-    return value as ScheduledTaskInput
-  }
-  handle('skills:list', (path) => readSkillCatalog(typeof path === 'string' && path ? path : null))
-  handle('skills:read', (path) => readSkillBody(str(path, 'path')))
-  handle('skills:setPluginEnabled', (id, enabled) => setPluginEnabled(str(id, 'id'), enabled === true))
-  handle('schedules:list', () => scheduler.list())
-  handle('schedules:create', (input) => scheduler.create(task(input)))
-  handle('schedules:update', (id, input) => scheduler.update(str(id, 'id'), task(input)))
-  handle('schedules:setEnabled', (id, enabled) => scheduler.setEnabled(str(id, 'id'), enabled === true))
-  handle('schedules:remove', (id) => scheduler.remove(str(id, 'id')))
-  handle('schedules:runNow', (id) => scheduler.runNow(str(id, 'id')))
-
-  handle('sessions:list', (path) => sessions.list(str(path, 'path')))
-  handle('sessions:rename', (id, title, path) => sessions.rename(str(id, 'id'), str(title, 'title'), str(path, 'path')))
-  handle('sessions:setArchived', (id, archived) => sessions.setArchived(str(id, 'id'), archived === true))
-
-  handle('settings:get', () => store.read().settings)
-  handle('settings:set', (patch) => {
-    if (patch && typeof patch === 'object' && 'executionLanguage' in patch && patch.executionLanguage !== 'zh' && patch.executionLanguage !== 'en') throw new Error('执行提示语言仅支持中文或英文')
-    const previousPath = store.read().settings.claudePath
-    const next = store.update((d) => {
-      d.settings = { ...d.settings, ...(patch as Partial<Settings>) }
-    }).settings
-    if (next.claudePath !== previousPath) { commandCatalog.invalidate(); meta.invalidate() }
-    applyTheme(next.theme)
-    return next
-  })
-
-  handle('meta:get', path => projectMetadata(typeof path === 'string' ? path : homedir()))
-  handle('meta:cachedModels', path => meta.cachedModels(typeof path === 'string' ? path : undefined))
-  handle('meta:commands', (path, force) => {
-    const cwd = str(path, 'path')
-    if (!isAbsolute(cwd)) throw new Error('项目路径必须是绝对路径')
-    return commandCatalog.get(cwd, force === true)
-  })
-  handle('meta:usage', () => planUsage())
-  handle('usage:overview', () => overview())
-  handle('usage:stats', refresh => refresh === true ? statistics().refresh() : statistics().get())
-  handle('usage:profile', (key, profile) => {
-    if (key !== activeAccountKey) throw new Error('账户信息已变化，请刷新后重试')
-    return profiles().save(str(key, 'accountKey'), profile)
-  })
-  handle('meta:configSnapshot', path => { const cwd = str(path, 'path'); watchClaudeConfig(cwd); return readClaudeConfig(cwd) })
-  handle('meta:config', (path, setting) =>
-    runLocalCommand(str(path, 'path'), typeof setting === 'string' && setting ? `/config ${setting}` : '/config')
-  )
-  handle('files:saveImage', async (bytes, mime) => {
-    const extensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }
-    const ext = extensions[String(mime)]
-    if (!ext || !(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 25 * 1024 * 1024) throw new Error('图片格式不支持或超过 25 MB')
-    const directory = join(app.getPath('userData'), 'pasted-images')
-    await mkdir(directory, { recursive: true })
-    const path = join(directory, `${randomUUID()}.${ext}`)
-    await writeFile(path, bytes)
-    return path
-  })
-  handle('files:search', (path, query) => files.search(str(path, 'path'), typeof query === 'string' ? query : ''))
-  handle('files:list', (projectPath, directory) =>
-    files.listProjectDirectory(str(projectPath, 'projectPath'), str(directory, 'directory'))
-  )
-  handle('files:create', (projectPath, directory, kind, name) => {
-    if (kind !== 'file' && kind !== 'dir') throw new Error('参数 kind 无效')
-    return files.createProjectEntry(
-      str(projectPath, 'projectPath'),
-      str(directory, 'directory'),
-      kind,
-      str(name, 'name')
-    )
-  })
-  handle('files:read', (path) => files.readForPreview(str(path, 'path')))
-  handle('files:watch', (path) => {
-    const p = str(path, 'path')
-    files.watchFile(p, () => {
-      for (const win of BrowserWindow.getAllWindows()) win.webContents.send('files:changed', p)
-    })
-  })
-  handle('files:unwatch', (path) => files.unwatchFile(str(path, 'path')))
-  handle('files:stat', (paths) => files.statPaths(Array.isArray(paths) ? paths.filter((p): p is string => typeof p === 'string') : []))
-  handle('files:open', async (path) => {
-    const p = str(path, 'path')
-    if (!isAbsolute(p)) throw new Error('参数 path 无效')
-    const error = await shell.openPath(p)
-    if (error) throw new Error(error)
-  })
-  handle('files:describe', (paths) => {
-    if (!Array.isArray(paths) || !paths.every((path) => typeof path === 'string' && path !== '')) {
-      throw new Error('参数 paths 无效')
+  registerNamespace('app', {
+    ...appNotificationHandlers(focusWindow),
+    state: () => {
+      let username: string | null = null
+      try { username = userInfo().username } catch { /* greeting may omit the name */ }
+      return { seededFromHistory: store.read().seededFromHistory, demo, home: homedir(), username }
+    },
+    focus: (e) => {
+      if (focusWindow) { focusWindow(); return }
+      const win = BrowserWindow.fromWebContents(e.sender)
+      if (win?.isMinimized()) win.restore()
+      win?.show()
+      app.focus({ steal: true })
     }
-    return files.describePaths(paths)
   })
 
-  const opts = (value: unknown): SessionOptions => value as SessionOptions
-  handle('chat:prepareControls', (id, path) => chats.prepareControls(str(id, 'id'), str(path, 'path')))
-  handle('chat:open', (id, path) => chats.openForDisplay(str(id, 'id'), str(path, 'path')))
-  handle('chat:start', (path, text, o) => chats.start(str(path, 'path'), str(text, 'text'), opts(o)))
-  handle('chat:edit', (id, path, messageId, text) => chats.edit(str(id, 'id'), str(path, 'path'), str(messageId, 'messageId'), str(text, 'text')))
-  handle('chat:send', (id, path, text, o, attachments) => chats.send(str(id, 'id'), str(path, 'path'), str(text, 'text'), opts(o), Array.isArray(attachments) ? attachments.map(p => str(p, 'attachment')) : []))
-  handle('chat:queue', (id, path, action) => chats.queueAction(str(id, 'id'), str(path, 'path'), action as QueueAction))
-  handle('chat:interrupt', (id) => chats.interrupt(str(id, 'id')))
-  handle('chat:setMode', (id, mode) => chats.setMode(str(id, 'id'), mode as SessionOptions['mode']))
-  handle('chat:setModel', (id, model) => chats.setModel(str(id, 'id'), (model as string | null) ?? null))
-  handle('chat:control', (id, path, operation, value) => chats.control(str(id, 'id'), str(path, 'path'), str(operation, 'operation'), typeof value === 'string' ? value : undefined))
-  handle('chat:setWorkflows', (id, value) => { if (typeof value !== 'boolean') throw new Error('无效开关值'); return chats.setWorkflows(str(id, 'id'), value) })
-  handle('chat:setFastMode', (id, value) => { if (typeof value !== 'boolean') throw new Error('无效开关值'); return chats.setFastMode(str(id, 'id'), value) })
-  handle('chat:setUltracode', (id, enabled) => { if (typeof enabled !== 'boolean') throw new Error('无效开关值'); return chats.setUltracode(str(id, 'id'), enabled) })
-  handle('chat:refreshRuntime', id => chats.refreshRuntime(str(id, 'id')))
-  handle('chat:setEffort', (id, effort) => chats.setEffort(str(id, 'id'), (effort as SessionOptions['effort']) ?? null))
-  handle('chat:respond', (id, requestId, decision) =>
-    chats.respond(str(id, 'id'), str(requestId, 'requestId'), decision as Decision)
-  )
-  handle('chat:checkExternal', (id, path) => chats.checkExternal(str(id, 'id'), str(path, 'path')))
-  handle('chat:reload', (id, path) => chats.reload(str(id, 'id'), str(path, 'path')))
-  handle('chat:btw', (id, path, question, history, o) =>
-    chats.sideQuestion(str(id, 'id'), str(path, 'path'), str(question, 'question'), (history as BtwTurn[]) ?? [], opts(o))
-  )
-  handle('chat:mcp', (id, path) => chats.mcp(typeof id === 'string' && id ? id : null, str(path, 'path')))
-  handle('chat:mcpAction', (path, operation, name) => {
-    if (operation !== 'enable' && operation !== 'disable' && operation !== 'reconnect') throw new Error('无效的 MCP 操作')
-    return chats.mcpAction(str(path, 'path'), operation, str(name, 'name'))
+  registerNamespace('projects', {
+    pickFolder: (e) => projects.pickFolder(BrowserWindow.fromWebContents(e.sender)!),
+    list: () => projects.list(),
+    add: (_e, path) => projects.add(path),
+    remove: (_e, id) => projects.remove(id),
+    setCollapsed: (_e, id, collapsed) => projects.setCollapsed(id, collapsed),
+    detectFromHistory: () => projects.detectFromHistory(),
+    markSeeded: () => projects.markSeeded(),
+    revealInFinder: (_e, path) => projects.revealInFinder(path)
   })
-  handle('chat:context', (id, path, model) => chats.context(str(id, 'id'), str(path, 'path'), (model as string | null) ?? null))
+
+  registerNamespace('skills', {
+    list: (_e, path) => readSkillCatalog(path),
+    read: (_e, path) => readSkillBody(path),
+    setPluginEnabled: (_e, id, enabled) => setPluginEnabled(id, enabled)
+  })
+
+  registerNamespace('schedules', {
+    list: () => scheduler.list(),
+    create: (_e, input) => scheduler.create(input),
+    update: (_e, id, input) => scheduler.update(id, input),
+    setEnabled: (_e, id, enabled) => scheduler.setEnabled(id, enabled),
+    remove: (_e, id) => scheduler.remove(id),
+    runNow: (_e, id) => scheduler.runNow(id)
+  })
+
+  registerNamespace('sessions', {
+    list: (_e, path) => sessions.list(path),
+    rename: (_e, id, title, path) => sessions.rename(id, title, path),
+    setArchived: (_e, id, archived) => sessions.setArchived(id, archived)
+  })
+
+  registerNamespace('settings', {
+    get: () => store.read().settings,
+    set: (_e, patch) => {
+      const previousPath = store.read().settings.claudePath
+      const next = store.update((d) => {
+        d.settings = { ...d.settings, ...patch }
+      }).settings
+      if (next.claudePath !== previousPath) { commandCatalog.invalidate(); meta.invalidate() }
+      applyTheme(next.theme)
+      return next
+    }
+  })
+
+  registerNamespace('meta', {
+    get: (_e, path) => projectMetadata(path ?? homedir()),
+    cachedModels: (_e, path) => meta.cachedModels(path),
+    commands: (_e, cwd, force) => {
+      if (!isAbsolute(cwd)) throw new Error('项目路径必须是绝对路径')
+      return commandCatalog.get(cwd, force === true)
+    },
+    usage: () => planUsage(),
+    configSnapshot: (_e, cwd) => { watchClaudeConfig(cwd); return readClaudeConfig(cwd) },
+    config: (_e, path, setting) => runLocalCommand(path, setting ? `/config ${setting}` : '/config')
+  })
+
+  registerNamespace('usage', {
+    overview: () => overview(),
+    stats: (_e, refresh) => refresh === true ? statistics().refresh() : statistics().get(),
+    saveProfile: (_e, key, profile) => {
+      if (key !== activeAccountKey) throw new Error('账户信息已变化，请刷新后重试')
+      return profiles().save(key, profile)
+    }
+  })
+
+  registerNamespace('files', {
+    saveImage: async (_e, bytes, mime) => {
+      const extensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }
+      const ext = extensions[mime]
+      if (!ext || !bytes.length || bytes.length > 25 * 1024 * 1024) throw new Error('图片格式不支持或超过 25 MB')
+      const directory = join(app.getPath('userData'), 'pasted-images')
+      await mkdir(directory, { recursive: true })
+      const path = join(directory, `${randomUUID()}.${ext}`)
+      await writeFile(path, bytes)
+      return path
+    },
+    search: (_e, path, query) => files.search(path, query),
+    list: (_e, projectPath, directory) => files.listProjectDirectory(projectPath, directory),
+    create: (_e, projectPath, directory, kind, name) => files.createProjectEntry(projectPath, directory, kind, name),
+    read: (_e, path) => files.readForPreview(path),
+    watch: (_e, path) => files.watchFile(path, () => broadcastEvent('files:onChanged', path)),
+    unwatch: (_e, path) => files.unwatchFile(path),
+    stat: (_e, paths) => files.statPaths(paths),
+    open: async (_e, path) => {
+      if (!isAbsolute(path)) throw new Error('参数 path 无效')
+      const error = await shell.openPath(path)
+      if (error) throw new Error(error)
+    },
+    describe: (_e, paths) => files.describePaths(paths)
+  })
+
+  registerNamespace('chat', {
+    prepareControls: (_e, id, path) => chats.prepareControls(id, path),
+    open: (_e, id, path) => chats.openForDisplay(id, path),
+    start: (_e, path, text, options) => chats.start(path, text, options),
+    edit: (_e, id, path, messageId, text) => chats.edit(id, path, messageId, text),
+    send: (_e, id, path, text, options, attachments) => chats.send(id, path, text, options, attachments),
+    queue: (_e, id, path, action) => chats.queueAction(id, path, action),
+    interrupt: (_e, id) => chats.interrupt(id),
+    setMode: (_e, id, mode) => chats.setMode(id, mode),
+    setModel: (_e, id, model) => chats.setModel(id, model),
+    control: (_e, id, path, operation, value) => chats.control(id, path, operation, value),
+    setWorkflows: (_e, id, value) => chats.setWorkflows(id, value),
+    setFastMode: (_e, id, value) => chats.setFastMode(id, value),
+    setUltracode: (_e, id, enabled) => chats.setUltracode(id, enabled),
+    refreshRuntime: (_e, id) => chats.refreshRuntime(id),
+    setEffort: (_e, id, effort) => chats.setEffort(id, effort),
+    respond: (_e, id, requestId, decision) => chats.respond(id, requestId, decision),
+    checkExternal: (_e, id, path) => chats.checkExternal(id, path),
+    reload: (_e, id, path) => chats.reload(id, path),
+    btw: (_e, id, path, question, history, options) => chats.sideQuestion(id, path, question, history, options),
+    mcp: (_e, id, path) => chats.mcp(id, path),
+    mcpAction: (_e, path, operation, name) => chats.mcpAction(path, operation, name),
+    context: (_e, id, path, model) => chats.context(id, path, model)
+  })
 }

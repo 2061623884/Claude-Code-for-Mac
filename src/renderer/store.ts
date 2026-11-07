@@ -51,6 +51,8 @@ interface DeskState {
   setSearchOpen(open: boolean): void
   /** 新会话刚开始时先在侧栏放一条，等会话文件写出后刷新成真实标题 */
   addPendingSession(projectId: string, sessionId: string, firstPrompt: string): void
+  /** 会话开始执行时立即排到侧栏最上方，不必等本轮结束后的刷新 */
+  touchSession(projectId: string, sessionId: string): void
 }
 
 const desk = (): Window['desk'] => window.desk
@@ -251,6 +253,14 @@ export const useDesk = create<DeskState>((set, get) => ({
     const project = get().projects.find((p) => p.id === projectId)
     const entry = { id: sessionId, title: firstPrompt.replace(/\s+/g, ' ').trim().slice(0, 80), cwd: project?.path ?? '', lastModified: Date.now(), archived: false }
     set({ sessions: { ...get().sessions, [projectId]: [entry, ...list] } })
+  },
+
+  touchSession(projectId, sessionId) {
+    const list = get().sessions[projectId] ?? []
+    const session = list.find((s) => s.id === sessionId)
+    if (!session) return
+    const touched = { ...session, lastModified: Date.now() }
+    set({ sessions: { ...get().sessions, [projectId]: [touched, ...list.filter((s) => s.id !== sessionId)] } })
   }
 }))
 

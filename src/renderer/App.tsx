@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { PanelLeft, SquarePen } from 'lucide-react'
 import { cancelFirstSend, isFirstSendTarget, syncFirstSend } from './motion/firstSend'
+import { finishSplash } from './motion/splash'
 import { refreshSessionsInBackground, useDesk } from './store'
 import { useChat } from './chatStore'
 import { usePanel } from './panelStore'
@@ -38,8 +39,9 @@ export function App() {
     return () => { delete document.documentElement.dataset.reduceMotion }
   }, [reduceMotion])
 
+  // init 内已等待会话列表加载；失败也要退场，避免开屏卡住
   useEffect(() => {
-    void init()
+    void init().finally(finishSplash)
   }, [init])
 
   // 开发截图用：自动打开会话或自动发送消息（等会话列表加载后执行一次）
